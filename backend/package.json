@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "hash": "node src/scripts/hashPassword.js"
+    "hash": "node src/scripts/hashPassword.js",
+    "migrate": "node src/scripts/migrate.js"
   },
   "dependencies": {
     "bcrypt": "5.1.1",

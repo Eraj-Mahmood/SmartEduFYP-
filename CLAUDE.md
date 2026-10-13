@@ -72,6 +72,10 @@ Fresh database setup: `createdb smartedu` → `psql -f database/schema.sql` →
 `python database/import_dataset.py --csv SmartEdu_Synthetic_Dataset_V2_50000_Sheet_.csv --dsn <DSN>` →
 `python database/seed_demo_data.py --dsn <DSN>`.
 
+Schema changes go in a new numbered file in `database/migrations/` (e.g. `001_add_x.sql`),
+applied with `cd backend; npm run migrate` (`src/scripts/migrate.js`: filename order, one
+transaction per file, recorded in `schema_migrations`, already-applied files skipped).
+
 npm 11 blocks install scripts: `bcrypt` (backend) and `esbuild` (frontend) are allowed via
 `allowScripts` in their `package.json`.
 
