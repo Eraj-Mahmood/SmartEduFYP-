@@ -98,6 +98,10 @@ npm 11 blocks install scripts: `bcrypt` (backend) and `esbuild` (frontend) are a
 | Faculty (all 10) | e.g. `amina.sheikh@smartedu.edu` | `Faculty@123` (`seed_demo_data.py`) |
 | Students (all 50k) | `student<ID>@smartedu.edu` | `Student@123` (`import_dataset.py` default) |
 
+The six curated demo students (2 per label, grades consistent with CGPA, label = model) and the
+faculty login that shows them are in [docs/DEMO_ACCOUNTS.md](docs/DEMO_ACCOUNTS.md); they were
+found with `database/find_consistent_demo_students.sql`.
+
 ## Known facts
 
 - The model was pickled with **scikit-learn 1.9.0** (recorded in each estimator's
