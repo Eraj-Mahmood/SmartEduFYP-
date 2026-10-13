@@ -19,6 +19,10 @@ smartedu/
 └── frontend/                 React (Vite) app, 3 portals
 ```
 
+**Committed on purpose:** the ~5 MB dataset `SmartEdu_Synthetic_Dataset_V2_50000_Sheet_.csv`
+and the trained model `ml_service/smartedu_random_forest_version_a.pkl` are kept in the repo
+so the project can be set up and demoed from a fresh clone without re-running the notebook.
+
 ## One-day setup order
 
 1. **Postgres**

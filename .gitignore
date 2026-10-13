@@ -8,3 +8,7 @@ __pycache__/
 .venv/
 *.joblib
 .DS_Store
+venv/
+env/
+.env.*
+!.env.example

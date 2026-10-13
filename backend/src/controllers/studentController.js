@@ -97,7 +97,7 @@ async function history(req, res) {
   try {
     const studentId = await getMyStudentId(req.user.userId);
     const { rows } = await pool.query(
-      `SELECT semester, sgpa, cgpa, attendance_percentage, failed_courses, warning_count, target_label
+      `SELECT semester, sgpa, cgpa, attendance_percentage, failed_courses, warning_count
        FROM student_semester_performance WHERE student_id = $1 ORDER BY semester`,
       [studentId]
     );
