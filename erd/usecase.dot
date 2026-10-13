@@ -1,0 +1,79 @@
+digraph UseCase {
+    rankdir=LR;
+    graph [fontname="Helvetica", bgcolor="white", nodesep=0.5, ranksep=1.2];
+    node [fontname="Helvetica"];
+    edge [fontname="Helvetica", fontsize=10, color="#555555"];
+
+    // ---------- Actors ----------
+    node [shape=plaintext];
+    Student [label=<
+      <table border="0" cellborder="0"><tr><td><font point-size="30">&#128100;</font></td></tr>
+      <tr><td><b>Student</b></td></tr></table>>];
+    Faculty [label=<
+      <table border="0" cellborder="0"><tr><td><font point-size="30">&#128100;</font></td></tr>
+      <tr><td><b>Faculty</b></td></tr></table>>];
+    Admin [label=<
+      <table border="0" cellborder="0"><tr><td><font point-size="30">&#128100;</font></td></tr>
+      <tr><td><b>Admin</b></td></tr></table>>];
+    MLService [label=<
+      <table border="0" cellborder="0"><tr><td><font point-size="26">&#9881;</font></td></tr>
+      <tr><td><b>Helper Bot</b><br/>(RF Model)</td></tr></table>>];
+
+    // ---------- System boundary ----------
+    subgraph cluster_system {
+        label="SmartEdu System";
+        fontname="Helvetica";
+        fontsize=14;
+        style="rounded";
+        color="#2F5D8A";
+        bgcolor="#F6F4EF";
+        margin=20;
+
+        node [shape=ellipse, style="filled", fillcolor="white", color="#2F5D8A", fontsize=11, width=1.8, height=0.55];
+
+        // Student use cases
+        UC_Login       [label="Login /\nRole Verification"];
+        UC_ViewResults [label="View Results"];
+        UC_ViewCGPA    [label="View CGPA"];
+        UC_ViewAtt     [label="View Attendance"];
+        UC_ReqPredict  [label="Request Performance\nPrediction"];
+
+        // Faculty use cases
+        UC_ViewClasses [label="View Assigned\nClasses"];
+        UC_EnterResults[label="Enter / Update\nResults"];
+        UC_MarkAtt     [label="Mark Attendance"];
+
+        // Admin use cases
+        UC_ManageUsers [label="Create / Deactivate\nUser Accounts"];
+        UC_AssignFac   [label="Assign Faculty\nto Courses"];
+        UC_EnrollDrop  [label="Enroll / Drop\nStudent Courses"];
+        UC_ViewAll     [label="View All Student\n& Faculty Data"];
+        UC_ClassRecords[label="View Class Records\n(read-only)"];
+        UC_Notify      [label="Send Intervention\nNotifications"];
+    }
+
+    // ---------- Student relations ----------
+    Student -> UC_Login;
+    Student -> UC_ViewResults;
+    Student -> UC_ViewCGPA;
+    Student -> UC_ViewAtt;
+    Student -> UC_ReqPredict;
+    UC_ReqPredict -> MLService [label="<<include>>", style=dashed, dir=both];
+
+    // ---------- Faculty relations ----------
+    Faculty -> UC_Login;
+    Faculty -> UC_ViewClasses;
+    Faculty -> UC_EnterResults;
+    Faculty -> UC_MarkAtt;
+
+    // ---------- Admin relations ----------
+    Admin -> UC_Login;
+    Admin -> UC_ManageUsers;
+    Admin -> UC_AssignFac;
+    Admin -> UC_EnrollDrop;
+    Admin -> UC_ViewAll;
+    Admin -> UC_ClassRecords;
+    Admin -> UC_Notify;
+
+    { rank=same; Student; Faculty; Admin; }
+}

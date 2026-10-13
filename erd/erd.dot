@@ -1,0 +1,163 @@
+digraph ERD {
+    rankdir=LR;
+    graph [splines=ortho, nodesep=0.6, ranksep=1.1, bgcolor="white", fontname="Helvetica"];
+    node [shape=plaintext, fontname="Helvetica"];
+    edge [fontname="Helvetica", fontsize=10, color="#555555", penwidth=1.2];
+
+    // ---------- Helper to build entity tables ----------
+    users [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#1f3a5f">
+      <tr><td colspan="2" bgcolor="#1f3a5f"><font color="white"><b>USERS</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">user_id</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">email (unique)</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">password_hash</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">role (student/faculty/admin)</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">is_active</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">created_at</td></tr>
+    </table>>];
+
+    departments [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#1f3a5f">
+      <tr><td colspan="2" bgcolor="#1f3a5f"><font color="white"><b>DEPARTMENTS</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">department_id</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">name (CS/EE/SE/AI/Business)</td></tr>
+    </table>>];
+
+    students [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#2a5f3a">
+      <tr><td colspan="2" bgcolor="#2a5f3a"><font color="white"><b>STUDENTS</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">student_id</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">user_id -&gt; USERS</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">department_id -&gt; DEPARTMENTS</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">roll_no, full_name</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">gender, age</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">current_semester</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">cgpa, scholarship, hostel</td></tr>
+    </table>>];
+
+    faculty [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#2a5f3a">
+      <tr><td colspan="2" bgcolor="#2a5f3a"><font color="white"><b>FACULTY</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">faculty_id</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">user_id -&gt; USERS</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">department_id -&gt; DEPARTMENTS</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">full_name, designation</td></tr>
+    </table>>];
+
+    courses [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#5f4a1f">
+      <tr><td colspan="2" bgcolor="#5f4a1f"><font color="white"><b>COURSES</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">course_id</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">department_id -&gt; DEPARTMENTS</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">course_code, title</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">credit_hours</td></tr>
+    </table>>];
+
+    faculty_courses [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#5f4a1f">
+      <tr><td colspan="2" bgcolor="#5f4a1f"><font color="white"><b>FACULTY_COURSES</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">faculty_course_id</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">faculty_id -&gt; FACULTY</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">course_id -&gt; COURSES</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">section, semester, academic_year</td></tr>
+    </table>>];
+
+    enrollments [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#5f2a4a">
+      <tr><td colspan="2" bgcolor="#5f2a4a"><font color="white"><b>ENROLLMENTS</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">enrollment_id</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">student_id -&gt; STUDENTS</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">faculty_course_id -&gt; FACULTY_COURSES</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">status (enrolled/dropped/completed)</td></tr>
+    </table>>];
+
+    course_results [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#5f2a4a">
+      <tr><td colspan="2" bgcolor="#5f2a4a"><font color="white"><b>COURSE_RESULTS</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">result_id</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">enrollment_id -&gt; ENROLLMENTS</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">assignment_avg, quiz_avg</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">midterm_marks, final_marks</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">grade, updated_by, updated_at</td></tr>
+    </table>>];
+
+    attendance [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#5f2a4a">
+      <tr><td colspan="2" bgcolor="#5f2a4a"><font color="white"><b>ATTENDANCE</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">attendance_id</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">enrollment_id -&gt; ENROLLMENTS</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">class_date, status (present/absent/leave)</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">marked_by, marked_at</td></tr>
+    </table>>];
+
+    performance_history [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#3a3a5f">
+      <tr><td colspan="2" bgcolor="#3a3a5f"><font color="white"><b>STUDENT_SEMESTER_PERFORMANCE</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">performance_id</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">student_id -&gt; STUDENTS</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">semester, attendance_pct</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">assignment_avg, quiz_avg</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">midterm_marks, final_marks</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">study_hours_per_week, lms_login_count</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">assignment_submission_rate</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">previous_sgpa, sgpa, cgpa</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">consecutive_low_cgpa, failed_courses</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">credits_enrolled, credits_passed</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">warning_count, target_label</td></tr>
+    </table>>];
+
+    predictions [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#3a3a5f">
+      <tr><td colspan="2" bgcolor="#3a3a5f"><font color="white"><b>PREDICTIONS</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">prediction_id</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">student_id -&gt; STUDENTS</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">semester, predicted_label</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">prob_safe, prob_at_risk, prob_dropout</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">model_version, created_at</td></tr>
+    </table>>];
+
+    notifications [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#7a2a2a">
+      <tr><td colspan="2" bgcolor="#7a2a2a"><font color="white"><b>NOTIFICATIONS</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">notification_id</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">sender_admin_id -&gt; USERS</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">recipient_user_id -&gt; USERS</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">related_prediction_id -&gt; PREDICTIONS (nullable)</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">subject, message</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">sent_at, read_at</td></tr>
+    </table>>];
+
+    audit_log [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#7a2a2a">
+      <tr><td colspan="2" bgcolor="#7a2a2a"><font color="white"><b>AUDIT_LOG</b></font></td></tr>
+      <tr><td align="left" bgcolor="white">PK</td><td align="left" bgcolor="white">log_id</td></tr>
+      <tr><td align="left" bgcolor="white">FK</td><td align="left" bgcolor="white">actor_user_id -&gt; USERS</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">action, entity, entity_id</td></tr>
+      <tr><td align="left" bgcolor="white"></td><td align="left" bgcolor="white">created_at</td></tr>
+    </table>>];
+
+    // ---------- Relationships ----------
+    users -> students [label="1:1", dir=none];
+    users -> faculty [label="1:1", dir=none];
+    departments -> students [label="1:M", dir=none];
+    departments -> faculty [label="1:M", dir=none];
+    departments -> courses [label="1:M", dir=none];
+    faculty -> faculty_courses [label="1:M", dir=none];
+    courses -> faculty_courses [label="1:M", dir=none];
+    students -> enrollments [label="1:M", dir=none];
+    faculty_courses -> enrollments [label="1:M", dir=none];
+    enrollments -> course_results [label="1:1", dir=none];
+    enrollments -> attendance [label="1:M", dir=none];
+    students -> performance_history [label="1:M", dir=none];
+    students -> predictions [label="1:M", dir=none];
+    users -> notifications [label="1:M (sender)", dir=none];
+    users -> notifications [label="1:M (recipient)", dir=none];
+    predictions -> notifications [label="0:M", dir=none, style=dashed];
+    users -> audit_log [label="1:M", dir=none];
+
+    { rank=same; users; departments; }
+    { rank=same; students; faculty; }
+    { rank=same; courses; faculty_courses; }
+    { rank=same; enrollments; performance_history; }
+    { rank=same; course_results; attendance; predictions; }
+}

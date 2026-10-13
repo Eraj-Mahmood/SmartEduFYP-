@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.badge-safe { @apply bg-safe/10 text-safe border border-safe/30; }
+.badge-risk { @apply bg-risk/10 text-risk border border-risk/30; }
+.badge-danger { @apply bg-danger/10 text-danger border border-danger/30; }

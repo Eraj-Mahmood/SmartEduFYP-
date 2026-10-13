@@ -1,0 +1,33 @@
+digraph Context {
+    rankdir=LR;
+    graph [fontname="Helvetica", bgcolor="white", nodesep=0.8, ranksep=1.4];
+    node [fontname="Helvetica"];
+    edge [fontname="Helvetica", fontsize=10, color="#555555", fontcolor="#333333"];
+
+    node [shape=box, style="filled", fillcolor="#F6F4EF", color="#2F5D8A", width=1.6, height=0.9];
+    Student  [label="Student"];
+    Faculty  [label="Faculty"];
+    Admin    [label="Admin"];
+    Dataset  [label="Synthetic Academic\nDataset (CSV, 50k rows)"];
+
+    node [shape=circle, style="filled", fillcolor="#2F5D8A", fontcolor="white", width=2.2, height=2.2, fixedsize=true];
+    System [label="0\nSmartEdu\nSystem"];
+
+    { rank=same; Student; Faculty; }
+    { rank=same; Admin; Dataset; }
+
+    // ---------- Student <-> System ----------
+    Student -> System [label="login credentials;\nprediction request"];
+    System -> Student [label="results, CGPA,\nattendance, risk prediction"];
+
+    // ---------- Faculty <-> System ----------
+    Faculty -> System [label="login credentials;\nresults & attendance entries"];
+    System -> Faculty [label="class roster,\nstudent results"];
+
+    // ---------- Admin <-> System ----------
+    Admin -> System [label="login credentials; user\nprovisioning; course/faculty\nassignment; notifications"];
+    System -> Admin [label="full student & faculty\ndirectory, class records,\nrisk dashboard"];
+
+    // ---------- Dataset -> System ----------
+    Dataset -> System [label="one-time bulk import\n(academic history)"];
+}
