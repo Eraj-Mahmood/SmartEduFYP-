@@ -57,8 +57,8 @@ PostgreSQL 17 runs as the Windows service `postgresql-x64-17`. `psql` is not on 
 `& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -h localhost -d smartedu`.
 
 ```powershell
-# ML service (port 8001)
-cd ml_service; python -m uvicorn app:app --port 8001
+# ML service (port 8001) — one-time: python -m venv .venv; .venv\Scripts\python -m pip install -r requirements.txt
+cd ml_service; .venv\Scripts\python -m uvicorn app:app --port 8001
 
 # Backend (port 5000) — needs backend\.env (copy .env.example; never commit it)
 cd backend; npm run dev
@@ -95,6 +95,11 @@ npm 11 blocks install scripts: `bcrypt` (backend) and `esbuild` (frontend) are a
 | Students (all 50k) | `student<ID>@smartedu.edu` | `Student@123` (`import_dataset.py` default) |
 
 ## Known facts
+
+- The model was pickled with **scikit-learn 1.9.0** (recorded in each estimator's
+  `_sklearn_version`). Other versions warn or break (1.8.0: `ColumnTransformer has no
+  attribute 'force_int_remainder_cols'`). Always run the ML service from
+  `ml_service/.venv` with the pinned `requirements.txt`.
 
 - The prediction currently reads **only** `student_semester_performance` (the imported
   CSV row with the highest semester). Course results and attendance entered by faculty
