@@ -133,6 +133,18 @@ async function markAttendance(req, res) {
     const { facultyCourseId, classDate, entries } = req.body;
     await assertOwnsClass(facultyId, facultyCourseId);
 
+    // Every entry must be an enrollment in this class; otherwise write nothing.
+    const ids = [...new Set(entries.map((e) => e.enrollmentId))];
+    const inClass = await pool.query(
+      "SELECT enrollment_id FROM enrollments WHERE enrollment_id = ANY($1) AND faculty_course_id = $2",
+      [ids, facultyCourseId]
+    );
+    if (inClass.rows.length !== ids.length) {
+      const ok = new Set(inClass.rows.map((r) => r.enrollment_id));
+      const bad = ids.filter((id) => !ok.has(id));
+      return res.status(403).json({ error: `Enrollment(s) ${bad.join(", ")} are not in this class` });
+    }
+
     const client = await pool.connect();
     const results = [];
     try {

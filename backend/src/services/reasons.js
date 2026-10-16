@@ -6,6 +6,10 @@ const { thresholds: T } = require("./policy");
 // Each feature has a "concern" sentence (driver raises risk) and a "strength" sentence
 // (driver lowers risk). Profile features (who the student is, not what they do) get neutral
 // wording and are only used when there aren't enough actionable drivers.
+//
+// Wording never implies a more severe label than the final one: "high-risk range" and
+// "severe-absence limit" are only used when the final label is Dropout-Likely; otherwise the
+// sentence states the plain fact ("Your CGPA (1.98) is below 2.00").
 
 const MAX_REASONS = 3;
 const LOW_SUBMISSION_PCT = 75; // fallback only: flag submission rates below this
@@ -30,8 +34,8 @@ const TEXT = {
   Hostel: { concern: () => PROFILE_CONCERN, strength: () => PROFILE_STRENGTH },
 
   Attendance_Percentage: {
-    concern: (v) =>
-      v < T.severe_attendance_pct
+    concern: (v, f, label) =>
+      v < T.severe_attendance_pct && label === "Dropout-Likely"
         ? `Your attendance (${pct(v)}) is below the ${T.severe_attendance_pct}% severe-absence limit.`
         : v < T.min_attendance_pct
           ? `Your attendance (${pct(v)}) is below the ${T.min_attendance_pct}% requirement.`
@@ -75,9 +79,11 @@ const TEXT = {
     strength: (v) => `Your SGPA this term (${gpa(v)}) is good.`,
   },
   CGPA: {
-    concern: (v) =>
+    concern: (v, f, label) =>
       v < T.probation_cgpa
-        ? `Your CGPA (${gpa(v)}) is in the high-risk range.`
+        ? label === "Dropout-Likely"
+          ? `Your CGPA (${gpa(v)}) is in the high-risk range.`
+          : `Your CGPA (${gpa(v)}) is below ${gpa(T.probation_cgpa)}.`
         : v < T.at_risk_cgpa
           ? `Your CGPA (${gpa(v)}) is below the ${gpa(T.at_risk_cgpa)} good-standing threshold.`
           : `Your CGPA (${gpa(v)}) is lower than students who are doing well.`,
@@ -109,11 +115,12 @@ function driversFromFeatures(f) {
 }
 
 /**
- * toReasons(drivers, features) -> up to 3 sentences.
+ * toReasons(drivers, features, finalLabel) -> up to 3 sentences.
  * drivers: SHAP explanations [{feature, value, shap, direction}] (most important first), or null.
+ * finalLabel caps how severe the wording may sound.
  * Concerns come before strengths; profile features only fill remaining slots.
  */
-function toReasons(drivers, features) {
+function toReasons(drivers, features, finalLabel) {
   const list = drivers && drivers.length ? drivers : driversFromFeatures(features);
   const rank = (d) => (PROFILE_FEATURES.has(d.feature) ? 2 : 0) + (d.direction === "raises_risk" ? 0 : 1);
   const ordered = list
@@ -128,7 +135,7 @@ function toReasons(drivers, features) {
   let gradeSentences = 0;
   const add = (d) => {
     const value = features[d.feature] ?? d.value;
-    const text = TEXT[d.feature][d.direction === "raises_risk" ? "concern" : "strength"](value, features);
+    const text = TEXT[d.feature][d.direction === "raises_risk" ? "concern" : "strength"](value, features, finalLabel);
     if (!out.includes(text)) out.push(text);
   };
   for (const d of ordered) {

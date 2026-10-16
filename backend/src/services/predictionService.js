@@ -12,17 +12,18 @@ const ML_BATCH_URL = () => process.env.ML_BATCH_URL || `${process.env.ML_SERVICE
 const ML_BATCH_MAX = 2000;
 const INSERT_CHUNK = 1000;
 
-/** Simple transparent fallback so the app still works if the Python ML service is down. */
-function ruleBasedFallback(features, extra = {}) {
-  const cgpa = Number(features.CGPA);
-  const warnings = Number(extra.Warning_Count || 0);
-  if (cgpa < 1.5 || warnings >= 3) {
-    return { label: "Dropout-Likely", prob_safe: 0.05, prob_at_risk: 0.15, prob_dropout: 0.8, model_version: "rule_fallback" };
-  }
-  if (cgpa < 2.5 || warnings >= 1) {
-    return { label: "At-Risk", prob_safe: 0.2, prob_at_risk: 0.6, prob_dropout: 0.2, model_version: "rule_fallback" };
-  }
-  return { label: "Safe", prob_safe: 0.85, prob_at_risk: 0.12, prob_dropout: 0.03, model_version: "rule_fallback" };
+// Fixed probabilities for each fallback label (the rules don't produce real probabilities).
+const FALLBACK_PROBS = {
+  "Dropout-Likely": { prob_safe: 0.05, prob_at_risk: 0.15, prob_dropout: 0.8 },
+  "At-Risk": { prob_safe: 0.2, prob_at_risk: 0.6, prob_dropout: 0.2 },
+  Safe: { prob_safe: 0.85, prob_at_risk: 0.12, prob_dropout: 0.03 },
+};
+
+/** Transparent fallback when the ML service is down: the institutional policy rules
+ *  (config/policy.json, same thresholds as the policy layer) decide the label. */
+function ruleBasedFallback(features) {
+  const { policyLabel } = applyPolicy(features, "Safe");
+  return { label: policyLabel, ...FALLBACK_PROBS[policyLabel], model_version: "rule_fallback" };
 }
 
 async function postJson(url, body, timeoutMs) {
@@ -46,7 +47,7 @@ async function scoreMany(builtList) {
       results.forEach((r) => scored.push({ ...r, source: "model" }));
     } catch (err) {
       console.warn("ML batch call failed, using rule-based fallback:", err.message);
-      chunk.forEach((b) => scored.push({ ...ruleBasedFallback(b.features, b.extra), source: "fallback" }));
+      chunk.forEach((b) => scored.push({ ...ruleBasedFallback(b.features), source: "fallback" }));
     }
   }
   return scored;
@@ -57,7 +58,7 @@ async function scoreOne(built) {
     return { ...(await postJson(ML_URL(), { features: built.features }, 15000)), source: "model" };
   } catch (err) {
     console.warn("ML service unreachable, using rule-based fallback:", err.message);
-    return { ...ruleBasedFallback(built.features, built.extra), source: "fallback" };
+    return { ...ruleBasedFallback(built.features), source: "fallback" };
   }
 }
 
@@ -69,7 +70,7 @@ function toRow(studentId, built, scored, { trigger, runId }) {
     scored.prob_safe, scored.prob_at_risk, scored.prob_dropout, scored.model_version || "fallback_v1",
     scored.label, policy.policyLabel, policy.finalLabel, policy.reason,
     drivers ? JSON.stringify(drivers) : null,
-    JSON.stringify(toReasons(drivers, built.features)),
+    JSON.stringify(toReasons(drivers, built.features, policy.finalLabel)),
     JSON.stringify(built.features), JSON.stringify(built.sources),
     scored.source, trigger || null, runId || null,
   ];
