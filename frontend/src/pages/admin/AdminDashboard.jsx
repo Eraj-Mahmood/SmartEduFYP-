@@ -15,7 +15,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     client.get("/admin/dashboard").then((res) => setStats(res.data));
-    client.get("/admin/predictions").then((res) => setPredictions(res.data));
+    client.get("/admin/predictions").then((res) => setPredictions(res.data.rows));
   }, []);
 
   if (!stats) return <PortalShell title="Admin" links={LINKS}><p>Loading...</p></PortalShell>;

@@ -15,7 +15,7 @@ export default function Interventions() {
   const [sentTo, setSentTo] = useState(null);
 
   useEffect(() => {
-    client.get("/admin/at-risk-students").then((res) => setAtRisk(res.data));
+    client.get("/admin/at-risk-students").then((res) => setAtRisk(res.data.rows));
   }, []);
 
   async function send(student) {

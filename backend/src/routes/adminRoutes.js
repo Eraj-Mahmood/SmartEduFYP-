@@ -52,6 +52,7 @@ router.post(
   validate,
   ctrl.runPredictions
 );
+router.get("/predictions/runs", ctrl.listPredictionRuns);
 router.get("/predictions/runs/:id", [param("id").isInt({ min: 1 }).withMessage("run id must be a positive integer")], validate, ctrl.getPredictionRun);
 
 module.exports = router;

@@ -7,8 +7,74 @@ const { startRun, getRun } = require("../services/predictionRuns");
 const LATEST_PREDICTIONS = `SELECT DISTINCT ON (student_id) * FROM predictions
          ORDER BY student_id, created_at DESC, prediction_id DESC`;
 
-function listLimit(req) {
-  return Math.min(5000, Math.max(1, parseInt(req.query.limit) || 500));
+const LABELS = ["Safe", "At-Risk", "Dropout-Likely"];
+const SEVERITY_ORDER = "CASE p.final_label WHEN 'Dropout-Likely' THEN 0 WHEN 'At-Risk' THEN 1 ELSE 2 END";
+const SORTS = {
+  severity: `${SEVERITY_ORDER}, p.prob_dropout DESC NULLS LAST, p.roll_no`,
+  recent: "p.created_at DESC, p.prediction_id DESC",
+  roll: "p.roll_no",
+  cgpa: "p.projected_cgpa ASC NULLS LAST, p.roll_no",
+};
+
+/**
+ * Paginated, filtered list of each student's LATEST prediction.
+ * Query: page, limit (<= 100), department (department_id), label, semester (current semester),
+ * search (roll no, name or email), sort (severity | recent | roll | cgpa).
+ * riskOnly limits the list to At-Risk and Dropout-Likely.
+ */
+async function latestPredictionPage(req, { riskOnly = false, withCourses = false } = {}) {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
+  const params = [];
+  const where = [];
+  const add = (sql, value) => {
+    params.push(value);
+    where.push(sql.replace(/\?/g, `$${params.length}`)); // every ? in one condition is the same value
+  };
+  if (riskOnly) where.push("p.final_label IN ('At-Risk', 'Dropout-Likely')");
+  if (req.query.label && LABELS.includes(req.query.label)) add("p.final_label = ?", req.query.label);
+  if (parseInt(req.query.department)) add("s.department_id = ?", parseInt(req.query.department));
+  if (parseInt(req.query.semester)) add("s.current_semester = ?", parseInt(req.query.semester));
+  const search = (req.query.search || "").trim();
+  if (search) add("(s.roll_no ILIKE ? OR s.full_name ILIKE ? OR u.email ILIKE ?)", `%${search}%`);
+  const order = SORTS[req.query.sort] || SORTS.severity;
+
+  const base = `
+    WITH latest AS (
+      SELECT DISTINCT ON (student_id) student_id, prediction_id, final_label, prob_dropout, reasons,
+             policy_reason, source, created_at, (features->>'CGPA')::numeric AS projected_cgpa
+      FROM predictions ORDER BY student_id, created_at DESC, prediction_id DESC
+    ),
+    filtered AS (
+      SELECT p.*, s.roll_no, s.full_name, s.current_semester, s.department_id, u.user_id, u.email,
+             d.code AS department_code, d.name AS department
+      FROM latest p
+      JOIN students s ON s.student_id = p.student_id
+      JOIN users u ON u.user_id = s.user_id
+      JOIN departments d ON d.department_id = s.department_id
+      ${where.length ? "WHERE " + where.join(" AND ") : ""}
+    )`;
+
+  const [count, rows] = await Promise.all([
+    pool.query(`${base} SELECT COUNT(*)::int AS total FROM filtered`, params),
+    pool.query(
+      `${base},
+       pg AS (SELECT * FROM filtered p ORDER BY ${order} LIMIT $${params.length + 1} OFFSET $${params.length + 2})
+       SELECT p.*, p.final_label AS predicted_label${
+         withCourses
+           ? `, (SELECT COALESCE(array_agg(c.course_code ORDER BY c.course_code), '{}')
+                FROM enrollments e
+                JOIN faculty_courses fc ON fc.faculty_course_id = e.faculty_course_id
+                JOIN courses c ON c.course_id = fc.course_id
+                WHERE e.student_id = p.student_id AND e.status = 'enrolled') AS courses`
+           : ""
+       }
+       FROM pg p ORDER BY ${order}`,
+      [...params, limit, (page - 1) * limit]
+    ),
+  ]);
+  const total = count.rows[0].total;
+  return { rows: rows.rows, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
 function randomPassword() {
@@ -25,26 +91,61 @@ async function listDepartments(req, res) {
   }
 }
 
-/** GET /api/admin/dashboard - top-level stats for the admin landing page */
+/** GET /api/admin/dashboard - KPIs, risk counts (overall and per department) and the run trend.
+ *  Every count uses each student's LATEST final_label. */
 async function dashboard(req, res) {
   try {
-    const [students, faculty, courses, atRisk] = await Promise.all([
-      pool.query("SELECT COUNT(*) FROM students"),
-      pool.query("SELECT COUNT(*) FROM faculty"),
-      pool.query("SELECT COUNT(*) FROM courses"),
-      // final_label is also returned as predicted_label, which the dashboard screen reads
+    const [students, faculty, courses, risk, byDept, lastRun, runs] = await Promise.all([
+      pool.query("SELECT COUNT(*)::int AS n FROM students"),
+      pool.query("SELECT COUNT(*)::int AS n FROM faculty"),
+      pool.query("SELECT COUNT(*)::int AS n FROM courses"),
       pool.query(
         `WITH latest AS (${LATEST_PREDICTIONS})
-         SELECT final_label, final_label AS predicted_label, COUNT(*) FROM latest
-         GROUP BY final_label
-         ORDER BY CASE final_label WHEN 'Dropout-Likely' THEN 0 WHEN 'At-Risk' THEN 1 ELSE 2 END`
+         SELECT final_label, COUNT(*)::int AS count FROM latest GROUP BY final_label`
+      ),
+      pool.query(
+        `WITH latest AS (${LATEST_PREDICTIONS})
+         SELECT d.department_id, d.code, d.name,
+                COUNT(p.student_id)::int AS total,
+                COUNT(*) FILTER (WHERE p.final_label = 'Safe')::int AS safe,
+                COUNT(*) FILTER (WHERE p.final_label = 'At-Risk')::int AS at_risk,
+                COUNT(*) FILTER (WHERE p.final_label = 'Dropout-Likely')::int AS dropout_likely
+         FROM departments d
+         LEFT JOIN students s ON s.department_id = d.department_id
+         LEFT JOIN latest p ON p.student_id = s.student_id
+         GROUP BY d.department_id ORDER BY d.code`
+      ),
+      pool.query("SELECT * FROM prediction_runs ORDER BY started_at DESC LIMIT 1"),
+      pool.query(
+        `SELECT r.id, r.scope, r.scope_id, r.status, r.started_at, r.finished_at, r.total, r.done, r.failed,
+                COUNT(*) FILTER (WHERE p.final_label = 'Safe')::int AS safe,
+                COUNT(*) FILTER (WHERE p.final_label = 'At-Risk')::int AS at_risk,
+                COUNT(*) FILTER (WHERE p.final_label = 'Dropout-Likely')::int AS dropout_likely
+         FROM (SELECT * FROM prediction_runs ORDER BY started_at DESC LIMIT 20) r
+         LEFT JOIN predictions p ON p.run_id = r.id
+         GROUP BY r.id, r.scope, r.scope_id, r.status, r.started_at, r.finished_at, r.total, r.done, r.failed
+         ORDER BY r.started_at`
       ),
     ]);
+    const counts = Object.fromEntries(LABELS.map((l) => [l, 0]));
+    risk.rows.forEach((r) => (counts[r.final_label] = r.count));
     res.json({
-      totalStudents: Number(students.rows[0].count),
-      totalFaculty: Number(faculty.rows[0].count),
-      totalCourses: Number(courses.rows[0].count),
-      riskBreakdown: atRisk.rows,
+      kpis: {
+        students: students.rows[0].n,
+        faculty: faculty.rows[0].n,
+        courses: courses.rows[0].n,
+        flagged: counts["At-Risk"] + counts["Dropout-Likely"],
+        predicted: counts.Safe + counts["At-Risk"] + counts["Dropout-Likely"],
+        lastRun: lastRun.rows[0] || null,
+      },
+      riskCounts: LABELS.map((label) => ({ label, count: counts[label] })),
+      riskByDepartment: byDept.rows,
+      runsTrend: runs.rows,
+      // kept for older clients
+      totalStudents: students.rows[0].n,
+      totalFaculty: faculty.rows[0].n,
+      totalCourses: courses.rows[0].n,
+      riskBreakdown: LABELS.map((l) => ({ final_label: l, predicted_label: l, count: counts[l] })).filter((r) => r.count),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -440,58 +541,21 @@ async function sendNotification(req, res) {
   }
 }
 
-/** GET /api/admin/at-risk-students?limit=500 - students whose LATEST final label is At-Risk or
- *  Dropout-Likely, most severe first. Limited because a full run flags tens of thousands. */
+/** GET /api/admin/at-risk-students - students whose LATEST final label is At-Risk or
+ *  Dropout-Likely. Paginated and filterable (see latestPredictionPage). */
 async function atRiskStudents(req, res) {
   try {
-    const { rows } = await pool.query(
-      `WITH latest AS (${LATEST_PREDICTIONS})
-       SELECT s.student_id, s.roll_no, s.full_name, u.user_id, u.email, p.prediction_id,
-              p.final_label AS predicted_label, p.final_label, p.policy_reason, p.reasons,
-              p.prob_dropout, p.created_at
-       FROM latest p
-       JOIN students s ON s.student_id = p.student_id
-       JOIN users u ON u.user_id = s.user_id
-       WHERE p.final_label IN ('At-Risk', 'Dropout-Likely')
-       ORDER BY CASE p.final_label WHEN 'Dropout-Likely' THEN 0 ELSE 1 END, p.prob_dropout DESC, p.created_at DESC
-       LIMIT $1`,
-      [listLimit(req)]
-    );
-    res.json(rows);
+    res.json(await latestPredictionPage(req, { riskOnly: true }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 }
 
-/**
- * GET /api/admin/predictions - every student's LATEST prediction, joined with
- * their current enrollments so you can see which enrollment_id/course/semester
- * it relates to. One row per (prediction, enrollment) pair - a student with
- * 4 classes shows up as 4 rows sharing the same prediction, one per course.
- * ?limit=500 caps the number of students (most recent predictions first).
- */
+/** GET /api/admin/predictions - every student's LATEST prediction, one row per student with
+ *  their current course codes. Paginated and filterable (see latestPredictionPage). */
 async function predictionsDetailed(req, res) {
   try {
-    const { rows } = await pool.query(
-      `WITH latest_predictions AS (
-         SELECT * FROM (${LATEST_PREDICTIONS}) l
-         ORDER BY created_at DESC, prediction_id DESC
-         LIMIT $1
-       )
-       SELECT p.prediction_id, p.student_id, s.roll_no, s.full_name, p.semester AS prediction_semester,
-              p.final_label AS predicted_label, p.final_label, p.model_label, p.policy_label, p.policy_reason, p.reasons,
-              p.source, p.prob_safe, p.prob_at_risk, p.prob_dropout, p.created_at,
-              e.enrollment_id, e.status AS enrollment_status, fc.semester AS class_semester,
-              fc.section, c.course_code, c.title AS course_title
-       FROM latest_predictions p
-       JOIN students s ON s.student_id = p.student_id
-       LEFT JOIN enrollments e ON e.student_id = p.student_id
-       LEFT JOIN faculty_courses fc ON fc.faculty_course_id = e.faculty_course_id
-       LEFT JOIN courses c ON c.course_id = fc.course_id
-       ORDER BY p.created_at DESC, s.roll_no, c.course_code`,
-      [listLimit(req)]
-    );
-    res.json(rows);
+    res.json(await latestPredictionPage(req, { withCourses: true }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -509,6 +573,30 @@ async function runPredictions(req, res) {
     res.status(202).json(run);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+/** GET /api/admin/predictions/runs?limit=20 - recent runs, newest first */
+async function listPredictionRuns(req, res) {
+  try {
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const { rows } = await pool.query(
+      `SELECT r.*, u.email AS started_by_email,
+              CASE r.scope WHEN 'department' THEN d.name
+                           WHEN 'class' THEN c.course_code || ' ' || fc.section
+                           ELSE 'All students' END AS scope_name,
+              EXTRACT(EPOCH FROM (COALESCE(r.finished_at, NOW()) - r.started_at))::int AS duration_seconds
+       FROM prediction_runs r
+       LEFT JOIN users u ON u.user_id = r.started_by
+       LEFT JOIN departments d ON r.scope = 'department' AND d.department_id = r.scope_id
+       LEFT JOIN faculty_courses fc ON r.scope = 'class' AND fc.faculty_course_id = r.scope_id
+       LEFT JOIN courses c ON c.course_id = fc.course_id
+       ORDER BY r.started_at DESC LIMIT $1`,
+      [limit]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 }
 
@@ -530,5 +618,5 @@ module.exports = {
   createCourse, assignFacultyToCourse, unassignFacultyFromCourse,
   enrollStudent, dropEnrollment, classRecords,
   sendNotification, atRiskStudents, predictionsDetailed,
-  runPredictions, getPredictionRun,
+  runPredictions, getPredictionRun, listPredictionRuns,
 };
