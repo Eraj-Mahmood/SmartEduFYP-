@@ -84,8 +84,8 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     - `reasons.js` — `toReasons(drivers, features, finalLabel, {audience})` → up to 3 sentences, no
       SHAP numbers. `audience: 'student'` (default, stored in `predictions.reasons`: "Your CGPA (1.98) is
       below 2.00") or `'staff'` ("CGPA 1.98 is below 2.00"); `staffReasons(row)` rebuilds staff wording
-      from a stored row. The student dashboard also rebuilds on read (382 rows from the 2026-10-16 12:19
-      run predate the severity fix). Wording never sounds more severe than `finalLabel` ("high-risk
+      from a stored row. The student dashboard also rebuilds on read, so the wording is always current
+      (older prediction rows can predate wording fixes). Wording never sounds more severe than `finalLabel` ("high-risk
       range" and "severe-absence limit" only for Dropout-Likely).
     - `studentCourses.js` (`getCourseSummary`: this term's marks, grade, attendance, weakest course),
       `studentOverview.js` (`getStudentOverview`: the dashboard payload).
@@ -266,7 +266,9 @@ live re-prediction demo (one faculty save that moves BU-112907 from At-Risk to S
 - Dataset identities: Credits_Passed = Credits_Enrolled − 3 × Failed_Courses (100% of rows);
   Consecutive_Low_CGPA = (CGPA < 2.0 and Previous_SGPA < 2.0) (100%); CGPA ≈ (Previous_SGPA + SGPA) / 2
   (R² 0.992). Letter-grade points 4/3/2/1/0 overstate dataset SGPA by ~0.46, hence the linear mark scale.
-- Full 50k run on 2026-10-16 took 3 min 11 s: Safe 23,320 · At-Risk 7,557 · Dropout-Likely 19,123.
+- Latest full 50k run (run 10, 2026-10-16, after the Phase 3 changes) took 1 min 37 s, all from the
+  model (no fallback): Safe 23,320 · At-Risk 7,557 · Dropout-Likely 19,123. It refreshed every
+  student's stored reasons (none of the latest rows still use pre-fix wording).
 - The model file's metadata holds the official metrics: CV macro F1 **0.9992**,
   test macro F1 **0.9994**, test accuracy **0.9996**.
 - Labels are **policy-derived from a synthetic dataset** (`dataset_type`:
