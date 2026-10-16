@@ -20,9 +20,9 @@ export default function StatCard({ label, value, sublabel, trend, info, icon, to
         accent ? `before:absolute before:left-0 before:top-0 before:h-full before:w-1 ${accent}` : ""
       } ${className}`}
     >
-      <div className="flex items-center gap-1.5 text-[13px] text-muted">
+      <div className="flex items-start gap-1.5 text-[13px] text-muted">
         {icon}
-        <span className="truncate">{label}</span>
+        <span className="leading-tight">{label}</span>
         {info && (
           <Tooltip content={info}>
             <button type="button" className="text-muted hover:text-ink rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand" aria-label={`About ${label}`}>
