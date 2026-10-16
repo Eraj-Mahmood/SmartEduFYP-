@@ -1,53 +1,64 @@
-import { useEffect, useState } from "react";
-import client from "../../api/client";
-import { PortalShell, Card } from "../../components/Shell";
+import { PortalShell } from "../../components/Shell";
+import { Card, DataTable, EmptyState, Button, Icons } from "../../components/ui";
+import useApi from "../../lib/useApi";
+import { num } from "../../lib/format";
 
-const LINKS = [
-  { href: "/student", label: "Overview" },
-  { href: "/student/results", label: "Results" },
-  { href: "/student/attendance", label: "Attendance" },
-];
+const mark = (key, header) => ({ key, header, align: "right", render: (r) => num(r[key]), sortValue: (r) => (r[key] == null ? null : Number(r[key])) });
 
 export default function StudentResults() {
-  const [rows, setRows] = useState([]);
-
-  useEffect(() => {
-    client.get("/student/results").then((res) => setRows(res.data));
-  }, []);
+  const { data, error, loading, reload } = useApi("/student/results");
+  const rows = data || [];
 
   return (
-    <PortalShell title="Student" links={LINKS}>
-      <h1 className="font-display text-2xl mb-5">My Results</h1>
-      <Card>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-ink/50 border-b border-black/10">
-              <th className="py-2">Course</th>
-              <th>Semester</th>
-              <th>Assignment</th>
-              <th>Quiz</th>
-              <th>Midterm</th>
-              <th>Final</th>
-              <th>Grade</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i} className="border-b border-black/5">
-                <td className="py-2">{r.course_code} — {r.title}</td>
-                <td>{r.semester}</td>
-                <td>{r.assignment_avg ?? "—"}</td>
-                <td>{r.quiz_avg ?? "—"}</td>
-                <td>{r.midterm_marks ?? "—"}</td>
-                <td>{r.final_marks ?? "—"}</td>
-                <td>{r.grade ?? "—"}</td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr><td colSpan={7} className="py-6 text-center text-ink/40">No results recorded yet.</td></tr>
-            )}
-          </tbody>
-        </table>
+    <PortalShell>
+      <h1 className="font-display text-2xl sm:text-[28px] mb-5">My results</h1>
+      <Card title="Course results" subtitle="Marks out of 100 for each assessment">
+        {error ? (
+          <EmptyState
+            icon={<Icons.AlertOctagon size={22} />}
+            message="We couldn't load your results"
+            detail={error}
+            action={<Button variant="secondary" onClick={() => reload()}>Try again</Button>}
+          />
+        ) : (
+          <DataTable
+            loading={loading}
+            rows={rows}
+            rowKey={(r) => `${r.course_code}-${r.semester}`}
+            initialSort={{ key: "course", dir: "asc" }}
+            emptyMessage="No results recorded yet"
+            minWidth={680}
+            columns={[
+              {
+                key: "course",
+                header: "Course",
+                sortValue: (r) => r.course_code,
+                render: (r) => (
+                  <span>
+                    <span className="font-medium">{r.course_code}</span>
+                    <span className="block text-xs text-muted">{r.title}</span>
+                  </span>
+                ),
+              },
+              { key: "semester", header: "Semester", align: "right" },
+              mark("assignment_avg", "Assignment"),
+              mark("quiz_avg", "Quiz"),
+              mark("midterm_marks", "Midterm"),
+              mark("final_marks", "Final"),
+              {
+                key: "grade",
+                header: "Grade",
+                align: "center",
+                render: (r) =>
+                  r.grade ? (
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-ink/[0.06] font-semibold">{r.grade}</span>
+                  ) : (
+                    "—"
+                  ),
+              },
+            ]}
+          />
+        )}
       </Card>
     </PortalShell>
   );
