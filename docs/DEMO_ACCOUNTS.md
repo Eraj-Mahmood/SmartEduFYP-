@@ -55,3 +55,21 @@ To undo it, type the original marks again (Quiz 57.87, Midterm 70.13) and save; 
 
 Admin part of the demo: **Overview → Run predictions → Department → Artificial Intelligence → Start run**.
 The progress bar fills in about 15 seconds and the charts refresh when it finishes.
+
+## Chat demo ("Ask SmartEdu")
+
+Log in as **Nida Shah** (`student144766@smartedu.edu`, Dropout-Likely) and open **Ask SmartEdu**
+on the dashboard (or press **Ask about this** under "Why", which sends question 1 for you).
+These four questions show the assistant best. Every answer comes from the templates (Layer 1):
+no LLM or API key is needed, and the ML service can be stopped.
+
+| # | Ask | What it shows |
+|---|---|---|
+| 1 | `Why is my status this?` | The label in supportive wording, the three reasons, and a reminder that this is a warning, not a final result. |
+| 2 | `meri attendance kaisi hai?` | Roman Urdu understood: 65.6% (21 of 32), attendance per course, and "attend the next 12 classes without missing one to reach 75%". |
+| 3 | `How can I improve?` | The ranked next steps with real targets: average 85 (A) to reach the 2.30 Safe line, 75 (B) for 2.00, plus the attendance condition. |
+| 4 | `What is BU-122785's CGPA?` | Refusal. It never confirms whether that student exists and shows none of their numbers. |
+
+Other good ones: `Tell me about Natural Language Processing` (course by title), `What are my marks in CS301?`
+("isn't one of your courses"), `I'm so stressed about my exams` (wellbeing reply with the support contacts
+from `backend/src/config/support.json`). To start the demo clean, use **Clear chat** in the panel.

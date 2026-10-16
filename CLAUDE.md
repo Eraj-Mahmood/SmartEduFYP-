@@ -17,10 +17,11 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
 ```
 
 - **Backend** (`backend/src/`)
-  - `server.js` — helmet, CORS (`FRONTEND_ORIGIN`), morgan, login rate limit on
-    `/api/auth/login` (`LOGIN_RATE_LIMIT_MAX`, default 20, per `LOGIN_RATE_LIMIT_WINDOW_MIN`
-    minutes, default 15, per IP; 200 in the local `.env`), mounts the route files, and on start
-    marks unfinished `prediction_runs` as failed (runs are processed in memory).
+  - `app.js` — the Express app: helmet, CORS (`FRONTEND_ORIGIN`), morgan (off under Jest), login
+    rate limit on `/api/auth/login` (`LOGIN_RATE_LIMIT_MAX`, default 20, per
+    `LOGIN_RATE_LIMIT_WINDOW_MIN` minutes, default 15, per IP; 200 in the local `.env`), the route
+    files and the error handler. Tests import it. `server.js` only listens and on start marks
+    unfinished `prediction_runs` as failed (runs are processed in memory).
   - `config/db.js` — single `pg` Pool from `DATABASE_URL`. DATE columns (OID 1082) are returned
     as raw `'YYYY-MM-DD'` strings (no UTC day shift).
   - `middleware/auth.js` — `authenticate` (JWT Bearer → `req.user = {userId, role, email}`)
@@ -36,15 +37,21 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       `provisionalSgpa` / `previousSgpa` (from the latest prediction's features), each with
       `label` + `source`; `liveAttendance` (live, else imported, with `source`); `latestPrediction`;
       `weakestCourse`; `courses` (marks, derived grade, attendance %); `coursesBelowPassMark`;
-      `thresholds` (pass mark + policy.json). Student responses never include probabilities,
-      `drivers` (SHAP numbers) or `features`.
+      `thresholds` (pass mark + policy.json); `latestPrediction` also has `status_since` and
+      `label_ever_changed` (the dashboard shows the timeline chart only if the label ever changed).
+      Built by `services/studentOverview.js`. `GET /next-steps` → ranked steps (`services/nextSteps.js`).
+      Chat: `POST /chat {message}` (1-500 chars after trim, else 400; `CHAT_RATE_LIMIT_PER_MIN`
+      per user, default 20 → 429), `GET /chat/history` (last 50, oldest first), `DELETE /chat/history`
+      (own only). Student responses never include probabilities, `drivers` (SHAP numbers) or `features`.
     - `faculty` — own classes only (`assertOwnsClass`, 403 otherwise): `GET /classes` (with latest-label
       counts `safe` / `at_risk` / `dropout_likely`), `GET /classes/:id/roster` (adds final_label, reasons,
       policy_reason, projected_cgpa, attendance % in the class, last_predicted_at),
       `GET /classes/:id/risk-summary` (counts, A-F grade distribution, attendance % per session date),
       `GET /classes/:id/attendance`, `PUT /results/:enrollmentId` (returns the saved row with the
       server-derived grade plus `prediction: {old_label, new_label, changed, reasons, projected_cgpa}`),
-      `POST /attendance` (every enrollment must belong to the class, else 403 and nothing is written).
+      `POST /attendance` (every enrollment must belong to the class, else 403 and nothing is written;
+      a dropped enrollment → 400). Roster, attendance list and risk summary exclude `status='dropped'`.
+      Roster and result-save reasons use the staff wording.
       Inputs validated with express-validator (marks 0-100, date, status enum, ids). The server
       derives the grade (`services/grading.js`); a client-sent grade is ignored. Saves set
       `data_source='live'` and re-predict (see below).
@@ -57,7 +64,9 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       `riskByDepartment`, `runsTrend` (label counts per run). `/at-risk-students` and `/predictions` are
       server-paginated `{rows, total, page, limit, totalPages}` with filters `department` (id), `label`,
       `semester`, `search` and `sort` (severity | recent | roll | cgpa); `limit` ≤ 100. All of these use
-      each student's **latest** `final_label`.
+      each student's **latest** `final_label`, read through `students.latest_prediction_id` (migration
+      003; `predictionService` moves it in the same transaction as each insert, forward-only). Reasons
+      in admin views use the staff wording.
     - `notifications` — any logged-in user, scoped to `recipient_user_id`
   - `scripts/createAdmin.js`, `scripts/hashPassword.js`, `scripts/migrate.js`.
   - `services/` — the prediction pipeline:
@@ -72,15 +81,44 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       attendance < 60% → Dropout-Likely; CGPA < 2.30 → At-Risk; attendance < `min_attendance_pct` (75%)
       → At-Risk. final = more severe of model and policy (the policy only escalates). Thresholds from
       `evaluation/policy_tree.py` (the rule set matches 99.95% of dataset labels).
-    - `reasons.js` — `toReasons(drivers, features, finalLabel)` → up to 3 student-friendly sentences, no
-      SHAP numbers. Wording never sounds more severe than `finalLabel` ("high-risk range" and
-      "severe-absence limit" only for Dropout-Likely; otherwise e.g. "Your CGPA (1.98) is below 2.00").
+    - `reasons.js` — `toReasons(drivers, features, finalLabel, {audience})` → up to 3 sentences, no
+      SHAP numbers. `audience: 'student'` (default, stored in `predictions.reasons`: "Your CGPA (1.98) is
+      below 2.00") or `'staff'` ("CGPA 1.98 is below 2.00"); `staffReasons(row)` rebuilds staff wording
+      from a stored row. The student dashboard also rebuilds on read (382 rows from the 2026-10-16 12:19
+      run predate the severity fix). Wording never sounds more severe than `finalLabel` ("high-risk
+      range" and "severe-absence limit" only for Dropout-Likely).
+    - `studentCourses.js` (`getCourseSummary`: this term's marks, grade, attendance, weakest course),
+      `studentOverview.js` (`getStudentOverview`: the dashboard payload).
+    - `nextSteps.js` — `getNextSteps(id)` → `[{id, priority, text, detail}]`, most important first:
+      `attendance` (sessions in a row to reach 75%, and 60% when below), `marks` (whole-number average
+      needed in every course for projected CGPA 2.00 and 2.30 with the Phase 1 formulas; honest when
+      2.30 needs > 100, then a realistic goal; notes when attendance also blocks Safe), `weakest_course`
+      (mean < 70), `submission` (< 90%). `whatIfFeatures(features, mark)` is used by
+      `evaluation/next_steps_whatif.js` (model agreed 12/12 on the 4 At-Risk/Dropout-Likely demo students).
     - `predictionService.js` — `predictForStudent(id, {trigger})`, `predictForMany(ids, {runId, trigger})`:
       build features → ML `/predict` or `/predict/batch` (on failure `ruleBasedFallback`, which uses
       the policy.json rules, `source='fallback'`, `drivers=null`) → policy → reasons → insert into
       `predictions`.
     - `predictionRuns.js` — admin runs in the background, 1000 students per chunk.
     - `grading.js` — grade from marks (equal weights; A ≥ 85, B ≥ 70, C ≥ 55, D ≥ 40), same as the seed.
+  - **Chat ("Ask SmartEdu")** — `services/chatService.js` runs one turn: `chatContext.js`
+    `buildChatContext(studentId)` (student id from the JWT only; profile + own email, official/projected
+    CGPA, SGPA, label + student-wording reasons, per-course marks/grade/attendance, weakest course, next
+    steps, `tutorial`/`counselor` null until Phase 4, last 3 interventions; no probabilities) →
+    **Layer 1** `chatbot.js` `respond(message, ctx, {catalog})` → **Layer 2** `chatLlm.js` only if the
+    intent is `unknown` and `CHAT_LLM_ENABLED=true` with `ANTHROPIC_API_KEY` set → both messages saved
+    to `chat_messages` (migration 004) in one transaction, `source` = template | llm | fallback.
+    - Layer 1 normalises the message (lowercase, no punctuation), matches English + Roman Urdu keywords
+      and course codes/titles, in this order: `wellbeing` (self-harm wording → emergency number),
+      `other_student` (another roll no / student ID / email, a name + CGPA/marks/result, "my friend's",
+      topper → one fixed refusal that never confirms the student exists), `course_detail`, `attendance`,
+      `who_can_help`, `why_risk`, `weakest_course`, `improve`, `standing`, `greeting`, `unknown`.
+      Answers ≤ 120 words, real numbers, no probabilities or promises, ≤ 3 suggestions + page links,
+      wording varies. Support contacts come from `config/support.json` (**placeholders — replace**).
+    - Layer 2: `@anthropic-ai/sdk` 0.131.0, `CHAT_LLM_MODEL` (default `claude-haiku-5-5`),
+      `CHAT_LLM_TIMEOUT_MS` (8000, no retries), effort low; system prompt keeps it to the JSON context.
+      Post-check: any other roll no / student ID / email → refusal template. Timeout/error/refusal →
+      Layer 1 unknown reply (`source='fallback'`). Only the error class is logged, never the key.
   - **Re-prediction** happens on student refresh (`student_refresh`), after every faculty result save
     (`faculty_result`, that student), after every attendance save (`faculty_attendance`, the affected
     students via `predictForMany`) and in admin runs (`admin_run`); stored in `predictions.triggered_by`.
@@ -118,11 +156,17 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
   - Pages: student (`StudentDashboard` + `StudentCharts`, Results, Attendance), faculty
     (`FacultyDashboard`, `ClassRoster` with filters/search/drawer/inline marks + label-change toast,
     `MarkAttendance`), admin (`AdminDashboard` + `AdminCharts` + `RunPredictionsCard`, Interventions,
-    ManageUsers, Assignments). The student dashboard keeps a hidden `#assistant-panel-slot` for Phase 3.
+    ManageUsers, Assignments).
+  - `components/assistant/AssistantPanel.jsx` — the "Ask SmartEdu" chat: right panel (full-screen
+    sheet on phones), starter chips, bubbles, typing indicator, suggestion chips + link buttons,
+    Enter/Shift+Enter, 400+/500 counter, history on open, Clear chat with confirmation, error + retry,
+    document-level focus trap/Escape, aria-live answers. Opened from the dashboard header button or
+    "Ask about this" in the status hero (pre-sends "Why is my status this?").
   - Screenshots: `cd frontend; npm run screenshots` (Playwright; one-time `npx playwright install
     chromium`) logs in as admin, ayesha.khan and the 6 demo students and saves full-page screenshots of
-    every main screen at 1280px and 390px to `docs/screenshots/`. Needs all three services running; it
-    also reports horizontal overflow and page errors.
+    every main screen at 1280px and 390px to `docs/screenshots/`, plus the chat panel after 3 questions
+    for BU-100040 / BU-112907 / BU-144766 (one per label; their chat history is cleared before and
+    after). Needs all three services running; it also reports horizontal overflow and page errors.
 - **Database** (`database/`)
   - `schema.sql` — tables: users, departments (5 seeded), students, faculty, courses,
     faculty_courses, enrollments, course_results, attendance,
@@ -133,13 +177,17 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     course_results, attendance and student_semester_performance; the `prediction_runs` table; index
     `(student_id, created_at DESC, prediction_id DESC)` for latest-per-student queries.
     `002_prediction_trigger.sql` — `predictions.triggered_by` and `predictions.run_id`.
+    `003_latest_prediction_pointer.sql` — `students.latest_prediction_id` (FK, backfilled, indexed).
+    `004_chat_messages.sql` — `chat_messages` (student_id, role, content, intent, source, created_at;
+    index `(student_id, created_at)`).
   - `import_dataset.py` — loads the 50k-row CSV: one user+student per `Student_ID`
     (email `student<ID>@smartedu.edu`, roll `BU-<ID>`) and one
     `student_semester_performance` row each (incl. the dataset's `target_label`).
   - `seed_demo_data.py` — 10 faculty, 20 courses, sections, and 8 random students per
     department enrolled in their department's section-A classes, with results and
     8 attendance sessions derived from their performance row.
-  - `generate_student_names.py` — optional; replaces "Student 12345" with random names.
+  - `generate_student_names.py` — replaces "Student 12345" with random names (only `full_name`);
+    run on 2026-10-16, the demo names are in docs/DEMO_ACCOUNTS.md.
   - `demo_login_lookup.sql` — pgAdmin queries to list demo logins.
 
 ## Running each service (Windows, PowerShell)
@@ -166,6 +214,18 @@ Fresh database setup: `createdb smartedu` → `psql -f database/schema.sql` →
 Schema changes go in a new numbered file in `database/migrations/` (e.g. `001_add_x.sql`),
 applied with `cd backend; npm run migrate` (`src/scripts/migrate.js`: filename order, one
 transaction per file, recorded in `schema_migrations`, already-applied files skipped).
+
+Tests and evaluations:
+
+```powershell
+cd backend; npm test                              # Jest + Supertest against the local smartedu DB (ML not needed)
+cd backend; node ../evaluation/chat_eval.js       # chat router eval -> docs/chat_eval.md (exit 1 on any fail)
+cd backend; node ../evaluation/next_steps_whatif.js  # suggested marks vs the real model (ML running)
+```
+
+Chat env vars (`backend/.env`, documented in `.env.example`): `CHAT_RATE_LIMIT_PER_MIN` (20),
+`CHAT_LLM_ENABLED` (false), `ANTHROPIC_API_KEY` (never commit), `CHAT_LLM_MODEL` (claude-haiku-5-5),
+`CHAT_LLM_TIMEOUT_MS` (8000). The demo works with the LLM off.
 
 npm 11 blocks install scripts: `bcrypt` (backend) and `esbuild` (frontend) are allowed via
 `allowScripts` in their `package.json`.
