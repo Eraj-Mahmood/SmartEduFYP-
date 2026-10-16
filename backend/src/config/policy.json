@@ -1,0 +1,31 @@
+{
+  "_about": "Institutional risk policy. Thresholds recovered from the dataset's labelling policy by evaluation/policy_tree.py (depth-3 decision tree, 99.7% accuracy). The policy only escalates the model's label, never downgrades it.",
+  "thresholds": {
+    "probation_cgpa": 2.0,
+    "at_risk_cgpa": 2.3,
+    "severe_attendance_pct": 60,
+    "min_attendance_pct": 75
+  },
+  "rules": [
+    {
+      "id": "consecutive_low_cgpa",
+      "label": "Dropout-Likely",
+      "reason": "CGPA ({CGPA}) and last term's SGPA ({Previous_SGPA}) are both below {probation_cgpa}: two consecutive low terms."
+    },
+    {
+      "id": "severe_absence",
+      "label": "Dropout-Likely",
+      "reason": "Attendance ({Attendance_Percentage}%) is below the {severe_attendance_pct}% severe-absence limit."
+    },
+    {
+      "id": "low_cgpa",
+      "label": "At-Risk",
+      "reason": "CGPA ({CGPA}) is below the {at_risk_cgpa} good-standing threshold."
+    },
+    {
+      "id": "low_attendance",
+      "label": "At-Risk",
+      "reason": "Attendance ({Attendance_Percentage}%) is below the {min_attendance_pct}% minimum requirement."
+    }
+  ]
+}

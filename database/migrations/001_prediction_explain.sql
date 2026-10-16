@@ -5,7 +5,7 @@
 -- ------------------------------------------------------------
 ALTER TABLE predictions
     ADD COLUMN model_label      risk_label,     -- what the model (or rule fallback) said
-    ADD COLUMN policy_label     risk_label,     -- what the institutional policy says (NULL = no rule fired)
+    ADD COLUMN policy_label     risk_label,     -- what the institutional policy says ("Safe" when no rule fires)
     ADD COLUMN final_label      risk_label,     -- more severe of model_label and policy_label
     ADD COLUMN policy_reason    TEXT,
     ADD COLUMN drivers          JSONB,          -- SHAP top-5 [{feature, value, shap, direction}]; NULL for fallback
