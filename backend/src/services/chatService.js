@@ -1,6 +1,8 @@
 const pool = require("../config/db");
 const { buildChatContext } = require("./chatContext");
 const chatbot = require("./chatbot");
+const llm = require("./chatLlm");
+const { _about, ...support } = require("../config/support.json"); // contacts only, for the LLM context
 
 // "Ask SmartEdu": one chat turn = context -> Layer 1 (router + templates) -> optional Layer 2
 // (LLM, unknown intent only) -> both messages saved -> response. The student id always comes
@@ -21,8 +23,25 @@ async function getCatalog() {
 /** chat(studentId, message) -> {answer, intent, source, suggestions, links, created_at} and saves both messages. */
 async function chat(studentId, message) {
   const [ctx, catalog] = await Promise.all([buildChatContext(studentId), getCatalog()]);
-  const reply = chatbot.respond(message, ctx, { catalog });
-  const source = "template";
+  let reply = chatbot.respond(message, ctx, { catalog });
+  let source = "template";
+
+  // Layer 2 only for questions Layer 1 couldn't match, and only when switched on
+  if (reply.intent === "unknown" && llm.isEnabled()) {
+    try {
+      const out = await llm.askLlm(message, ctx, { support });
+      if (out.refused) {
+        reply = { ...reply, ...chatbot.otherStudentReply(ctx), intent: "other_student" };
+      } else {
+        reply = { ...reply, answer: out.answer, suggestions: chatbot.STARTERS.slice(0, 3), links: [] };
+      }
+      source = "llm";
+    } catch (err) {
+      console.warn("Chat LLM unavailable, using the Layer 1 reply:", llm.describeError(err));
+      reply = { ...reply, ...chatbot.unknown(ctx) };
+      source = "fallback";
+    }
+  }
 
   const client = await pool.connect();
   let saved;
