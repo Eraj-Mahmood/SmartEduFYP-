@@ -1,5 +1,6 @@
 // npm run screenshots
-// Full-page screenshots of every main screen at 1280px and 390px, saved to docs/screenshots/.
+// Full-page screenshots of every main screen at 1280px and 390px, saved to docs/screenshots/,
+// plus the "Ask SmartEdu" panel after 3 questions for one student of each label.
 // Needs the three services running (frontend dev server, backend, ML service) and a
 // Chromium for Playwright (one-time: npx playwright install chromium).
 // BASE_URL defaults to http://localhost:5173.
@@ -44,6 +45,42 @@ const ACCOUNTS = [
     ],
   })),
 ];
+
+// Chat panel after 3 questions, for one student of each label (Safe, At-Risk, Dropout-Likely).
+// The student's chat history is cleared before and after, so the demo accounts stay clean.
+const CHAT_STUDENTS = ["100040", "112907", "144766"];
+const CHAT_QUESTIONS = ["Why is my status this?", "meri attendance kaisi hai?", "How can I improve?"];
+
+async function chatScreenshot(page, account, viewport, problems) {
+  const clear = () =>
+    page.evaluate(() => fetch("/api/student/chat/history", { method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("smartedu_token")}` } }));
+  await clear();
+  await page.goto(`${BASE}/student`);
+  await settle(page);
+  await page.getByRole("button", { name: "Ask SmartEdu", exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "Ask SmartEdu" });
+  await panel.waitFor();
+  // first question from a starter chip, the others typed (Enter sends)
+  await panel.getByRole("button", { name: CHAT_QUESTIONS[0] }).click();
+  for (const q of CHAT_QUESTIONS.slice(1)) {
+    await panel.getByRole("button", { name: "Send" }).waitFor();
+    await page.waitForFunction(() => !document.querySelector('[aria-label="SmartEdu is typing"]'));
+    await panel.getByLabel("Your question").fill(q);
+    await panel.getByLabel("Your question").press("Enter");
+  }
+  await page.waitForTimeout(300);
+  await page.waitForFunction(() => !document.querySelector('[aria-label="SmartEdu is typing"]'));
+  const answers = await panel.locator(".rounded-bl-md").count();
+  if (answers !== 3) problems.push(`${account.name}/chat @${viewport.width}px: expected 3 answers, saw ${answers}`);
+  const overflow = await page.evaluate(() => {
+    const d = document.querySelector('[role="dialog"]');
+    return d.scrollWidth - d.clientWidth;
+  });
+  if (overflow > 0) problems.push(`${account.name}/chat @${viewport.width}px: panel overflows by ${overflow}px`);
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(OUT, `${account.name}-chat-${viewport.width}.png`) });
+  await clear();
+}
 
 async function settle(page) {
   await page.waitForLoadState("networkidle");
@@ -90,6 +127,10 @@ async function main() {
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
         if (overflow > 0) problems.push(`${account.name}/${label} @${viewport.width}px overflows by ${overflow}px`);
         await page.screenshot({ path: join(OUT, `${account.name}-${label}-${viewport.width}.png`), fullPage: true });
+        count++;
+      }
+      if (CHAT_STUDENTS.some((id) => account.email === `student${id}@smartedu.edu`)) {
+        await chatScreenshot(page, account, viewport, problems);
         count++;
       }
     }

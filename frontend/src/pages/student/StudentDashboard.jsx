@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import AssistantPanel, { STARTERS } from "../../components/assistant/AssistantPanel";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
 import {
@@ -6,7 +7,7 @@ import {
 } from "../../components/ui";
 import { Legend } from "../../components/charts/theme";
 import useApi from "../../lib/useApi";
-import { timeAgo, gpa, pct, longDate } from "../../lib/format";
+import { timeAgo, gpa, pct, longDate, firstName } from "../../lib/format";
 import { StandingChart, standingLegend, AttendanceChart, attendanceLegend, MarksChart, marksLegend, TimelineChart } from "./StudentCharts";
 
 const HERO_TONE = {
@@ -16,7 +17,7 @@ const HERO_TONE = {
   neutral: "border-l-brand bg-surface",
 };
 
-function StatusHero({ data, steps, refreshing, onRefresh }) {
+function StatusHero({ data, steps, refreshing, onRefresh, onAsk }) {
   const p = data.latestPrediction;
   const meta = riskMeta(p?.final_label);
   return (
@@ -51,6 +52,13 @@ function StatusHero({ data, steps, refreshing, onRefresh }) {
                 </li>
               ))}
             </ul>
+            <button
+              type="button"
+              onClick={onAsk}
+              className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand rounded"
+            >
+              <Icons.Send size={14} /> Ask about this
+            </button>
           </div>
           <div>
             <h3 className="text-sm font-semibold text-ink mb-2">What to do next</h3>
@@ -110,6 +118,9 @@ export default function StudentDashboard() {
   const timeline = useApi("/student/prediction/timeline");
   const next = useApi("/student/next-steps");
   const [refreshing, setRefreshing] = useState(false);
+  const [assistant, setAssistant] = useState({ open: false, question: null });
+  const openAssistant = (question = null) => setAssistant({ open: true, question });
+  const clearAssistantQuestion = useCallback(() => setAssistant((a) => ({ ...a, question: null })), []);
   const { toast } = useToast();
 
   async function refresh() {
@@ -156,16 +167,27 @@ export default function StudentDashboard() {
 
   return (
     <PortalShell>
-      <div className="mb-5">
-        <p className="text-sm text-muted">Welcome back</p>
-        <h1 className="font-display text-2xl sm:text-[28px] leading-tight">{profile.full_name}</h1>
-        <p className="text-muted text-sm mt-1">
-          {profile.department} · Semester {profile.current_semester} · {profile.roll_no}
-        </p>
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm text-muted">Welcome back</p>
+          <h1 className="font-display text-2xl sm:text-[28px] leading-tight">{profile.full_name}</h1>
+          <p className="text-muted text-sm mt-1">
+            {profile.department} · Semester {profile.current_semester} · {profile.roll_no}
+          </p>
+        </div>
+        <Button onClick={() => openAssistant()} icon={<Icons.Send size={16} />} className="self-start sm:self-auto" aria-haspopup="dialog">
+          Ask SmartEdu
+        </Button>
       </div>
 
       <div className="space-y-5">
-        <StatusHero data={data} steps={next.data || []} refreshing={refreshing} onRefresh={refresh} />
+        <StatusHero
+          data={data}
+          steps={next.data || []}
+          refreshing={refreshing}
+          onRefresh={refresh}
+          onAsk={() => openAssistant(STARTERS[0])}
+        />
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard label={data.officialCgpa.label} value={gpa(data.officialCgpa.value)} sublabel="Last completed term" info={data.officialCgpa.note} />
@@ -255,8 +277,13 @@ export default function StudentDashboard() {
         )}
       </div>
 
-      {/* Phase 3: assistant chat panel mounts here */}
-      <aside id="assistant-panel-slot" hidden aria-hidden="true" />
+      <AssistantPanel
+        open={assistant.open}
+        onClose={() => setAssistant({ open: false, question: null })}
+        firstName={firstName(profile.full_name)}
+        initialQuestion={assistant.question}
+        onInitialSent={clearAssistantQuestion}
+      />
     </PortalShell>
   );
 }
