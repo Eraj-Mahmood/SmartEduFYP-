@@ -174,4 +174,4 @@ async function refreshPrediction(req, res) {
   }
 }
 
-module.exports = { dashboard, nextSteps, results, attendance, history, prediction, predictionTimeline, refreshPrediction };
+module.exports = { getMyStudentId, dashboard, nextSteps, results, attendance, history, prediction, predictionTimeline, refreshPrediction };
