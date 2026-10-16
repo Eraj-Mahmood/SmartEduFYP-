@@ -1,5 +1,11 @@
 const pool = require("../config/db");
-// Node 18+ has global fetch - no extra dependency needed to call the ML microservice.
+const { predictForStudent } = require("../services/predictionService");
+
+// What a student may see of a prediction: labels, probabilities and plain-language reasons.
+// Never the SHAP drivers (raw numbers) or the full feature vector.
+const STUDENT_PREDICTION_COLUMNS = `prediction_id, semester, predicted_label, final_label, model_label, policy_label,
+       policy_reason, reasons, prob_safe, prob_at_risk, prob_dropout, model_version, source,
+       feature_sources, created_at`;
 
 // Every query here is scoped by req.user.userId -> students.user_id.
 // Students have NO write routes in this file - read-only by design.
@@ -23,8 +29,8 @@ async function dashboard(req, res) {
     );
 
     const latestPrediction = await pool.query(
-      `SELECT predicted_label, prob_safe, prob_at_risk, prob_dropout, semester, created_at
-       FROM predictions WHERE student_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      `SELECT ${STUDENT_PREDICTION_COLUMNS}
+       FROM predictions WHERE student_id = $1 ORDER BY created_at DESC, prediction_id DESC LIMIT 1`,
       [studentId]
     );
 
@@ -118,7 +124,8 @@ async function prediction(req, res) {
     const studentId = await getMyStudentId(req.user.userId);
 
     const existing = await pool.query(
-      `SELECT * FROM predictions WHERE student_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      `SELECT ${STUDENT_PREDICTION_COLUMNS}
+       FROM predictions WHERE student_id = $1 ORDER BY created_at DESC, prediction_id DESC LIMIT 1`,
       [studentId]
     );
     if (existing.rows.length > 0) {
@@ -132,108 +139,20 @@ async function prediction(req, res) {
 }
 
 /**
- * POST /api/student/prediction/refresh - re-run the model on latest data
- *
- * The trained pipeline (see ml_service/) expects EXACTLY these 20 raw fields,
- * with these exact names/casing (it does its own imputation + one-hot
- * encoding internally, so we just hand it the raw values):
- *   Semester, Department, Gender, Age, Attendance_Percentage, Assignment_Avg,
- *   Quiz_Avg, Midterm_Marks, Final_Marks, Study_Hours_Per_Week, LMS_Login_Count,
- *   Assignment_Submission_Rate, Previous_SGPA, SGPA, CGPA, Failed_Courses,
- *   Credits_Enrolled, Credits_Passed, Scholarship, Hostel
- * Department/Gender/Scholarship/Hostel must be sent as strings (not IDs),
- * matching the training data exactly (e.g. "CS", "Male", "Yes").
+ * POST /api/student/prediction/refresh - re-run the prediction on the latest data.
+ * Features are built from live marks/attendance (services/featureBuilder), scored by the
+ * ML service with a rule fallback, checked by the policy layer, and explained in plain language.
  */
 async function refreshPrediction(req, res) {
   try {
     const studentId = await getMyStudentId(req.user.userId);
-
-    const latest = await pool.query(
-      `SELECT p.*, s.gender, s.age, s.scholarship, s.hostel, d.code AS department_code
-       FROM student_semester_performance p
-       JOIN students s ON s.student_id = p.student_id
-       JOIN departments d ON d.department_id = s.department_id
-       WHERE p.student_id = $1
-       ORDER BY p.semester DESC LIMIT 1`,
-      [studentId]
-    );
-    if (latest.rows.length === 0) {
-      return res.status(404).json({ error: "No performance history to predict from yet" });
-    }
-    const r = latest.rows[0];
-
-    const modelFeatures = {
-      Semester: r.semester,
-      Department: r.department_code,
-      Gender: r.gender,
-      Age: r.age,
-      Attendance_Percentage: Number(r.attendance_percentage),
-      Assignment_Avg: Number(r.assignment_avg),
-      Quiz_Avg: Number(r.quiz_avg),
-      Midterm_Marks: Number(r.midterm_marks),
-      Final_Marks: Number(r.final_marks),
-      Study_Hours_Per_Week: Number(r.study_hours_per_week),
-      LMS_Login_Count: r.lms_login_count,
-      Assignment_Submission_Rate: Number(r.assignment_submission_rate),
-      Previous_SGPA: Number(r.previous_sgpa),
-      SGPA: Number(r.sgpa),
-      CGPA: Number(r.cgpa),
-      Failed_Courses: r.failed_courses,
-      Credits_Enrolled: r.credits_enrolled,
-      Credits_Passed: r.credits_passed,
-      Scholarship: r.scholarship,
-      Hostel: r.hostel,
-    };
-
-    // Calls the FastAPI microservice that wraps YOUR trained Random Forest
-    // pipeline (ml_service/app.py + smartedu_random_forest_version_a.pkl).
-    // Falls back to a rule-based estimate if the ML service isn't running,
-    // so the demo never hard-fails while you're setting it up.
-    let predicted;
-    try {
-      const mlResponse = await fetch(process.env.ML_SERVICE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ features: modelFeatures }),
-      });
-      if (!mlResponse.ok) {
-        const errBody = await mlResponse.text();
-        throw new Error(`ML service responded ${mlResponse.status}: ${errBody}`);
-      }
-      predicted = await mlResponse.json(); // { label, prob_safe, prob_at_risk, prob_dropout, model_version }
-    } catch (mlErr) {
-      console.warn("ML service unreachable, using rule-based fallback:", mlErr.message);
-      predicted = ruleBasedFallback(r);
-    }
-
-    const inserted = await pool.query(
-      `INSERT INTO predictions (student_id, semester, predicted_label, prob_safe, prob_at_risk, prob_dropout, model_version)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [
-        studentId, r.semester, predicted.label,
-        predicted.prob_safe, predicted.prob_at_risk, predicted.prob_dropout,
-        predicted.model_version || "fallback_v1",
-      ]
-    );
-
-    res.json(inserted.rows[0]);
+    const row = await predictForStudent(studentId, { trigger: "student_refresh" });
+    const { drivers, features, ...studentView } = row; // never send SHAP numbers to students
+    res.json(studentView);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
-}
-
-/** Simple transparent fallback so the app still works if the Python ML service is down/not built yet */
-function ruleBasedFallback(f) {
-  const cgpa = Number(f.cgpa);
-  const warnings = Number(f.warning_count || 0);
-  if (cgpa < 1.5 || warnings >= 3) {
-    return { label: "Dropout-Likely", prob_safe: 0.05, prob_at_risk: 0.15, prob_dropout: 0.8, model_version: "rule_fallback" };
-  }
-  if (cgpa < 2.5 || warnings >= 1) {
-    return { label: "At-Risk", prob_safe: 0.2, prob_at_risk: 0.6, prob_dropout: 0.2, model_version: "rule_fallback" };
-  }
-  return { label: "Safe", prob_safe: 0.85, prob_at_risk: 0.12, prob_dropout: 0.03, model_version: "rule_fallback" };
 }
 
 module.exports = { dashboard, results, attendance, history, prediction, refreshPrediction };

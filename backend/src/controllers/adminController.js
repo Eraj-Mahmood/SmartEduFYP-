@@ -434,7 +434,7 @@ async function atRiskStudents(req, res) {
   try {
     const { rows } = await pool.query(
       `SELECT DISTINCT ON (p.student_id) s.student_id, s.roll_no, s.full_name, u.user_id, u.email,
-              p.predicted_label, p.prob_dropout, p.created_at
+              p.predicted_label, p.final_label, p.policy_reason, p.reasons, p.prob_dropout, p.created_at
        FROM predictions p
        JOIN students s ON s.student_id = p.student_id
        JOIN users u ON u.user_id = s.user_id
@@ -462,7 +462,8 @@ async function predictionsDetailed(req, res) {
          ORDER BY student_id, created_at DESC
        )
        SELECT p.prediction_id, p.student_id, s.roll_no, s.full_name, p.semester AS prediction_semester,
-              p.predicted_label, p.prob_safe, p.prob_at_risk, p.prob_dropout, p.created_at,
+              p.predicted_label, p.final_label, p.model_label, p.policy_label, p.policy_reason, p.reasons,
+              p.source, p.prob_safe, p.prob_at_risk, p.prob_dropout, p.created_at,
               e.enrollment_id, e.status AS enrollment_status, fc.semester AS class_semester,
               fc.section, c.course_code, c.title AS course_title
        FROM latest_predictions p
