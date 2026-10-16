@@ -8,6 +8,8 @@ const ctrl = require("../controllers/facultyController");
 
 router.use(authenticate, authorize("faculty"));
 
+const classIdRule = [param("facultyCourseId").isInt({ min: 1 }).withMessage("class id must be a positive integer").toInt()];
+
 const resultRules = [
   param("enrollmentId").isInt({ min: 1 }).withMessage("enrollmentId must be a positive integer").toInt(),
   ...MARK_FIELDS.map((f) =>
@@ -28,8 +30,9 @@ const attendanceRules = [
 ];
 
 router.get("/classes", ctrl.myClasses);
-router.get("/classes/:facultyCourseId/roster", ctrl.classRoster);
-router.get("/classes/:facultyCourseId/attendance", ctrl.classAttendance);
+router.get("/classes/:facultyCourseId/roster", classIdRule, validate, ctrl.classRoster);
+router.get("/classes/:facultyCourseId/attendance", classIdRule, validate, ctrl.classAttendance);
+router.get("/classes/:facultyCourseId/risk-summary", classIdRule, validate, ctrl.classRiskSummary);
 router.put("/results/:enrollmentId", resultRules, validate, ctrl.upsertResult);
 router.post("/attendance", attendanceRules, validate, ctrl.markAttendance);
 
