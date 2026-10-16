@@ -213,7 +213,15 @@ async function studentFullProfile(req, res) {
          JOIN users u ON u.user_id = s.user_id WHERE s.student_id = $1`,
         [id]
       ),
-      pool.query(`SELECT * FROM student_semester_performance WHERE student_id = $1 ORDER BY semester`, [id]),
+      // Explicit columns: the dataset's target_label (ground truth) must not be exposed
+      pool.query(
+        `SELECT performance_id, student_id, semester, attendance_percentage, assignment_avg, quiz_avg,
+                midterm_marks, final_marks, study_hours_per_week, lms_login_count,
+                assignment_submission_rate, previous_sgpa, sgpa, cgpa, consecutive_low_cgpa,
+                failed_courses, credits_enrolled, credits_passed, warning_count, created_at
+         FROM student_semester_performance WHERE student_id = $1 ORDER BY semester`,
+        [id]
+      ),
       pool.query(`SELECT * FROM predictions WHERE student_id = $1 ORDER BY created_at DESC`, [id]),
       pool.query(
         `SELECT c.course_code, c.title, cr.* FROM enrollments e

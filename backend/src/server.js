@@ -18,8 +18,11 @@ app.use(cors({ origin: process.env.FRONTEND_ORIGIN || "*", credentials: true }))
 app.use(express.json());
 app.use(morgan("dev"));
 
-// Basic brute-force protection on login
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
+// Basic brute-force protection on login (per IP, in memory; configurable via .env)
+const loginLimiter = rateLimit({
+  windowMs: (Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MIN) || 15) * 60 * 1000,
+  max: Number(process.env.LOGIN_RATE_LIMIT_MAX) || 20,
+});
 app.use("/api/auth/login", loginLimiter);
 
 app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
