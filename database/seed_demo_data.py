@@ -208,6 +208,7 @@ def main():
                 # small per-course jitter so not every course looks identical
                 jitter = lambda v: max(0, min(100, v + random.uniform(-6, 6)))
                 a, q, m, f = jitter(base_assign), jitter(base_quiz), jitter(base_mid), jitter(base_final)
+                # keep in sync with backend/src/services/grading.js (server-side grade derivation)
                 overall = (a + q + m + f) / 4
                 grade = "A" if overall >= 85 else "B" if overall >= 70 else "C" if overall >= 55 else "D" if overall >= 40 else "F"
 

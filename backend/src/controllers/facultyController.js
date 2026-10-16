@@ -1,5 +1,6 @@
 const pool = require("../config/db");
 const { logAction } = require("../middleware/audit");
+const { MARK_FIELDS, deriveGrade } = require("../services/grading");
 
 async function getMyFacultyId(userId) {
   const { rows } = await pool.query("SELECT faculty_id FROM faculty WHERE user_id = $1", [userId]);
@@ -68,7 +69,6 @@ async function upsertResult(req, res) {
   try {
     const facultyId = await getMyFacultyId(req.user.userId);
     const enrollmentId = Number(req.params.enrollmentId);
-    const { assignment_avg, quiz_avg, midterm_marks, final_marks, grade } = req.body;
 
     // Verify this enrollment belongs to one of this faculty's classes
     const own = await pool.query(
@@ -79,9 +79,19 @@ async function upsertResult(req, res) {
     );
     if (own.rows.length === 0) return res.status(403).json({ error: "Not your class/student" });
 
+    // Marks left out of the request keep their saved value (0 for a new result).
+    // The grade is always derived on the server; a client-sent grade is ignored.
+    const existing = await pool.query(
+      `SELECT ${MARK_FIELDS.join(", ")} FROM course_results WHERE enrollment_id = $1`,
+      [enrollmentId]
+    );
+    const marks = {};
+    for (const f of MARK_FIELDS) marks[f] = req.body[f] ?? existing.rows[0]?.[f] ?? 0;
+    const grade = deriveGrade(marks);
+
     const { rows } = await pool.query(
-      `INSERT INTO course_results (enrollment_id, assignment_avg, quiz_avg, midterm_marks, final_marks, grade, updated_by, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+      `INSERT INTO course_results (enrollment_id, assignment_avg, quiz_avg, midterm_marks, final_marks, grade, updated_by, updated_at, data_source)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),'live')
        ON CONFLICT (enrollment_id) DO UPDATE
          SET assignment_avg = EXCLUDED.assignment_avg,
              quiz_avg = EXCLUDED.quiz_avg,
@@ -89,9 +99,10 @@ async function upsertResult(req, res) {
              final_marks = EXCLUDED.final_marks,
              grade = EXCLUDED.grade,
              updated_by = EXCLUDED.updated_by,
-             updated_at = NOW()
+             updated_at = NOW(),
+             data_source = 'live'
        RETURNING *`,
-      [enrollmentId, assignment_avg, quiz_avg, midterm_marks, final_marks, grade, req.user.userId]
+      [enrollmentId, marks.assignment_avg, marks.quiz_avg, marks.midterm_marks, marks.final_marks, grade, req.user.userId]
     );
 
     await logAction(req.user.userId, "UPDATE_RESULT", "course_results", rows[0].result_id, { enrollmentId });
@@ -109,20 +120,16 @@ async function markAttendance(req, res) {
     const { facultyCourseId, classDate, entries } = req.body;
     await assertOwnsClass(facultyId, facultyCourseId);
 
-    if (!Array.isArray(entries) || entries.length === 0) {
-      return res.status(400).json({ error: "entries[] is required" });
-    }
-
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       const results = [];
       for (const entry of entries) {
         const { rows } = await client.query(
-          `INSERT INTO attendance (enrollment_id, class_date, status, marked_by, marked_at)
-           VALUES ($1,$2,$3,$4,NOW())
+          `INSERT INTO attendance (enrollment_id, class_date, status, marked_by, marked_at, data_source)
+           VALUES ($1,$2,$3,$4,NOW(),'live')
            ON CONFLICT (enrollment_id, class_date) DO UPDATE
-             SET status = EXCLUDED.status, marked_by = EXCLUDED.marked_by, marked_at = NOW()
+             SET status = EXCLUDED.status, marked_by = EXCLUDED.marked_by, marked_at = NOW(), data_source = 'live'
            RETURNING *`,
           [entry.enrollmentId, classDate, entry.status, req.user.userId]
         );
