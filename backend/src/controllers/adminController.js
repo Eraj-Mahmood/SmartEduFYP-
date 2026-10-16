@@ -2,6 +2,7 @@ const bcrypt = require("bcrypt");
 const pool = require("../config/db");
 const { logAction } = require("../middleware/audit");
 const { startRun, getRun } = require("../services/predictionRuns");
+const { staffReasons } = require("../services/reasons");
 
 // Latest prediction per student, via the students.latest_prediction_id pointer
 const LATEST_PREDICTIONS = `SELECT p.* FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id`;
@@ -59,7 +60,7 @@ async function latestPredictionPage(req, { riskOnly = false, withCourses = false
     pool.query(
       `${base},
        pg AS (SELECT * FROM filtered p ORDER BY ${order} LIMIT $${params.length + 1} OFFSET $${params.length + 2})
-       SELECT p.*, p.final_label AS predicted_label${
+       SELECT p.*, p.final_label AS predicted_label, x.drivers, x.features${
          withCourses
            ? `, (SELECT COALESCE(array_agg(c.course_code ORDER BY c.course_code), '{}')
                 FROM enrollments e
@@ -68,12 +69,14 @@ async function latestPredictionPage(req, { riskOnly = false, withCourses = false
                 WHERE e.student_id = p.student_id AND e.status = 'enrolled') AS courses`
            : ""
        }
-       FROM pg p ORDER BY ${order}`,
+       FROM pg p JOIN predictions x ON x.prediction_id = p.prediction_id ORDER BY ${order}`,
       [...params, limit, (page - 1) * limit]
     ),
   ]);
   const total = count.rows[0].total;
-  return { rows: rows.rows, total, page, limit, totalPages: Math.ceil(total / limit) };
+  // staff wording ("CGPA 1.98 is below 2.00"); drivers and features are not sent
+  const out = rows.rows.map(({ drivers, features, ...r }) => ({ ...r, reasons: staffReasons({ ...r, drivers, features }) }));
+  return { rows: out, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
 function randomPassword() {
@@ -346,7 +349,7 @@ async function studentFullProfile(req, res) {
     res.json({
       profile: profile.rows[0],
       performanceHistory: history.rows,
-      predictions: predictions.rows,
+      predictions: predictions.rows.map((p) => ({ ...p, reasons: staffReasons(p) })),
       courseResults: results.rows,
     });
   } catch (err) {

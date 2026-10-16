@@ -16,33 +16,9 @@ const HERO_TONE = {
   neutral: "border-l-brand bg-surface",
 };
 
-/** Concrete next steps from the student's own numbers (max 3). */
-function nextSteps(d) {
-  const t = d.thresholds;
-  const label = d.latestPrediction?.final_label;
-  const steps = [];
-  const att = d.liveAttendance;
-  if (att?.source === "live" && att.value < t.min_attendance_pct) {
-    const target = t.min_attendance_pct / 100;
-    const needed = Math.ceil((target * att.sessions - att.present) / (1 - target));
-    steps.push(`Attend every class: ${needed} more on-time session${needed === 1 ? "" : "s"} would lift you to ${t.min_attendance_pct}%.`);
-  }
-  if (d.weakestCourse && label !== "Safe") {
-    steps.push(`Focus on ${d.weakestCourse.course_code} (${d.weakestCourse.title}) - your average there is ${Math.round(d.weakestCourse.mean)}.`);
-  }
-  if (label === "Dropout-Likely") steps.push("Book a meeting with your academic advisor this week to agree a recovery plan.");
-  else if (label === "At-Risk") steps.push("Ask your course teachers which upcoming assessments matter most.");
-  if (label === "Safe") {
-    steps.push(`Keep attendance above ${t.min_attendance_pct}% and keep submitting work on time.`);
-    if (d.weakestCourse && d.weakestCourse.mean < 70) steps.push(`Your lowest average is ${d.weakestCourse.course_code} (${Math.round(d.weakestCourse.mean)}) - worth a little extra time.`);
-  }
-  return steps.slice(0, 3);
-}
-
-function StatusHero({ data, refreshing, onRefresh }) {
+function StatusHero({ data, steps, refreshing, onRefresh }) {
   const p = data.latestPrediction;
   const meta = riskMeta(p?.final_label);
-  const steps = p ? nextSteps(data) : [];
   return (
     <section aria-labelledby="status-heading" className={`rounded-card border border-line border-l-4 shadow-card ${HERO_TONE[meta.tone]} px-5 py-5 sm:px-6`}>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -79,12 +55,12 @@ function StatusHero({ data, refreshing, onRefresh }) {
           <div>
             <h3 className="text-sm font-semibold text-ink mb-2">What to do next</h3>
             <ol className="space-y-1.5">
-              {steps.map((s, i) => (
-                <li key={s} className="flex gap-2 text-[15px] leading-snug text-ink/90">
+              {steps.slice(0, 3).map((s, i) => (
+                <li key={s.id} className="flex gap-2 text-[15px] leading-snug text-ink/90">
                   <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-ink/[0.07] text-[11px] font-semibold flex items-center justify-center" aria-hidden="true">
                     {i + 1}
                   </span>
-                  {s}
+                  {s.text}
                 </li>
               ))}
             </ol>
@@ -132,6 +108,7 @@ function LoadingView() {
 export default function StudentDashboard() {
   const { data, error, loading, reload } = useApi("/student/dashboard");
   const timeline = useApi("/student/prediction/timeline");
+  const next = useApi("/student/next-steps");
   const [refreshing, setRefreshing] = useState(false);
   const { toast } = useToast();
 
@@ -140,7 +117,7 @@ export default function StudentDashboard() {
     const before = data?.latestPrediction?.final_label;
     try {
       const { data: p } = await client.post("/student/prediction/refresh");
-      await Promise.all([reload({ quiet: true }), timeline.reload({ quiet: true })]);
+      await Promise.all([reload({ quiet: true }), timeline.reload({ quiet: true }), next.reload({ quiet: true })]);
       if (before && before !== p.final_label) {
         toast(`Your status changed: ${riskMeta(before).supportive} → ${riskMeta(p.final_label).supportive}`, { type: "info" });
       } else {
@@ -188,7 +165,7 @@ export default function StudentDashboard() {
       </div>
 
       <div className="space-y-5">
-        <StatusHero data={data} refreshing={refreshing} onRefresh={refresh} />
+        <StatusHero data={data} steps={next.data || []} refreshing={refreshing} onRefresh={refresh} />
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard label={data.officialCgpa.label} value={gpa(data.officialCgpa.value)} sublabel="Last completed term" info={data.officialCgpa.note} />

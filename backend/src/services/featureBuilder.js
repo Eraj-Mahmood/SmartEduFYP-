@@ -140,4 +140,4 @@ async function buildFeatures(studentId, db = pool) {
   return built.get(Number(studentId)) || null;
 }
 
-module.exports = { buildFeatures, buildFeaturesMany, coursePoints };
+module.exports = { buildFeatures, buildFeaturesMany, coursePoints, SGPA_SLOPE, SGPA_INTERCEPT };

@@ -2,6 +2,7 @@ const pool = require("../config/db");
 const { logAction } = require("../middleware/audit");
 const { MARK_FIELDS, deriveGrade } = require("../services/grading");
 const { predictForStudent, predictForMany } = require("../services/predictionService");
+const { staffReasons } = require("../services/reasons");
 
 /** Re-predict after a save. Prediction problems are logged and never fail the save
  *  (returns null on failure). */
@@ -16,7 +17,7 @@ async function repredictSafely(what, fn) {
 
 // Latest prediction for s.student_id, via the students.latest_prediction_id pointer
 const LATEST_PREDICTION_JOIN = `LEFT JOIN LATERAL (
-         SELECT p.final_label, p.reasons, p.policy_reason, p.created_at,
+         SELECT p.final_label, p.reasons, p.drivers, p.features, p.policy_reason, p.created_at,
                 (p.features->>'CGPA')::numeric AS projected_cgpa
          FROM predictions p WHERE p.prediction_id = s.latest_prediction_id
        ) lp ON TRUE`;
@@ -77,7 +78,7 @@ async function classRoster(req, res) {
     const { rows } = await pool.query(
       `SELECT e.enrollment_id, s.student_id, s.roll_no, s.full_name, e.status,
               cr.assignment_avg, cr.quiz_avg, cr.midterm_marks, cr.final_marks, cr.grade,
-              lp.final_label, lp.reasons, lp.policy_reason, lp.projected_cgpa,
+              lp.final_label, lp.reasons, lp.drivers, lp.features, lp.policy_reason, lp.projected_cgpa,
               lp.created_at AS last_predicted_at,
               att.present, att.sessions,
               ROUND(100.0 * att.present / NULLIF(att.sessions, 0), 1) AS attendance_pct
@@ -93,7 +94,8 @@ async function classRoster(req, res) {
        ORDER BY s.roll_no`,
       [fcId]
     );
-    res.json(rows);
+    // staff wording ("CGPA 1.98 is below 2.00"); SHAP drivers and features stay on the server
+    res.json(rows.map(({ drivers, features, ...r }) => ({ ...r, reasons: staffReasons({ ...r, drivers, features }) })));
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }
@@ -209,7 +211,7 @@ async function upsertResult(req, res) {
         old_label: oldLabel,
         new_label: predicted.final_label,
         changed: oldLabel !== predicted.final_label,
-        reasons: predicted.reasons,
+        reasons: staffReasons(predicted),
         projected_cgpa: predicted.features?.CGPA ?? null,
         created_at: predicted.created_at,
       },

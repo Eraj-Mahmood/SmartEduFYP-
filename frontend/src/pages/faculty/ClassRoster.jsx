@@ -72,7 +72,7 @@ function StudentDrawer({ row, onClose, classId }) {
           </div>
           {row.reasons?.length > 0 && (
             <>
-              <h3 className="mt-4 text-sm font-semibold">Why (as the student sees it)</h3>
+              <h3 className="mt-4 text-sm font-semibold">Why</h3>
               <ul className="mt-1.5 space-y-1 text-sm text-ink/90 list-disc pl-5">
                 {row.reasons.map((r) => (
                   <li key={r}>{r}</li>

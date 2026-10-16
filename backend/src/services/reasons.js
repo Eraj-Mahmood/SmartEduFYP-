@@ -103,6 +103,90 @@ const TEXT = {
   },
 };
 
+// Staff wording (faculty drawer, admin views): the same facts, stated about the student
+// rather than to them, e.g. "CGPA 1.98 is below 2.00". Same severity cap as TEXT.
+const STAFF_PROFILE_CONCERN = "Students with a similar profile have often needed extra support.";
+const STAFF_PROFILE_STRENGTH = "Students with a similar profile have usually done well.";
+const STAFF_TEXT = {
+  Semester: { concern: () => STAFF_PROFILE_CONCERN, strength: () => STAFF_PROFILE_STRENGTH },
+  Department: { concern: () => STAFF_PROFILE_CONCERN, strength: () => STAFF_PROFILE_STRENGTH },
+  Gender: { concern: () => STAFF_PROFILE_CONCERN, strength: () => STAFF_PROFILE_STRENGTH },
+  Age: { concern: () => STAFF_PROFILE_CONCERN, strength: () => STAFF_PROFILE_STRENGTH },
+  Scholarship: { concern: () => STAFF_PROFILE_CONCERN, strength: () => STAFF_PROFILE_STRENGTH },
+  Hostel: { concern: () => STAFF_PROFILE_CONCERN, strength: () => STAFF_PROFILE_STRENGTH },
+
+  Attendance_Percentage: {
+    concern: (v, f, label) =>
+      v < T.severe_attendance_pct && label === "Dropout-Likely"
+        ? `Attendance ${pct(v)} is below the ${T.severe_attendance_pct}% severe-absence limit.`
+        : v < T.min_attendance_pct
+          ? `Attendance ${pct(v)} is below the ${T.min_attendance_pct}% requirement.`
+          : `Attendance ${pct(v)} is lower than that of students doing well.`,
+    strength: (v) => `Attendance ${pct(v)} is a strength.`,
+  },
+  Assignment_Avg: {
+    concern: (v) => `Assignment average ${pct(v)} is pulling results down.`,
+    strength: (v) => `Assignment average ${pct(v)} is solid.`,
+  },
+  Quiz_Avg: {
+    concern: (v) => `Quiz average ${pct(v)} is pulling results down.`,
+    strength: (v) => `Quiz average ${pct(v)} is solid.`,
+  },
+  Midterm_Marks: {
+    concern: (v) => `Midterm marks ${num(v)}/100 are low.`,
+    strength: (v) => `Midterm marks ${num(v)}/100 are good.`,
+  },
+  Final_Marks: {
+    concern: (v) => `Final exam marks ${num(v)}/100 are low.`,
+    strength: (v) => `Final exam marks ${num(v)}/100 are good.`,
+  },
+  Study_Hours_Per_Week: {
+    concern: (v) => `Studies about ${num(v)} h/week, less than students doing well.`,
+    strength: (v) => `Study time (about ${num(v)} h/week) is a strength.`,
+  },
+  LMS_Login_Count: {
+    concern: (v) => `Only ${plural(v, "learning-portal login")} this term.`,
+    strength: (v) => `Uses the learning portal regularly (${plural(v, "login")} this term).`,
+  },
+  Assignment_Submission_Rate: {
+    concern: (v) => `Submitted only ${pct(v)} of assignments.`,
+    strength: (v) => `Submits assignments reliably (${pct(v)}).`,
+  },
+  Previous_SGPA: {
+    concern: (v) => `Last term's SGPA ${gpa(v)} was low.`,
+    strength: (v) => `Last term's SGPA ${gpa(v)} was good.`,
+  },
+  SGPA: {
+    concern: (v) => `SGPA this term ${gpa(v)} is low.`,
+    strength: (v) => `SGPA this term ${gpa(v)} is good.`,
+  },
+  CGPA: {
+    concern: (v, f, label) =>
+      v < T.probation_cgpa
+        ? label === "Dropout-Likely"
+          ? `CGPA ${gpa(v)} is in the high-risk range (below ${gpa(T.probation_cgpa)}).`
+          : `CGPA ${gpa(v)} is below ${gpa(T.probation_cgpa)}.`
+        : v < T.at_risk_cgpa
+          ? `CGPA ${gpa(v)} is below the ${gpa(T.at_risk_cgpa)} good-standing threshold.`
+          : `CGPA ${gpa(v)} is lower than that of students doing well.`,
+    strength: (v) => `CGPA ${gpa(v)} is in good standing.`,
+  },
+  Failed_Courses: {
+    concern: (v) => (Number(v) > 0 ? `Has failed ${plural(v, "course")}.` : "Course results need attention."),
+    strength: (v) => (Number(v) === 0 ? "No failed courses." : `Failed courses kept to ${v}.`),
+  },
+  Credits_Enrolled: {
+    concern: (v) => `Course load of ${v} credits is heavy.`,
+    strength: (v) => `Course load of ${v} credits is manageable.`,
+  },
+  Credits_Passed: {
+    concern: (v, f) => `Passed ${v} of ${f.Credits_Enrolled} enrolled credits.`,
+    strength: (v, f) => `Passed ${v} of ${f.Credits_Enrolled} enrolled credits.`,
+  },
+};
+
+const TEXTS = { student: TEXT, staff: STAFF_TEXT };
+
 // Used when there are no SHAP drivers (rule fallback): flag what the policy cares about.
 function driversFromFeatures(f) {
   const concerns = [];
@@ -115,12 +199,15 @@ function driversFromFeatures(f) {
 }
 
 /**
- * toReasons(drivers, features, finalLabel) -> up to 3 sentences.
+ * toReasons(drivers, features, finalLabel, {audience}) -> up to 3 sentences.
  * drivers: SHAP explanations [{feature, value, shap, direction}] (most important first), or null.
  * finalLabel caps how severe the wording may sound.
+ * audience: 'student' (default, "Your CGPA (1.98) is below 2.00", stored in predictions.reasons)
+ * or 'staff' ("CGPA 1.98 is below 2.00", built on read for faculty and admin views).
  * Concerns come before strengths; profile features only fill remaining slots.
  */
-function toReasons(drivers, features, finalLabel) {
+function toReasons(drivers, features, finalLabel, { audience = "student" } = {}) {
+  const TEXT = TEXTS[audience] || TEXTS.student;
   const list = drivers && drivers.length ? drivers : driversFromFeatures(features);
   const rank = (d) => (PROFILE_FEATURES.has(d.feature) ? 2 : 0) + (d.direction === "raises_risk" ? 0 : 1);
   const ordered = list
@@ -154,4 +241,11 @@ function toReasons(drivers, features, finalLabel) {
   return out;
 }
 
-module.exports = { toReasons };
+/** Staff wording for a stored predictions row ({drivers, features, final_label, reasons}).
+ *  Rebuilt from the same drivers and features, so it says exactly what the student sees. */
+function staffReasons(row) {
+  if (!row || !row.features) return (row && row.reasons) || [];
+  return toReasons(row.drivers, row.features, row.final_label, { audience: "staff" });
+}
+
+module.exports = { toReasons, staffReasons };

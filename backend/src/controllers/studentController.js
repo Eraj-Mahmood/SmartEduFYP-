@@ -1,7 +1,8 @@
 const pool = require("../config/db");
 const { predictForStudent } = require("../services/predictionService");
-const { deriveGrade, overallMark, GRADE_THRESHOLDS } = require("../services/grading");
-const { thresholds: POLICY } = require("../services/policy");
+const { getStudentOverview } = require("../services/studentOverview");
+const { round2 } = require("../services/studentCourses");
+const { getNextSteps } = require("../services/nextSteps");
 
 // What a student may see of a prediction: labels and plain-language reasons.
 // Never probabilities, the SHAP drivers (raw numbers) or the full feature vector.
@@ -11,10 +12,6 @@ const STUDENT_PREDICTION_COLUMNS = `prediction_id, semester, predicted_label, fi
 const LATEST_COLUMNS = STUDENT_PREDICTION_COLUMNS.split(",").map((c) => `p.${c.trim()}`).join(", ");
 const LATEST_FROM = `FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id
          WHERE s.student_id = $1`;
-
-// Lowest passing mark (grade D): a course below it counts as "at risk".
-const PASS_MARK = GRADE_THRESHOLDS.find(([g]) => g === "D")[1];
-const round2 = (x) => (x == null ? null : Math.round(Number(x) * 100) / 100);
 
 // Every query here is scoped by req.user.userId -> students.user_id.
 // Students have NO write routes in this file - read-only by design.
@@ -28,141 +25,26 @@ async function getMyStudentId(userId) {
 /**
  * GET /api/student/dashboard
  * Official (imported) figures and this term's live/projected figures are returned side by
- * side, each with a label and source, so the UI never mixes them up.
+ * side, each with a label and source, so the UI never mixes them up (services/studentOverview).
  */
 async function dashboard(req, res) {
   try {
     const studentId = await getMyStudentId(req.user.userId);
-    const [student, perf, latest, courses] = await Promise.all([
-      pool.query(
-        `SELECT s.student_id, s.roll_no, s.full_name, s.current_semester, s.cgpa,
-                s.scholarship, s.hostel, d.name AS department, d.code AS department_code
-         FROM students s JOIN departments d ON d.department_id = s.department_id
-         WHERE s.student_id = $1`,
-        [studentId]
-      ),
-      pool.query(
-        `SELECT semester, cgpa, sgpa, previous_sgpa, attendance_percentage
-         FROM student_semester_performance WHERE student_id = $1 ORDER BY semester DESC LIMIT 1`,
-        [studentId]
-      ),
-      pool.query(
-        `SELECT ${LATEST_COLUMNS},
-                (p.features->>'CGPA')::numeric AS projected_cgpa,
-                (p.features->>'SGPA')::numeric AS provisional_sgpa,
-                (p.features->>'Previous_SGPA')::numeric AS previous_sgpa,
-                -- when the current label started: the first prediction after the last one with a different label
-                (SELECT MIN(q.created_at) FROM predictions q
-                 WHERE q.student_id = p.student_id
-                   AND q.prediction_id > COALESCE((SELECT MAX(r.prediction_id) FROM predictions r
-                                                   WHERE r.student_id = p.student_id AND r.final_label <> p.final_label), 0)
-                ) AS status_since,
-                EXISTS (SELECT 1 FROM predictions r WHERE r.student_id = p.student_id AND r.final_label <> p.final_label)
-                  AS label_ever_changed
-         ${LATEST_FROM}`,
-        [studentId]
-      ),
-      pool.query(
-        `SELECT c.course_code, c.title, c.credit_hours, e.enrollment_id,
-                cr.assignment_avg, cr.quiz_avg, cr.midterm_marks, cr.final_marks,
-                COUNT(a.attendance_id) FILTER (WHERE a.status = 'present') AS present,
-                COUNT(a.attendance_id) AS sessions
-         FROM enrollments e
-         JOIN faculty_courses fc ON fc.faculty_course_id = e.faculty_course_id
-         JOIN courses c ON c.course_id = fc.course_id
-         LEFT JOIN course_results cr ON cr.enrollment_id = e.enrollment_id
-         LEFT JOIN attendance a ON a.enrollment_id = e.enrollment_id
-         WHERE e.student_id = $1 AND e.status = 'enrolled'
-         GROUP BY c.course_code, c.title, c.credit_hours, e.enrollment_id, cr.result_id
-         ORDER BY c.course_code`,
-        [studentId]
-      ),
-    ]);
-
-    const p = perf.rows[0] || {};
-    const pred = latest.rows[0] || null;
-    const src = (pred && pred.feature_sources) || {};
-
-    const courseRows = courses.rows.map((c) => {
-      const hasMarks = c.assignment_avg != null;
-      const marks = {
-        assignment_avg: round2(c.assignment_avg),
-        quiz_avg: round2(c.quiz_avg),
-        midterm_marks: round2(c.midterm_marks),
-        final_marks: round2(c.final_marks),
-      };
-      const mean = hasMarks ? round2(overallMark(marks)) : null;
-      const sessions = Number(c.sessions);
-      return {
-        course_code: c.course_code,
-        title: c.title,
-        credit_hours: c.credit_hours,
-        ...marks,
-        mean,
-        grade: hasMarks ? deriveGrade(marks) : null,
-        below_pass_mark: hasMarks && mean < PASS_MARK,
-        present: Number(c.present),
-        sessions,
-        attendance_pct: sessions > 0 ? round2((100 * Number(c.present)) / sessions) : null,
-      };
-    });
-    const withMarks = courseRows.filter((c) => c.mean != null);
-    const weakest = withMarks.length ? withMarks.reduce((w, c) => (c.mean < w.mean ? c : w)) : null;
-    const present = courseRows.reduce((n, c) => n + c.present, 0);
-    const sessions = courseRows.reduce((n, c) => n + c.sessions, 0);
-
-    res.json({
-      profile: student.rows[0],
-      officialCgpa: {
-        value: round2(p.cgpa != null ? p.cgpa : student.rows[0].cgpa),
-        label: "Official CGPA",
-        source: "imported",
-        note: "From your academic record (last completed term).",
-      },
-      projectedCgpa: pred && {
-        value: round2(pred.projected_cgpa),
-        label: "Projected CGPA",
-        source: src.CGPA === "projected" ? "projected" : "imported",
-        note:
-          src.CGPA === "projected"
-            ? "What your CGPA would be if this term ended with today's marks."
-            : "No marks entered this term yet, so this equals your official CGPA.",
-      },
-      provisionalSgpa: pred && {
-        value: round2(pred.provisional_sgpa),
-        label: "Provisional SGPA (this term)",
-        source: src.SGPA === "provisional" ? "provisional" : "imported",
-      },
-      previousSgpa: pred && { value: round2(pred.previous_sgpa), label: "Previous SGPA", source: "imported" },
-      liveAttendance:
-        sessions > 0
-          ? { value: round2((100 * present) / sessions), present, sessions, label: "Attendance this term", source: "live" }
-          : { value: round2(p.attendance_percentage), label: "Attendance (record)", source: "imported" },
-      latestPrediction: pred && {
-        prediction_id: pred.prediction_id,
-        final_label: pred.final_label,
-        predicted_label: pred.predicted_label,
-        reasons: pred.reasons || [],
-        policy_reason: pred.policy_reason,
-        source: pred.source,
-        created_at: pred.created_at,
-        status_since: pred.status_since,
-        label_ever_changed: pred.label_ever_changed,
-      },
-      weakestCourse: weakest && { course_code: weakest.course_code, title: weakest.title, mean: weakest.mean },
-      courses: courseRows,
-      coursesBelowPassMark: courseRows.filter((c) => c.below_pass_mark).length,
-      thresholds: {
-        pass_mark: PASS_MARK,
-        probation_cgpa: POLICY.probation_cgpa,
-        at_risk_cgpa: POLICY.at_risk_cgpa,
-        min_attendance_pct: POLICY.min_attendance_pct,
-        severe_attendance_pct: POLICY.severe_attendance_pct,
-      },
-    });
+    res.json(await getStudentOverview(studentId));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+/** GET /api/student/next-steps - ranked, concrete actions (services/nextSteps) */
+async function nextSteps(req, res) {
+  try {
+    const studentId = await getMyStudentId(req.user.userId);
+    res.json(await getNextSteps(studentId));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
   }
 }
 
@@ -292,4 +174,4 @@ async function refreshPrediction(req, res) {
   }
 }
 
-module.exports = { dashboard, results, attendance, history, prediction, predictionTimeline, refreshPrediction };
+module.exports = { dashboard, nextSteps, results, attendance, history, prediction, predictionTimeline, refreshPrediction };

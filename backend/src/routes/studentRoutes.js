@@ -11,6 +11,7 @@ router.get("/attendance", ctrl.attendance);
 router.get("/history", ctrl.history);
 router.get("/prediction", ctrl.prediction);
 router.get("/prediction/timeline", ctrl.predictionTimeline);
+router.get("/next-steps", ctrl.nextSteps);
 router.post("/prediction/refresh", ctrl.refreshPrediction); // triggers the helper bot, not a data edit
 
 module.exports = router;
