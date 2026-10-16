@@ -35,3 +35,17 @@ AI301 and AI302 are Dr. Khan's courses.
 
 The student names in the app are placeholders ("Student 100040") unless
 `database/generate_student_names.py` has been run.
+
+## Live re-prediction demo (Phase 1)
+
+Faculty saves re-predict the student straight away. A realistic change that moves a label
+(checked on 2026-10-16):
+
+1. Log in as `ayesha.khan@smartedu.edu`, open **AI301 section A**, find **BU-112907**.
+2. Change **Quiz avg 57.87 → 75** and **Midterm 70.13 → 86** (keep Assignment 67.18, Final 80.40) and save.
+   The server re-derives the AI301 grade (C → B).
+3. Log in as `student112907@smartedu.edu`: the prediction is now **Safe** (was **At-Risk**).
+   Provisional SGPA 1.99 → 2.12 and projected CGPA 2.23 → 2.30, which crosses the 2.30
+   good-standing threshold.
+
+To undo it, save the original marks again (Quiz 57.87, Midterm 70.13); the student goes back to At-Risk.
