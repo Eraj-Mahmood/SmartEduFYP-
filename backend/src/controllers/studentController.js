@@ -7,6 +7,10 @@ const { thresholds: POLICY } = require("../services/policy");
 // Never probabilities, the SHAP drivers (raw numbers) or the full feature vector.
 const STUDENT_PREDICTION_COLUMNS = `prediction_id, semester, predicted_label, final_label, policy_reason, reasons,
        source, feature_sources, created_at`;
+// The student's latest prediction, via the students.latest_prediction_id pointer ($1 = student_id).
+const LATEST_COLUMNS = STUDENT_PREDICTION_COLUMNS.split(",").map((c) => `p.${c.trim()}`).join(", ");
+const LATEST_FROM = `FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id
+         WHERE s.student_id = $1`;
 
 // Lowest passing mark (grade D): a course below it counts as "at risk".
 const PASS_MARK = GRADE_THRESHOLDS.find(([g]) => g === "D")[1];
@@ -43,11 +47,19 @@ async function dashboard(req, res) {
         [studentId]
       ),
       pool.query(
-        `SELECT ${STUDENT_PREDICTION_COLUMNS},
-                (features->>'CGPA')::numeric AS projected_cgpa,
-                (features->>'SGPA')::numeric AS provisional_sgpa,
-                (features->>'Previous_SGPA')::numeric AS previous_sgpa
-         FROM predictions WHERE student_id = $1 ORDER BY created_at DESC, prediction_id DESC LIMIT 1`,
+        `SELECT ${LATEST_COLUMNS},
+                (p.features->>'CGPA')::numeric AS projected_cgpa,
+                (p.features->>'SGPA')::numeric AS provisional_sgpa,
+                (p.features->>'Previous_SGPA')::numeric AS previous_sgpa,
+                -- when the current label started: the first prediction after the last one with a different label
+                (SELECT MIN(q.created_at) FROM predictions q
+                 WHERE q.student_id = p.student_id
+                   AND q.prediction_id > COALESCE((SELECT MAX(r.prediction_id) FROM predictions r
+                                                   WHERE r.student_id = p.student_id AND r.final_label <> p.final_label), 0)
+                ) AS status_since,
+                EXISTS (SELECT 1 FROM predictions r WHERE r.student_id = p.student_id AND r.final_label <> p.final_label)
+                  AS label_ever_changed
+         ${LATEST_FROM}`,
         [studentId]
       ),
       pool.query(
@@ -134,6 +146,8 @@ async function dashboard(req, res) {
         policy_reason: pred.policy_reason,
         source: pred.source,
         created_at: pred.created_at,
+        status_since: pred.status_since,
+        label_ever_changed: pred.label_ever_changed,
       },
       weakestCourse: weakest && { course_code: weakest.course_code, title: weakest.title, mean: weakest.mean },
       courses: courseRows,
@@ -247,8 +261,7 @@ async function prediction(req, res) {
     const studentId = await getMyStudentId(req.user.userId);
 
     const existing = await pool.query(
-      `SELECT ${STUDENT_PREDICTION_COLUMNS}
-       FROM predictions WHERE student_id = $1 ORDER BY created_at DESC, prediction_id DESC LIMIT 1`,
+      `SELECT ${LATEST_COLUMNS} ${LATEST_FROM}`,
       [studentId]
     );
     if (existing.rows.length > 0) {

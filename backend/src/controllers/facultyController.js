@@ -14,12 +14,11 @@ async function repredictSafely(what, fn) {
   }
 }
 
-// Latest prediction for s.student_id (uses idx_predictions_student_latest)
+// Latest prediction for s.student_id, via the students.latest_prediction_id pointer
 const LATEST_PREDICTION_JOIN = `LEFT JOIN LATERAL (
          SELECT p.final_label, p.reasons, p.policy_reason, p.created_at,
                 (p.features->>'CGPA')::numeric AS projected_cgpa
-         FROM predictions p WHERE p.student_id = s.student_id
-         ORDER BY p.created_at DESC, p.prediction_id DESC LIMIT 1
+         FROM predictions p WHERE p.prediction_id = s.latest_prediction_id
        ) lp ON TRUE`;
 
 async function getMyFacultyId(userId) {
@@ -90,7 +89,7 @@ async function classRoster(req, res) {
          FROM attendance a WHERE a.enrollment_id = e.enrollment_id
        ) att ON TRUE
        ${LATEST_PREDICTION_JOIN}
-       WHERE e.faculty_course_id = $1
+       WHERE e.faculty_course_id = $1 AND e.status <> 'dropped'
        ORDER BY s.roll_no`,
       [fcId]
     );
@@ -177,8 +176,8 @@ async function upsertResult(req, res) {
     const marks = {};
     for (const f of MARK_FIELDS) marks[f] = req.body[f] ?? existing.rows[0]?.[f] ?? 0;
     const before = await pool.query(
-      `SELECT final_label FROM predictions WHERE student_id = $1
-       ORDER BY created_at DESC, prediction_id DESC LIMIT 1`,
+      `SELECT p.final_label FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id
+       WHERE s.student_id = $1`,
       [own.rows[0].student_id]
     );
     const oldLabel = before.rows[0]?.final_label || null;
@@ -231,13 +230,17 @@ async function markAttendance(req, res) {
     // Every entry must be an enrollment in this class; otherwise write nothing.
     const ids = [...new Set(entries.map((e) => e.enrollmentId))];
     const inClass = await pool.query(
-      "SELECT enrollment_id FROM enrollments WHERE enrollment_id = ANY($1) AND faculty_course_id = $2",
+      "SELECT enrollment_id, status FROM enrollments WHERE enrollment_id = ANY($1) AND faculty_course_id = $2",
       [ids, facultyCourseId]
     );
     if (inClass.rows.length !== ids.length) {
       const ok = new Set(inClass.rows.map((r) => r.enrollment_id));
       const bad = ids.filter((id) => !ok.has(id));
       return res.status(403).json({ error: `Enrollment(s) ${bad.join(", ")} are not in this class` });
+    }
+    const dropped = inClass.rows.filter((r) => r.status === "dropped").map((r) => r.enrollment_id);
+    if (dropped.length) {
+      return res.status(400).json({ error: `Enrollment(s) ${dropped.join(", ")} have dropped this course` });
     }
 
     const client = await pool.connect();
@@ -295,7 +298,7 @@ async function classAttendance(req, res) {
        FROM attendance a
        JOIN enrollments e ON e.enrollment_id = a.enrollment_id
        JOIN students s ON s.student_id = e.student_id
-       WHERE e.faculty_course_id = $1 ${dateFilter}
+       WHERE e.faculty_course_id = $1 AND e.status <> 'dropped' ${dateFilter}
        ORDER BY a.class_date DESC, s.roll_no`,
       params
     );

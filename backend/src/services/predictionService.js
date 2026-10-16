@@ -82,7 +82,10 @@ const COLUMNS = [
   "feature_sources", "source", "triggered_by", "run_id",
 ];
 
-async function insertRows(rows, db = pool) {
+/** Inserts prediction rows and moves each student's students.latest_prediction_id to the new row,
+ *  one transaction per chunk. The pointer only moves forward (a newer id), so an older insert that
+ *  commits late never overwrites a newer one. */
+async function insertRows(rows) {
   const inserted = [];
   for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
     const chunk = rows.slice(i, i + INSERT_CHUNK);
@@ -94,11 +97,28 @@ async function insertRows(rows, db = pool) {
       });
       return `(${ph.join(",")})`;
     });
-    const { rows: out } = await db.query(
-      `INSERT INTO predictions (${COLUMNS.join(", ")}) VALUES ${values.join(", ")} RETURNING *`,
-      params
-    );
-    inserted.push(...out);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { rows: out } = await client.query(
+        `INSERT INTO predictions (${COLUMNS.join(", ")}) VALUES ${values.join(", ")} RETURNING *`,
+        params
+      );
+      await client.query(
+        `UPDATE students s SET latest_prediction_id = v.prediction_id
+         FROM unnest($1::int[], $2::int[]) AS v(student_id, prediction_id)
+         WHERE s.student_id = v.student_id
+           AND (s.latest_prediction_id IS NULL OR s.latest_prediction_id < v.prediction_id)`,
+        [out.map((r) => r.student_id), out.map((r) => r.prediction_id)]
+      );
+      await client.query("COMMIT");
+      inserted.push(...out);
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
   }
   return inserted;
 }

@@ -6,7 +6,7 @@ import {
 } from "../../components/ui";
 import { Legend } from "../../components/charts/theme";
 import useApi from "../../lib/useApi";
-import { timeAgo, gpa, pct } from "../../lib/format";
+import { timeAgo, gpa, pct, longDate } from "../../lib/format";
 import { StandingChart, standingLegend, AttendanceChart, attendanceLegend, MarksChart, marksLegend, TimelineChart } from "./StudentCharts";
 
 const HERO_TONE = {
@@ -254,17 +254,28 @@ export default function StudentDashboard() {
           <MarksChart courses={courses} weakestCode={data.weakestCourse?.course_code} passMark={t.pass_mark} />
         </ChartCard>
 
-        <ChartCard
-          title="Your status over time"
-          subtitle="Last 30 days, one point per day"
-          loading={timeline.loading && !timeline.data}
-          empty={points.length < 2}
-          emptyMessage="Your timeline fills in as your marks are updated"
-          emptyDetail={points.length === 1 ? "There is one check so far. New points appear when your status is re-checked on another day." : "Check your status to add the first point."}
-          height={200}
-        >
-          <TimelineChart points={points} />
-        </ChartCard>
+        {/* The chart only earns its space once the label has changed; until then one line says it all. */}
+        {data.latestPrediction?.label_ever_changed ? (
+          <ChartCard
+            title="Your status over time"
+            subtitle="Last 30 days, one point per day"
+            loading={timeline.loading && !timeline.data}
+            empty={points.length < 2}
+            emptyMessage="Your timeline fills in as your marks are updated"
+            emptyDetail="New points appear when your status is re-checked on another day."
+            height={200}
+          >
+            <TimelineChart points={points} />
+          </ChartCard>
+        ) : (
+          data.latestPrediction && (
+            <p className="flex items-center gap-2 text-sm text-muted px-1">
+              <Icons.Clock size={14} />
+              Your status has been “{riskMeta(data.latestPrediction.final_label).supportive}” since{" "}
+              {longDate(data.latestPrediction.status_since || data.latestPrediction.created_at)}.
+            </p>
+          )
+        )}
       </div>
 
       {/* Phase 3: assistant chat panel mounts here */}

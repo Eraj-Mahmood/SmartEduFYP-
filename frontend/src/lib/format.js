@@ -25,6 +25,13 @@ export function shortDate(value) {
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
+/** "16 Oct 2026" */
+export function longDate(value) {
+  if (!value) return "";
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
 export function firstName(fullName) {
   return (fullName || "").split(" ")[0] || "there";
 }

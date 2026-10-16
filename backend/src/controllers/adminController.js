@@ -3,9 +3,8 @@ const pool = require("../config/db");
 const { logAction } = require("../middleware/audit");
 const { startRun, getRun } = require("../services/predictionRuns");
 
-// Latest prediction per student (uses idx_predictions_student_latest)
-const LATEST_PREDICTIONS = `SELECT DISTINCT ON (student_id) * FROM predictions
-         ORDER BY student_id, created_at DESC, prediction_id DESC`;
+// Latest prediction per student, via the students.latest_prediction_id pointer
+const LATEST_PREDICTIONS = `SELECT p.* FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id`;
 
 const LABELS = ["Safe", "At-Risk", "Dropout-Likely"];
 const SEVERITY_ORDER = "CASE p.final_label WHEN 'Dropout-Likely' THEN 0 WHEN 'At-Risk' THEN 1 ELSE 2 END";
@@ -41,9 +40,9 @@ async function latestPredictionPage(req, { riskOnly = false, withCourses = false
 
   const base = `
     WITH latest AS (
-      SELECT DISTINCT ON (student_id) student_id, prediction_id, final_label, prob_dropout, reasons,
-             policy_reason, source, created_at, (features->>'CGPA')::numeric AS projected_cgpa
-      FROM predictions ORDER BY student_id, created_at DESC, prediction_id DESC
+      SELECT p.student_id, p.prediction_id, p.final_label, p.prob_dropout, p.reasons,
+             p.policy_reason, p.source, p.created_at, (p.features->>'CGPA')::numeric AS projected_cgpa
+      FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id
     ),
     filtered AS (
       SELECT p.*, s.roll_no, s.full_name, s.current_semester, s.department_id, u.user_id, u.email,
