@@ -1,6 +1,16 @@
 const pool = require("../config/db");
 const { logAction } = require("../middleware/audit");
 const { MARK_FIELDS, deriveGrade } = require("../services/grading");
+const { predictForStudent, predictForMany } = require("../services/predictionService");
+
+/** Re-predict after a save. Prediction problems are logged and never fail the save. */
+async function repredictSafely(what, fn) {
+  try {
+    await fn();
+  } catch (err) {
+    console.error(`Re-prediction after ${what} failed:`, err);
+  }
+}
 
 async function getMyFacultyId(userId) {
   const { rows } = await pool.query("SELECT faculty_id FROM faculty WHERE user_id = $1", [userId]);
@@ -72,7 +82,7 @@ async function upsertResult(req, res) {
 
     // Verify this enrollment belongs to one of this faculty's classes
     const own = await pool.query(
-      `SELECT e.enrollment_id FROM enrollments e
+      `SELECT e.enrollment_id, e.student_id FROM enrollments e
        JOIN faculty_courses fc ON fc.faculty_course_id = e.faculty_course_id
        WHERE e.enrollment_id = $1 AND fc.faculty_id = $2`,
       [enrollmentId, facultyId]
@@ -106,6 +116,9 @@ async function upsertResult(req, res) {
     );
 
     await logAction(req.user.userId, "UPDATE_RESULT", "course_results", rows[0].result_id, { enrollmentId });
+    await repredictSafely("result save", () =>
+      predictForStudent(own.rows[0].student_id, { trigger: "faculty_result" })
+    );
     res.json(rows[0]);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -121,9 +134,9 @@ async function markAttendance(req, res) {
     await assertOwnsClass(facultyId, facultyCourseId);
 
     const client = await pool.connect();
+    const results = [];
     try {
       await client.query("BEGIN");
-      const results = [];
       for (const entry of entries) {
         const { rows } = await client.query(
           `INSERT INTO attendance (enrollment_id, class_date, status, marked_by, marked_at, data_source)
@@ -136,14 +149,21 @@ async function markAttendance(req, res) {
         results.push(rows[0]);
       }
       await client.query("COMMIT");
-      await logAction(req.user.userId, "MARK_ATTENDANCE", "attendance", null, { facultyCourseId, classDate, count: entries.length });
-      res.json(results);
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;
     } finally {
       client.release();
     }
+    await logAction(req.user.userId, "MARK_ATTENDANCE", "attendance", null, { facultyCourseId, classDate, count: entries.length });
+    await repredictSafely("attendance save", async () => {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT student_id FROM enrollments WHERE enrollment_id = ANY($1) AND faculty_course_id = $2`,
+        [entries.map((e) => e.enrollmentId), facultyCourseId]
+      );
+      await predictForMany(rows.map((r) => r.student_id), { trigger: "faculty_attendance" });
+    });
+    res.json(results);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }
