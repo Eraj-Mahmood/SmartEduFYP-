@@ -128,6 +128,22 @@ def health():
     return {"status": "ok", "model": package.get("model_name"), "features_expected": FEATURE_NAMES}
 
 
+MAX_BATCH = 2000
+
+
+class BatchPredictRequest(BaseModel):
+    rows: list[dict]
+
+
 @app.post("/predict")
 def predict(req: PredictRequest):
     return predict_rows([req.features])[0]
+
+
+@app.post("/predict/batch")
+def predict_batch(req: BatchPredictRequest):
+    if not req.rows:
+        raise HTTPException(status_code=400, detail="rows must not be empty")
+    if len(req.rows) > MAX_BATCH:
+        raise HTTPException(status_code=400, detail=f"At most {MAX_BATCH} rows per call (got {len(req.rows)})")
+    return {"results": predict_rows(req.rows)}
