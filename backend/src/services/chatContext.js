@@ -11,7 +11,7 @@ const MAX_INTERVENTIONS = 3;
 
 /** buildChatContext(studentId) -> the chat context (see the shape below). */
 async function buildChatContext(studentId, db = pool) {
-  const [o, nextSteps, interventions] = await Promise.all([
+  const [o, nextSteps, interventions, user] = await Promise.all([
     getStudentOverview(studentId, db),
     getNextSteps(studentId),
     db.query(
@@ -21,6 +21,7 @@ async function buildChatContext(studentId, db = pool) {
        ORDER BY n.sent_at DESC LIMIT $2`,
       [studentId, MAX_INTERVENTIONS]
     ),
+    db.query("SELECT u.email FROM students s JOIN users u ON u.user_id = s.user_id WHERE s.student_id = $1", [studentId]),
   ]);
   const p = o.latestPrediction;
   const w = o.weakestCourse && o.courses.find((c) => c.course_code === o.weakestCourse.course_code);
@@ -29,6 +30,7 @@ async function buildChatContext(studentId, db = pool) {
     student: {
       name: o.profile.full_name,
       roll_no: o.profile.roll_no,
+      email: user.rows[0].email,
       department: o.profile.department,
       semester: o.profile.current_semester,
     },

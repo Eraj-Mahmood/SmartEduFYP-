@@ -1,0 +1,15 @@
+{
+  "_about": "Contact details the chat assistant gives for wellbeing and 'who can help' questions. PLACEHOLDERS: replace every value with your campus's real, checked details before going live. The assistant never invents contacts; it only repeats what is here.",
+  "office": {
+    "name": "Student Support Office",
+    "location": "Admin Block, Room 12",
+    "phone": "+92-000-0000000",
+    "email": "support@smartedu.edu",
+    "hours": "Monday to Friday, 9 am to 5 pm"
+  },
+  "emergency": {
+    "label": "Rescue 1122",
+    "phone": "1122",
+    "note": "or go to the nearest hospital emergency department"
+  }
+}
