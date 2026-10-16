@@ -1,79 +1,143 @@
-import { useEffect, useState } from "react";
-import client from "../../api/client";
-import { PortalShell, Card, RiskBadge } from "../../components/Shell";
+import { Link } from "react-router-dom";
+import { PortalShell } from "../../components/Shell";
+import { Card, StatCard, ChartCard, DataTable, EmptyState, Skeleton, Button, Icons } from "../../components/ui";
+import { Legend } from "../../components/charts/theme";
+import useApi from "../../lib/useApi";
+import { timeAgo } from "../../lib/format";
+import { RiskDonut, DepartmentRiskChart, stackLegend } from "./AdminCharts";
+import RunPredictionsCard from "./RunPredictionsCard";
+import RiskBar from "../faculty/RiskBar";
 
-const LINKS = [
-  { href: "/admin", label: "Overview" },
-  { href: "/admin/users", label: "Users" },
-  { href: "/admin/assignments", label: "Assignments" },
-  { href: "/admin/interventions", label: "Interventions" },
-];
+const STATUS_STYLE = {
+  completed: "bg-safe-50 text-safe-700 ring-safe-500/30",
+  running: "bg-brand-50 text-brand ring-brand/30",
+  queued: "bg-brand-50 text-brand ring-brand/30",
+  failed: "bg-danger-50 text-danger-700 ring-danger-500/30",
+};
+
+function duration(secs) {
+  if (secs == null) return "—";
+  return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState(null);
-  const [predictions, setPredictions] = useState([]);
+  const dash = useApi("/admin/dashboard");
+  const runs = useApi("/admin/predictions/runs", { params: { limit: 10 } });
 
-  useEffect(() => {
-    client.get("/admin/dashboard").then((res) => setStats(res.data));
-    client.get("/admin/predictions").then((res) => setPredictions(res.data.rows));
-  }, []);
-
-  if (!stats) return <PortalShell title="Admin" links={LINKS}><p>Loading...</p></PortalShell>;
-
-  // de-duplicate the flat (one row per enrollment) response down to one row per student
-  const seen = new Set();
-  const studentRows = [];
-  for (const row of predictions) {
-    if (seen.has(row.student_id)) continue;
-    seen.add(row.student_id);
-    studentRows.push(row);
+  function refreshAll() {
+    dash.reload({ quiet: true });
+    runs.reload({ quiet: true });
   }
 
-  return (
-    <PortalShell title="Admin" links={LINKS}>
-      <h1 className="font-display text-2xl mb-5">Institution Overview</h1>
+  if (dash.error && !dash.data) {
+    return (
+      <PortalShell>
+        <Card>
+          <EmptyState icon={<Icons.AlertOctagon size={22} />} message="We couldn't load the overview" detail={dash.error} action={<Button variant="secondary" onClick={() => dash.reload()}>Try again</Button>} />
+        </Card>
+      </PortalShell>
+    );
+  }
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
-        <Card title="Students"><p className="text-4xl font-display">{stats.totalStudents}</p></Card>
-        <Card title="Faculty"><p className="text-4xl font-display">{stats.totalFaculty}</p></Card>
-        <Card title="Courses"><p className="text-4xl font-display">{stats.totalCourses}</p></Card>
+  const d = dash.data;
+  const k = d?.kpis;
+  const trendById = Object.fromEntries((d?.runsTrend || []).map((r) => [r.id, r]));
+  const flaggedPct = k && k.predicted ? Math.round((100 * k.flagged) / k.predicted) : 0;
+
+  return (
+    <PortalShell>
+      <div className="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+        <div>
+          <h1 className="font-display text-2xl sm:text-[28px] leading-tight">Institution overview</h1>
+          <p className="text-sm text-muted mt-1">Every figure uses each student's latest prediction.</p>
+        </div>
+        <Link to="/admin/interventions" className="self-start sm:self-auto inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">
+          <Icons.Send size={15} /> Review flagged students
+        </Link>
       </div>
 
-      <Card title="Risk Breakdown (latest predictions)" className="mb-6">
-        <div className="flex gap-4 flex-wrap">
-          {stats.riskBreakdown.map((r) => (
-            <div key={r.predicted_label} className="flex items-center gap-2">
-              <RiskBadge label={r.predicted_label} />
-              <span className="text-sm text-ink/60">{r.count} students</span>
-            </div>
-          ))}
-          {stats.riskBreakdown.length === 0 && <p className="text-ink/40 text-sm">No predictions generated yet.</p>}
-        </div>
-      </Card>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-5">
+        {k ? (
+          <>
+            <StatCard label="Students" value={k.students.toLocaleString()} icon={<Icons.Users size={14} />} />
+            <StatCard label="Faculty" value={k.faculty} />
+            <StatCard label="Courses" value={k.courses} icon={<Icons.Book size={14} />} />
+            <StatCard label="Flagged" value={k.flagged.toLocaleString()} tone="danger" sublabel={`${flaggedPct}% of students`} />
+            <StatCard
+              label="Last run"
+              value={k.lastRun ? timeAgo(k.lastRun.finished_at || k.lastRun.started_at) : "Never"}
+              sublabel={k.lastRun ? `#${k.lastRun.id} · ${k.lastRun.status} · ${k.lastRun.done.toLocaleString()} done` : "No batch runs yet"}
+              icon={<Icons.Clock size={14} />}
+              className="col-span-2 md:col-span-1 [&_.font-display]:text-[22px]"
+            />
+          </>
+        ) : (
+          [0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className={`h-[108px] ${i === 4 ? "col-span-2 md:col-span-1" : ""}`} rounded="rounded-card" />)
+        )}
+      </div>
 
-      <Card title="Students with Predictions">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-ink/50 border-b border-black/10">
-              <th className="py-2">Roll No</th>
-              <th>Name</th>
-              <th>Risk</th>
-            </tr>
-          </thead>
-          <tbody>
-            {studentRows.map((s) => (
-              <tr key={s.student_id} className="border-b border-black/5">
-                <td className="py-2">{s.roll_no}</td>
-                <td>{s.full_name}</td>
-                <td><RiskBadge label={s.predicted_label} /></td>
-              </tr>
-            ))}
-            {studentRows.length === 0 && (
-              <tr><td colSpan={3} className="py-6 text-center text-ink/40">No predictions generated yet. Log in as a student and click "Predict my outcome."</td></tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
+      <div className="grid gap-4 lg:grid-cols-2 mb-4">
+        <Card title="Risk across all students" subtitle="Latest label per student">
+          {d ? d.kpis.predicted ? <RiskDonut counts={d.riskCounts} /> : <EmptyState message="No predictions yet" detail="Start a run to score every student." compact /> : <Skeleton className="h-[190px]" />}
+        </Card>
+        <ChartCard
+          title="Risk by department"
+          subtitle="Number of students per latest label"
+          loading={!d}
+          empty={d && !d.kpis.predicted}
+          height={240}
+          footer={<Legend items={stackLegend} />}
+        >
+          {d && <DepartmentRiskChart rows={d.riskByDepartment} />}
+        </ChartCard>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-5">
+        <div className="lg:col-span-2">
+          <RunPredictionsCard activeRun={k?.lastRun} onFinished={refreshAll} />
+        </div>
+        <Card title="Recent runs" subtitle="Newest first" className="lg:col-span-3">
+          <DataTable
+            loading={runs.loading && !runs.data}
+            rows={runs.data || []}
+            rowKey={(r) => r.id}
+            minWidth={560}
+            emptyMessage="No batch runs yet"
+            initialSort={{ key: "started_at", dir: "desc" }}
+            columns={[
+              { key: "started_at", header: "Started", sortValue: (r) => new Date(r.started_at).getTime(), render: (r) => (
+                  <span className="whitespace-nowrap">
+                    {timeAgo(r.started_at)}
+                    <span className="block text-xs text-muted">took {duration(r.duration_seconds)}</span>
+                  </span>
+                ),
+              },
+              { key: "scope_name", header: "Scope", className: "whitespace-nowrap" },
+              {
+                key: "status",
+                header: "Status",
+                render: (r) => <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_STYLE[r.status]}`}>{r.status}</span>,
+              },
+              {
+                key: "done",
+                header: "Done / failed",
+                align: "right",
+                render: (r) => (
+                  <span className="whitespace-nowrap tabular-nums">
+                    {r.done.toLocaleString()} / <span className={r.failed ? "text-danger-700 font-medium" : "text-muted"}>{r.failed.toLocaleString()}</span>
+                  </span>
+                ),
+              },
+              {
+                key: "result",
+                header: "Result",
+                sortable: false,
+                render: (r) => (trendById[r.id] ? <div className="w-24"><RiskBar counts={trendById[r.id]} showText={false} /></div> : "—"),
+              },
+            ]}
+          />
+        </Card>
+      </div>
     </PortalShell>
   );
 }

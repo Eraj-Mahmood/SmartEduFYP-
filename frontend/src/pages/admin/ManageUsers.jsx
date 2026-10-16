@@ -1,19 +1,14 @@
 import { useEffect, useState } from "react";
 import client from "../../api/client";
-import { PortalShell, Card } from "../../components/Shell";
-
-const LINKS = [
-  { href: "/admin", label: "Overview" },
-  { href: "/admin/users", label: "Users" },
-  { href: "/admin/assignments", label: "Assignments" },
-  { href: "/admin/interventions", label: "Interventions" },
-];
+import { PortalShell } from "../../components/Shell";
+import { Card, Button, DataTable, Pagination, Icons } from "../../components/ui";
 
 export default function ManageUsers() {
   const [tab, setTab] = useState("student");
   const [students, setStudents] = useState([]);
   const [studentPage, setStudentPage] = useState(1);
   const [studentTotalPages, setStudentTotalPages] = useState(1);
+  const [studentTotal, setStudentTotal] = useState(0);
   const [studentSearch, setStudentSearch] = useState("");
   const [faculty, setFaculty] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -28,6 +23,7 @@ export default function ManageUsers() {
         setStudents(res.data.rows);
         setStudentTotalPages(res.data.totalPages);
         setStudentPage(res.data.page);
+        setStudentTotal(res.data.total);
       });
   }
   function loadFaculty() {
@@ -71,124 +67,118 @@ export default function ManageUsers() {
     }
   }
 
-  return (
-    <PortalShell title="Admin" links={LINKS}>
-      <h1 className="font-display text-2xl mb-5">Manage Users</h1>
+  const tabBtn = (key, label) => (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={tab === key}
+      onClick={() => setTab(key)}
+      className={`rounded-md px-4 py-1.5 text-sm transition ${tab === key ? "bg-surface shadow-card font-medium text-ink" : "text-muted hover:text-ink"}`}
+    >
+      {label}
+    </button>
+  );
 
-      <div className="flex gap-2 mb-5">
-        <button onClick={() => setTab("student")} className={`px-3 py-1.5 rounded text-sm ${tab === "student" ? "bg-brand text-white" : "bg-white border border-black/10"}`}>Students</button>
-        <button onClick={() => setTab("faculty")} className={`px-3 py-1.5 rounded text-sm ${tab === "faculty" ? "bg-brand text-white" : "bg-white border border-black/10"}`}>Faculty</button>
+  const studentColumns = [
+    { key: "roll_no", header: "Roll no", sortable: false, className: "font-mono text-xs whitespace-nowrap" },
+    { key: "full_name", header: "Name", sortable: false, className: "whitespace-nowrap" },
+    { key: "department", header: "Dept", sortable: false },
+    { key: "cgpa", header: "CGPA", sortable: false, align: "right" },
+    { key: "email", header: "Email", sortable: false, className: "text-muted" },
+    { key: "is_active", header: "Active", sortable: false, render: (r) => (r.is_active ? "Yes" : "No") },
+  ];
+  const facultyColumns = [
+    { key: "employee_no", header: "Employee no", sortable: false, className: "font-mono text-xs whitespace-nowrap" },
+    { key: "full_name", header: "Name", sortable: false, className: "whitespace-nowrap" },
+    { key: "department", header: "Dept", sortable: false },
+    { key: "classes_taught", header: "Classes", sortable: false, align: "right" },
+    { key: "email", header: "Email", sortable: false, className: "text-muted" },
+    { key: "is_active", header: "Active", sortable: false, render: (r) => (r.is_active ? "Yes" : "No") },
+  ];
+
+  return (
+    <PortalShell>
+      <h1 className="font-display text-2xl sm:text-[28px] mb-5">Manage users</h1>
+
+      <div role="tablist" aria-label="User type" className="inline-flex rounded-lg bg-ink/[0.05] p-1 mb-5">
+        {tabBtn("student", "Students")}
+        {tabBtn("faculty", "Faculty")}
       </div>
 
       {error && (
-        <Card className="mb-5 border-l-4 border-l-danger">
-          <p className="text-sm text-danger">{error}</p>
-        </Card>
+        <div role="alert" className="mb-5 flex items-start gap-2 rounded-card border border-danger-500/30 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+          <Icons.AlertOctagon size={16} className="mt-0.5" /> {error}
+        </div>
       )}
 
       {issuedCred && (
-        <Card className="mb-5 border-l-4 border-l-safe">
-          <p className="text-sm">
-            Account created. Share these credentials with the user (they'll be forced to reset the password on first login):
+        <div role="status" className="mb-5 rounded-card border border-safe-500/30 bg-safe-50 px-4 py-3 text-sm">
+          <p className="flex items-center gap-2 font-medium text-safe-700">
+            <Icons.CheckCircle size={16} /> Account created
           </p>
+          <p className="mt-1 text-ink/80">Share these credentials with the user (they'll be forced to reset the password on first login):</p>
           <p className="font-mono text-sm mt-2">Email: {issuedCred.email}</p>
           <p className="font-mono text-sm">Temp password: {issuedCred.password}</p>
-        </Card>
+        </div>
       )}
 
       {tab === "student" ? (
-        <Card title="Create Student Account">
-          <form onSubmit={createStudent} className="grid grid-cols-2 gap-3">
-            <input required placeholder="Email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="border border-black/10 rounded px-3 py-2" />
-            <input required placeholder="Full name" value={form.full_name || ""} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="border border-black/10 rounded px-3 py-2" />
-            <input required placeholder="Roll No" value={form.roll_no || ""} onChange={(e) => setForm({ ...form, roll_no: e.target.value })} className="border border-black/10 rounded px-3 py-2" />
-            <select required value={form.department_id || ""} onChange={(e) => setForm({ ...form, department_id: Number(e.target.value) })} className="border border-black/10 rounded px-3 py-2 text-ink/80">
+        <Card title="Create student account">
+          <form onSubmit={createStudent} className="grid gap-3 sm:grid-cols-2">
+            <input required placeholder="Email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="field" />
+            <input required placeholder="Full name" value={form.full_name || ""} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="field" />
+            <input required placeholder="Roll No" value={form.roll_no || ""} onChange={(e) => setForm({ ...form, roll_no: e.target.value })} className="field" />
+            <select required value={form.department_id || ""} onChange={(e) => setForm({ ...form, department_id: Number(e.target.value) })} className="field">
               <option value="" disabled>Select department</option>
               {departments.map((d) => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
             </select>
-            <select value={form.gender || ""} onChange={(e) => setForm({ ...form, gender: e.target.value })} className="border border-black/10 rounded px-3 py-2 text-ink/80">
+            <select value={form.gender || ""} onChange={(e) => setForm({ ...form, gender: e.target.value })} className="field">
               <option value="" disabled>Select gender</option>
               <option value="Male">Male</option>
               <option value="Female">Female</option>
             </select>
-            <input type="number" placeholder="Age" value={form.age || ""} onChange={(e) => setForm({ ...form, age: Number(e.target.value) })} className="border border-black/10 rounded px-3 py-2" />
-            <button type="submit" className="col-span-2 bg-brand text-white rounded py-2 hover:bg-brand-dark transition">Create student</button>
+            <input type="number" placeholder="Age" value={form.age || ""} onChange={(e) => setForm({ ...form, age: Number(e.target.value) })} className="field" />
+            <Button type="submit" className="sm:col-span-2">Create student</Button>
           </form>
         </Card>
       ) : (
-        <Card title="Create Faculty Account">
-          <form onSubmit={createFaculty} className="grid grid-cols-2 gap-3">
-            <input required placeholder="Email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="border border-black/10 rounded px-3 py-2" />
-            <input required placeholder="Full name" value={form.full_name || ""} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="border border-black/10 rounded px-3 py-2" />
-            <input required placeholder="Employee No" value={form.employee_no || ""} onChange={(e) => setForm({ ...form, employee_no: e.target.value })} className="border border-black/10 rounded px-3 py-2" />
-            <select required value={form.department_id || ""} onChange={(e) => setForm({ ...form, department_id: Number(e.target.value) })} className="border border-black/10 rounded px-3 py-2 text-ink/80">
+        <Card title="Create faculty account">
+          <form onSubmit={createFaculty} className="grid gap-3 sm:grid-cols-2">
+            <input required placeholder="Email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="field" />
+            <input required placeholder="Full name" value={form.full_name || ""} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="field" />
+            <input required placeholder="Employee No" value={form.employee_no || ""} onChange={(e) => setForm({ ...form, employee_no: e.target.value })} className="field" />
+            <select required value={form.department_id || ""} onChange={(e) => setForm({ ...form, department_id: Number(e.target.value) })} className="field">
               <option value="" disabled>Select department</option>
               {departments.map((d) => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
             </select>
-            <input placeholder="Designation" value={form.designation || ""} onChange={(e) => setForm({ ...form, designation: e.target.value })} className="border border-black/10 rounded px-3 py-2" />
-            <button type="submit" className="col-span-2 bg-brand text-white rounded py-2 hover:bg-brand-dark transition">Create faculty</button>
+            <input placeholder="Designation" value={form.designation || ""} onChange={(e) => setForm({ ...form, designation: e.target.value })} className="field" />
+            <Button type="submit" className="sm:col-span-2">Create faculty</Button>
           </form>
         </Card>
       )}
 
-      <Card title={tab === "student" ? "All Students" : "All Faculty"} className="mt-5">
+      <Card title={tab === "student" ? "All students" : "All faculty"} className="mt-5">
         {tab === "student" && (
-          <div className="mb-4 flex items-center justify-between gap-3">
+          <label className="relative block mb-4 sm:w-80">
+            <span className="sr-only">Search students</span>
+            <Icons.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <input
               placeholder="Search by roll no, name, or email..."
               value={studentSearch}
               onChange={(e) => setStudentSearch(e.target.value)}
-              className="border border-black/10 rounded px-3 py-2 text-sm w-72"
+              className="field pl-9"
             />
-            <span className="text-xs text-ink/40">Page {studentPage} of {studentTotalPages}</span>
-          </div>
+          </label>
         )}
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-ink/50 border-b border-black/10">
-              {tab === "student" ? (
-                <><th className="py-2">Roll No</th><th>Name</th><th>Dept</th><th>CGPA</th><th>Email</th><th>Active</th></>
-              ) : (
-                <><th className="py-2">Employee No</th><th>Name</th><th>Dept</th><th>Classes</th><th>Email</th><th>Active</th></>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {(tab === "student" ? students : faculty).map((row, i) => (
-              <tr key={i} className="border-b border-black/5">
-                {tab === "student" ? (
-                  <>
-                    <td className="py-2">{row.roll_no}</td><td>{row.full_name}</td><td>{row.department}</td>
-                    <td>{row.cgpa}</td><td>{row.email}</td><td>{row.is_active ? "Yes" : "No"}</td>
-                  </>
-                ) : (
-                  <>
-                    <td className="py-2">{row.employee_no}</td><td>{row.full_name}</td><td>{row.department}</td>
-                    <td>{row.classes_taught}</td><td>{row.email}</td><td>{row.is_active ? "Yes" : "No"}</td>
-                  </>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {tab === "student" && studentTotalPages > 1 && (
-          <div className="flex items-center justify-center gap-3 mt-4">
-            <button
-              disabled={studentPage <= 1}
-              onClick={() => loadStudents(studentPage - 1, studentSearch)}
-              className="px-3 py-1.5 rounded border border-black/10 text-sm disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <span className="text-sm text-ink/50">{studentPage} / {studentTotalPages}</span>
-            <button
-              disabled={studentPage >= studentTotalPages}
-              onClick={() => loadStudents(studentPage + 1, studentSearch)}
-              className="px-3 py-1.5 rounded border border-black/10 text-sm disabled:opacity-40"
-            >
-              Next
-            </button>
-          </div>
+        <DataTable
+          rows={tab === "student" ? students : faculty}
+          rowKey={(r) => (tab === "student" ? r.student_id : r.faculty_id)}
+          columns={tab === "student" ? studentColumns : facultyColumns}
+          minWidth={720}
+          emptyMessage={tab === "student" ? "No students found" : "No faculty yet"}
+        />
+        {tab === "student" && (
+          <Pagination page={studentPage} totalPages={studentTotalPages} total={studentTotal} onPage={(p) => loadStudents(p, studentSearch)} label="students" />
         )}
       </Card>
     </PortalShell>
