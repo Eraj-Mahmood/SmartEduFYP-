@@ -21,7 +21,8 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     `/api/auth/login` (`LOGIN_RATE_LIMIT_MAX`, default 20, per `LOGIN_RATE_LIMIT_WINDOW_MIN`
     minutes, default 15, per IP; 200 in the local `.env`), mounts the route files, and on start
     marks unfinished `prediction_runs` as failed (runs are processed in memory).
-  - `config/db.js` — single `pg` Pool from `DATABASE_URL`.
+  - `config/db.js` — single `pg` Pool from `DATABASE_URL`. DATE columns (OID 1082) are returned
+    as raw `'YYYY-MM-DD'` strings (no UTC day shift).
   - `middleware/auth.js` — `authenticate` (JWT Bearer → `req.user = {userId, role, email}`)
     and `authorize(...roles)`. Role is enforced server-side on every router.
   - `middleware/audit.js` — `logAction()` writes to `audit_log`, never throws.
@@ -29,18 +30,34 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
   - `routes/*Routes.js` + `controllers/*Controller.js`, one pair per area:
     - `auth` — `POST /login` (returns token, role, profile), `POST /change-password`, `GET /me`
     - `student` — read-only: dashboard, results, attendance, history, prediction,
-      `POST /prediction/refresh` (runs `predictForStudent`). Student responses include
-      `final_label`, `reasons` and `policy_reason`, never `drivers` (SHAP numbers) or `features`.
-    - `faculty` — own classes only (`assertOwnsClass`): roster, attendance, upsert results, mark
-      attendance. Inputs validated with express-validator (marks 0-100, date, status enum). The server
+      `GET /prediction/timeline` (latest prediction per day, last 30 days: date, final_label,
+      projected_cgpa), `POST /prediction/refresh` (runs `predictForStudent`).
+      `GET /dashboard` returns `profile`, `officialCgpa` (imported) and `projectedCgpa` /
+      `provisionalSgpa` / `previousSgpa` (from the latest prediction's features), each with
+      `label` + `source`; `liveAttendance` (live, else imported, with `source`); `latestPrediction`;
+      `weakestCourse`; `courses` (marks, derived grade, attendance %); `coursesBelowPassMark`;
+      `thresholds` (pass mark + policy.json). Student responses never include probabilities,
+      `drivers` (SHAP numbers) or `features`.
+    - `faculty` — own classes only (`assertOwnsClass`, 403 otherwise): `GET /classes` (with latest-label
+      counts `safe` / `at_risk` / `dropout_likely`), `GET /classes/:id/roster` (adds final_label, reasons,
+      policy_reason, projected_cgpa, attendance % in the class, last_predicted_at),
+      `GET /classes/:id/risk-summary` (counts, A-F grade distribution, attendance % per session date),
+      `GET /classes/:id/attendance`, `PUT /results/:enrollmentId` (returns the saved row with the
+      server-derived grade plus `prediction: {old_label, new_label, changed, reasons, projected_cgpa}`),
+      `POST /attendance` (every enrollment must belong to the class, else 403 and nothing is written).
+      Inputs validated with express-validator (marks 0-100, date, status enum, ids). The server
       derives the grade (`services/grading.js`); a client-sent grade is ignored. Saves set
       `data_source='live'` and re-predict (see below).
     - `admin` — dashboard, user provisioning (temp passwords), directory, courses,
       faculty↔course assignment, enrollments, read-only class records, interventions/notifications,
       batch runs: `POST /predictions/run {scope: "all"|"department"|"class", scopeId}` → `202` with the
-      `prediction_runs` row (one run at a time, else `409`); `GET /predictions/runs/:id` for progress.
-      Dashboard and at-risk lists use each student's **latest** `final_label`;
-      `/at-risk-students` and `/predictions` take `?limit` (default 500, max 5000).
+      `prediction_runs` row (one run at a time, else `409`); `GET /predictions/runs/:id` for progress;
+      `GET /predictions/runs?limit=20` lists recent runs (scope name, who, duration).
+      `GET /dashboard` → `kpis` (students, faculty, courses, flagged, predicted, lastRun), `riskCounts`,
+      `riskByDepartment`, `runsTrend` (label counts per run). `/at-risk-students` and `/predictions` are
+      server-paginated `{rows, total, page, limit, totalPages}` with filters `department` (id), `label`,
+      `semester`, `search` and `sort` (severity | recent | roll | cgpa); `limit` ≤ 100. All of these use
+      each student's **latest** `final_label`.
     - `notifications` — any logged-in user, scoped to `recipient_user_id`
   - `scripts/createAdmin.js`, `scripts/hashPassword.js`, `scripts/migrate.js`.
   - `services/` — the prediction pipeline:
@@ -55,10 +72,13 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       attendance < 60% → Dropout-Likely; CGPA < 2.30 → At-Risk; attendance < `min_attendance_pct` (75%)
       → At-Risk. final = more severe of model and policy (the policy only escalates). Thresholds from
       `evaluation/policy_tree.py` (the rule set matches 99.95% of dataset labels).
-    - `reasons.js` — `toReasons(drivers, features)` → up to 3 student-friendly sentences, no SHAP numbers.
+    - `reasons.js` — `toReasons(drivers, features, finalLabel)` → up to 3 student-friendly sentences, no
+      SHAP numbers. Wording never sounds more severe than `finalLabel` ("high-risk range" and
+      "severe-absence limit" only for Dropout-Likely; otherwise e.g. "Your CGPA (1.98) is below 2.00").
     - `predictionService.js` — `predictForStudent(id, {trigger})`, `predictForMany(ids, {runId, trigger})`:
-      build features → ML `/predict` or `/predict/batch` (on failure `ruleBasedFallback`,
-      `source='fallback'`, `drivers=null`) → policy → reasons → insert into `predictions`.
+      build features → ML `/predict` or `/predict/batch` (on failure `ruleBasedFallback`, which uses
+      the policy.json rules, `source='fallback'`, `drivers=null`) → policy → reasons → insert into
+      `predictions`.
     - `predictionRuns.js` — admin runs in the background, 1000 students per chunk.
     - `grading.js` — grade from marks (equal weights; A ≥ 85, B ≥ 70, C ≥ 55, D ≥ 40), same as the seed.
   - **Re-prediction** happens on student refresh (`student_refresh`), after every faculty result save
@@ -77,8 +97,32 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
   per single call, ~7-10 s per 2000-row batch (SHAP dominates).
   Tests: `cd ml_service; .venv\Scripts\python -m pip install -r requirements-dev.txt;
   .venv\Scripts\python -m pytest tests`.
-  If the service is unreachable the backend uses `ruleBasedFallback()` (CGPA/warnings
-  thresholds, `model_version = "rule_fallback"`, `source = 'fallback'`).
+  If the service is unreachable the backend uses `ruleBasedFallback()` (the policy.json rules,
+  `model_version = "rule_fallback"`, `source = 'fallback'`).
+- **Frontend** (`frontend/src/`)
+  - `components/ui/` — the UI kit (import from `components/ui`): `RiskChip` (icon + text; `supportive`
+    shows the student wording with the formal label underneath, `short` the staff wording),
+    `Card`, `StatCard` (label, value, sublabel, trend, info tooltip, tone), `ChartCard` (title,
+    subtitle, loading/empty states), `EmptyState`, `Skeleton`/`SkeletonText`/`SkeletonCard`,
+    `Toast` (`ToastProvider` in App.jsx + `useToast()`), `Drawer` (right panel, full screen on phones),
+    `DataTable` (sortable columns, client-side or server-side via `sort`/`onSortChange`; scrolls
+    horizontally inside its card) + `Pagination`, `Button`, `Tooltip`, `icons.jsx`.
+    `tokens.js` holds the design tokens (colours) shared by `tailwind.config.js` and the charts.
+    `risk.js` is the one map of label wording (Safe → "You're on track", At-Risk → "Needs attention",
+    Dropout-Likely → "High risk - let's act now").
+  - `components/Shell.jsx` — `PortalShell`: per-role navigation (`NAV`), active link state, bell,
+    collapsible menu below `md`. `RiskBadge`/`Card` exports kept for compatibility.
+  - `components/charts/theme.jsx` — shared recharts axis/grid styles, `TooltipBox`, HTML `Legend`.
+  - `lib/useApi.js` (`{data, error, loading, reload, setData}`), `lib/format.js` (timeAgo, gpa, pct,
+    shortDate - parses `YYYY-MM-DD` as a local date).
+  - Pages: student (`StudentDashboard` + `StudentCharts`, Results, Attendance), faculty
+    (`FacultyDashboard`, `ClassRoster` with filters/search/drawer/inline marks + label-change toast,
+    `MarkAttendance`), admin (`AdminDashboard` + `AdminCharts` + `RunPredictionsCard`, Interventions,
+    ManageUsers, Assignments). The student dashboard keeps a hidden `#assistant-panel-slot` for Phase 3.
+  - Screenshots: `cd frontend; npm run screenshots` (Playwright; one-time `npx playwright install
+    chromium`) logs in as admin, ayesha.khan and the 6 demo students and saves full-page screenshots of
+    every main screen at 1280px and 390px to `docs/screenshots/`. Needs all three services running; it
+    also reports horizontal overflow and page errors.
 - **Database** (`database/`)
   - `schema.sql` — tables: users, departments (5 seeded), students, faculty, courses,
     faculty_courses, enrollments, course_results, attendance,

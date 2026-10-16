@@ -6,7 +6,13 @@ import { Card, Button, DataTable, Icons } from "../../components/ui";
 // Read-only lists keep their original order (no sorting) and scroll inside their card.
 const col = (key, header, extra = {}) => ({ key, header, sortable: false, ...extra });
 function Scroll({ children }) {
-  return <div className="-mx-5 px-5 max-h-72 overflow-y-auto">{children}</div>;
+  // the bottom fade shows there is more to scroll to
+  return (
+    <div className="relative -mx-5">
+      <div className="px-5 max-h-72 overflow-y-auto pb-4">{children}</div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent" aria-hidden="true" />
+    </div>
+  );
 }
 
 export default function Assignments() {

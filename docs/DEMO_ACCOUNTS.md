@@ -36,16 +36,21 @@ AI301 and AI302 are Dr. Khan's courses.
 The student names in the app are placeholders ("Student 100040") unless
 `database/generate_student_names.py` has been run.
 
-## Live re-prediction demo (Phase 1)
+## Live re-prediction demo
 
 Faculty saves re-predict the student straight away. A realistic change that moves a label
-(checked on 2026-10-16):
+(checked on 2026-10-16 with the Phase 2 screens):
 
-1. Log in as `ayesha.khan@smartedu.edu`, open **AI301 section A**, find **BU-112907**.
-2. Change **Quiz avg 57.87 → 75** and **Midterm 70.13 → 86** (keep Assignment 67.18, Final 80.40) and save.
-   The server re-derives the AI301 grade (C → B).
-3. Log in as `student112907@smartedu.edu`: the prediction is now **Safe** (was **At-Risk**).
-   Provisional SGPA 1.99 → 2.12 and projected CGPA 2.23 → 2.30, which crosses the 2.30
-   good-standing threshold.
+1. Log in as `ayesha.khan@smartedu.edu` → **My classes** → **View class** on **AI301 · Section A**.
+2. In the **BU-112907** row change **Quiz 57.87 → 75** and **Midterm 70.13 → 88** (keep Assignment
+   67.18 and Final 80.40) and press **Save** (or Enter). Without a page reload:
+   - the grade cell changes **C → B** (derived on the server),
+   - the risk chip changes **Needs attention → Safe**,
+   - a toast reads **"BU-112907: At-Risk → Safe"**.
+3. Log in as `student112907@smartedu.edu`: the status is **"You're on track"** (Safe), with projected
+   CGPA now above the 2.30 good-standing threshold.
 
-To undo it, save the original marks again (Quiz 57.87, Midterm 70.13); the student goes back to At-Risk.
+To undo it, type the original marks again (Quiz 57.87, Midterm 70.13) and save; the student goes back to At-Risk.
+
+Admin part of the demo: **Overview → Run predictions → Department → Artificial Intelligence → Start run**.
+The progress bar fills in about 15 seconds and the charts refresh when it finishes.

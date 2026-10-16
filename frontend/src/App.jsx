@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import { ToastProvider } from "./components/ui/Toast";
-import UiKit from "./pages/UiKit"; // TEMPORARY (Phase 2 review) - remove with its route
 
 import Login from "./pages/Login";
 
@@ -26,7 +25,6 @@ export default function App() {
         <ToastProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/ui-kit" element={<UiKit />} />
 
           {/* STUDENT PORTAL - read-only */}
           <Route path="/student" element={<ProtectedRoute allowedRole="student"><StudentDashboard /></ProtectedRoute>} />

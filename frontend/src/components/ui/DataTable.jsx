@@ -67,7 +67,7 @@ export default function DataTable({
                   scope="col"
                   style={c.width ? { width: c.width } : undefined}
                   aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
-                  className={`sticky top-0 bg-surface border-b border-line px-3 first:pl-5 last:pr-5 py-2.5 text-xs font-medium uppercase tracking-wide text-muted whitespace-nowrap ${align(c.align)}`}
+                  className={`bg-surface border-b border-line px-3 first:pl-5 last:pr-5 py-2.5 text-xs font-medium uppercase tracking-wide text-muted whitespace-nowrap ${align(c.align)}`}
                 >
                   {sortable ? (
                     <button
