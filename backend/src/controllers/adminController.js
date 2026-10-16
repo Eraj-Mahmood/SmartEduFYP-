@@ -1,6 +1,15 @@
 const bcrypt = require("bcrypt");
 const pool = require("../config/db");
 const { logAction } = require("../middleware/audit");
+const { startRun, getRun } = require("../services/predictionRuns");
+
+// Latest prediction per student (uses idx_predictions_student_latest)
+const LATEST_PREDICTIONS = `SELECT DISTINCT ON (student_id) * FROM predictions
+         ORDER BY student_id, created_at DESC, prediction_id DESC`;
+
+function listLimit(req) {
+  return Math.min(5000, Math.max(1, parseInt(req.query.limit) || 500));
+}
 
 function randomPassword() {
   return Math.random().toString(36).slice(-6) + Math.random().toString(36).slice(-4).toUpperCase() + "!1";
@@ -23,10 +32,12 @@ async function dashboard(req, res) {
       pool.query("SELECT COUNT(*) FROM students"),
       pool.query("SELECT COUNT(*) FROM faculty"),
       pool.query("SELECT COUNT(*) FROM courses"),
+      // final_label is also returned as predicted_label, which the dashboard screen reads
       pool.query(
-        `SELECT p.predicted_label, COUNT(*) FROM predictions p
-         WHERE p.created_at = (SELECT MAX(created_at) FROM predictions p2 WHERE p2.student_id = p.student_id)
-         GROUP BY p.predicted_label`
+        `WITH latest AS (${LATEST_PREDICTIONS})
+         SELECT final_label, final_label AS predicted_label, COUNT(*) FROM latest
+         GROUP BY final_label
+         ORDER BY CASE final_label WHEN 'Dropout-Likely' THEN 0 WHEN 'At-Risk' THEN 1 ELSE 2 END`
       ),
     ]);
     res.json({
@@ -429,17 +440,22 @@ async function sendNotification(req, res) {
   }
 }
 
-/** GET /api/admin/at-risk-students - convenience list for bulk interventions */
+/** GET /api/admin/at-risk-students?limit=500 - students whose LATEST final label is At-Risk or
+ *  Dropout-Likely, most severe first. Limited because a full run flags tens of thousands. */
 async function atRiskStudents(req, res) {
   try {
     const { rows } = await pool.query(
-      `SELECT DISTINCT ON (p.student_id) s.student_id, s.roll_no, s.full_name, u.user_id, u.email,
-              p.predicted_label, p.final_label, p.policy_reason, p.reasons, p.prob_dropout, p.created_at
-       FROM predictions p
+      `WITH latest AS (${LATEST_PREDICTIONS})
+       SELECT s.student_id, s.roll_no, s.full_name, u.user_id, u.email, p.prediction_id,
+              p.final_label AS predicted_label, p.final_label, p.policy_reason, p.reasons,
+              p.prob_dropout, p.created_at
+       FROM latest p
        JOIN students s ON s.student_id = p.student_id
        JOIN users u ON u.user_id = s.user_id
-       WHERE p.predicted_label IN ('At-Risk', 'Dropout-Likely')
-       ORDER BY p.student_id, p.created_at DESC`
+       WHERE p.final_label IN ('At-Risk', 'Dropout-Likely')
+       ORDER BY CASE p.final_label WHEN 'Dropout-Likely' THEN 0 ELSE 1 END, p.prob_dropout DESC, p.created_at DESC
+       LIMIT $1`,
+      [listLimit(req)]
     );
     res.json(rows);
   } catch (err) {
@@ -452,17 +468,18 @@ async function atRiskStudents(req, res) {
  * their current enrollments so you can see which enrollment_id/course/semester
  * it relates to. One row per (prediction, enrollment) pair - a student with
  * 4 classes shows up as 4 rows sharing the same prediction, one per course.
+ * ?limit=500 caps the number of students (most recent predictions first).
  */
 async function predictionsDetailed(req, res) {
   try {
     const { rows } = await pool.query(
       `WITH latest_predictions AS (
-         SELECT DISTINCT ON (student_id) *
-         FROM predictions
-         ORDER BY student_id, created_at DESC
+         SELECT * FROM (${LATEST_PREDICTIONS}) l
+         ORDER BY created_at DESC, prediction_id DESC
+         LIMIT $1
        )
        SELECT p.prediction_id, p.student_id, s.roll_no, s.full_name, p.semester AS prediction_semester,
-              p.predicted_label, p.final_label, p.model_label, p.policy_label, p.policy_reason, p.reasons,
+              p.final_label AS predicted_label, p.final_label, p.model_label, p.policy_label, p.policy_reason, p.reasons,
               p.source, p.prob_safe, p.prob_at_risk, p.prob_dropout, p.created_at,
               e.enrollment_id, e.status AS enrollment_status, fc.semester AS class_semester,
               fc.section, c.course_code, c.title AS course_title
@@ -471,9 +488,36 @@ async function predictionsDetailed(req, res) {
        LEFT JOIN enrollments e ON e.student_id = p.student_id
        LEFT JOIN faculty_courses fc ON fc.faculty_course_id = e.faculty_course_id
        LEFT JOIN courses c ON c.course_id = fc.course_id
-       ORDER BY p.created_at DESC, s.roll_no, c.course_code`
+       ORDER BY p.created_at DESC, s.roll_no, c.course_code`,
+      [listLimit(req)]
     );
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ---------------- BATCH PREDICTION RUNS ----------------
+
+/** POST /api/admin/predictions/run {scope: "all" | "department" | "class", scopeId}
+ *  Starts a background run and returns its id immediately (202). */
+async function runPredictions(req, res) {
+  try {
+    const { scope, scopeId } = req.body;
+    const run = await startRun({ scope, scopeId, startedBy: req.user.userId });
+    await logAction(req.user.userId, "RUN_PREDICTIONS", "prediction_runs", run.id, { scope, scopeId, total: run.total });
+    res.status(202).json(run);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+/** GET /api/admin/predictions/runs/:id - progress of a run */
+async function getPredictionRun(req, res) {
+  try {
+    const run = await getRun(req.params.id);
+    if (!run) return res.status(404).json({ error: "Run not found" });
+    res.json(run);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -486,4 +530,5 @@ module.exports = {
   createCourse, assignFacultyToCourse, unassignFacultyFromCourse,
   enrollStudent, dropEnrollment, classRecords,
   sendNotification, atRiskStudents, predictionsDetailed,
+  runPredictions, getPredictionRun,
 };

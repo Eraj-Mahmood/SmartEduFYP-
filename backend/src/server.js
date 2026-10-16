@@ -10,6 +10,7 @@ const studentRoutes = require("./routes/studentRoutes");
 const facultyRoutes = require("./routes/facultyRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const { markInterruptedRuns } = require("./services/predictionRuns");
 
 const app = express();
 
@@ -43,4 +44,7 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`SmartEdu backend running on http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`SmartEdu backend running on http://localhost:${PORT}`);
+  markInterruptedRuns().catch((e) => console.error("Could not tidy interrupted prediction runs:", e.message));
+});
