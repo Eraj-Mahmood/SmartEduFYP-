@@ -25,8 +25,9 @@ export default function Login() {
     setLoading(true);
     try {
       const data = await login(email, password);
-      // This is the "verification" step: role from the server decides the portal.
-      navigate(`/${data.role}`, { replace: true });
+      // This is the "verification" step: role from the server decides the portal
+      // (after a forced password change when the account still has a temporary password).
+      navigate(data.mustResetPassword ? "/change-password" : `/${data.role}`, { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || "Login failed");
     } finally {

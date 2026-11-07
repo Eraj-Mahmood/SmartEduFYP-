@@ -24,6 +24,12 @@ client.interceptors.response.use(
       }
       window.location.href = "/login";
     }
+    // a temporary password must be changed first: go to the Change Password screen
+    if (err.response?.status === 403 && err.response.data?.code === "PASSWORD_RESET_REQUIRED") {
+      localStorage.setItem("smartedu_must_reset", "1");
+      window.dispatchEvent(new Event("smartedu:must-reset"));
+      if (window.location.pathname !== "/change-password") window.location.href = "/change-password";
+    }
     return Promise.reject(err);
   }
 );

@@ -8,6 +8,8 @@ export default function ProtectedRoute({ allowedRole, children }) {
   const role = localStorage.getItem("smartedu_role");
 
   if (!token) return <Navigate to="/login" replace />;
+  // nothing else until a temporary password has been changed
+  if (localStorage.getItem("smartedu_must_reset") === "1") return <Navigate to="/change-password" replace />;
   if (role !== allowedRole) return <Navigate to={`/${role}`} replace />;
 
   return children;

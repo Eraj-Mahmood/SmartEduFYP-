@@ -4,6 +4,7 @@ import ProtectedRoute from "./routes/ProtectedRoute";
 import { ToastProvider } from "./components/ui/Toast";
 
 import Login from "./pages/Login";
+import ChangePassword from "./pages/ChangePassword";
 
 import StudentDashboard from "./pages/student/StudentDashboard";
 import StudentResults from "./pages/student/StudentResults";
@@ -27,6 +28,7 @@ export default function App() {
         <ToastProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/change-password" element={<ChangePassword />} />
 
           {/* STUDENT PORTAL - read-only */}
           <Route path="/student" element={<ProtectedRoute allowedRole="student"><StudentDashboard /></ProtectedRoute>} />

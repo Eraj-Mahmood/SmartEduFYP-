@@ -2,7 +2,7 @@ import { useAuth } from "../context/AuthContext";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import client from "../api/client";
-import { Bell, Menu, Close, Logout } from "./ui/icons";
+import { Bell, Menu, Close, Logout, Lock, UserCheck, ChevronDown } from "./ui/icons";
 import RiskChip from "./ui/RiskChip";
 import UiCard from "./ui/Card";
 
@@ -130,6 +130,69 @@ function NotificationBell() {
   );
 }
 
+/** Profile menu (desktop): the signed-in email, Change password, Log out. */
+function AccountMenu({ onLogout }) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+  const email = (() => {
+    try {
+      return JSON.parse(atob(localStorage.getItem("smartedu_token").split(".")[1])).email;
+    } catch {
+      return "";
+    }
+  })();
+
+  useEffect(() => {
+    function onDown(e) {
+      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
+  const item = "w-full text-left flex items-center gap-2 px-4 py-2.5 text-sm text-ink hover:bg-paper";
+  return (
+    <div className="relative hidden md:block ml-1" ref={boxRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/10 transition text-sm text-white/80"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <UserCheck size={15} /> Account <ChevronDown size={14} />
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 mt-2 w-60 bg-surface rounded-xl shadow-pop border border-line z-30 overflow-hidden animate-fade-up">
+          {email && <p className="px-4 py-2.5 text-xs text-muted border-b border-line truncate">{email}</p>}
+          <button
+            type="button"
+            role="menuitem"
+            className={item}
+            onClick={() => {
+              setOpen(false);
+              navigate("/change-password");
+            }}
+          >
+            <Lock size={15} /> Change password
+          </button>
+          <button type="button" role="menuitem" className={`${item} border-t border-line`} onClick={onLogout}>
+            <Logout size={15} /> Log out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const linkClass = ({ isActive }) =>
   `px-3 py-1.5 rounded-lg text-sm transition ${
     isActive ? "bg-white/15 text-white font-medium" : "text-white/70 hover:text-white hover:bg-white/10"
@@ -177,12 +240,7 @@ export function PortalShell({ title, children }) {
 
           <div className="flex items-center gap-1">
             <NotificationBell />
-            <button
-              onClick={handleLogout}
-              className="hidden md:inline-flex items-center gap-1.5 ml-1 px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/10 transition text-sm text-white/80"
-            >
-              <Logout size={15} /> Log out
-            </button>
+            <AccountMenu onLogout={handleLogout} />
             <button
               onClick={() => setMenuOpen((o) => !o)}
               className="md:hidden p-2 rounded-lg hover:bg-white/10 text-white/90"
@@ -202,6 +260,11 @@ export function PortalShell({ title, children }) {
                 {l.label}
               </NavLink>
             ))}
+            <NavLink to="/change-password" className={mobileLinkClass}>
+              <span className="inline-flex items-center gap-2">
+                <Lock size={16} /> Change password
+              </span>
+            </NavLink>
             <button onClick={handleLogout} className="w-full text-left flex items-center gap-2 px-3 py-2.5 rounded-lg text-[15px] text-white/80 hover:bg-white/10">
               <Logout size={16} /> Log out
             </button>
