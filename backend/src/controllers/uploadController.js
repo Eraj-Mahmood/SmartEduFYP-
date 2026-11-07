@@ -66,6 +66,8 @@ async function upload(req, res) {
 async function history(req, res) {
   try {
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+    // another faculty member's class: 403 (documented contract), not just an empty list
+    if (parseInt(req.query.classId)) await ownClass(await myFacultyId(req.user.userId), parseInt(req.query.classId));
     const { rows } = await pool.query(
       `SELECT u.id, u.kind, u.filename, u.status, u.rows_total, u.rows_ok, u.rows_failed, u.summary,
               u.created_at, u.committed_at, u.faculty_course_id, c.course_code, fc.section,
@@ -79,7 +81,7 @@ async function history(req, res) {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 }
 

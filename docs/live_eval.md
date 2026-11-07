@@ -1,6 +1,6 @@
 # Live-data evaluation
 
-Generated 2026-11-07 23:03 by `evaluation/live_eval.py`.
+Generated 2026-11-08 01:20 by `evaluation/live_eval.py`.
 
 > **Data source: SYNTHETIC sample (evaluation/sample_live_cohort.csv) - NOT real student data.** Cohort file(s): `sample_live_cohort.csv`.
 > These 30 students were drawn from the synthetic training dataset (stratified 10 per label), because no real

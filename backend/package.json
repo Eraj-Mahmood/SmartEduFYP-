@@ -10,7 +10,8 @@
     "hash": "node src/scripts/hashPassword.js",
     "migrate": "node src/scripts/migrate.js",
     "demo:reset": "node src/scripts/demoReset.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "test:coverage": "jest --runInBand --coverage"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.131.0",
@@ -40,6 +41,16 @@
     "testEnvironment": "node",
     "testMatch": [
       "<rootDir>/tests/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!src/server.js",
+      "!src/scripts/**"
+    ],
+    "coverageReporters": [
+      "text-summary",
+      "text",
+      "json-summary"
     ]
   }
 }

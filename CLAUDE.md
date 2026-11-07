@@ -97,7 +97,8 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
         good rows in one transaction (`data_source='live'`, `upload_id`, server-derived grade, upsert on
         enrollment / (enrollment, date)), then `predictForMany(trigger 'upload')` and audit-logs
         `UPLOAD_RESULTS` / `UPLOAD_ATTENDANCE`; no good rows → status `failed`, nothing written.
-      - `GET /uploads?classId=&limit=` → my upload history. Another faculty member's class → 403.
+      - `GET /uploads?classId=&limit=` → my upload history. Another faculty member's class → 403 (enforced since
+        Phase 6; it used to return an empty list).
       Counselees: `GET /counselees` (my ACTIVE assignments, each with final_label, staff reasons, next steps,
       recommended tutorial, attendance, notes, last_contacted_at), `GET /counselees/:id`, `PUT /counselees/:id
       {notes?, last_contacted_at?, close?}` (not in the future; audit-logged). Someone else's or a closed
@@ -471,11 +472,24 @@ transaction per file, recorded in `schema_migrations`, already-applied files ski
 Tests and evaluations:
 
 ```powershell
-cd backend; npm test                              # Jest + Supertest against the local smartedu DB (ML not needed)
+cd backend; npm test                              # Jest + Supertest against the local smartedu DB (ML not needed): 453 tests, 22 suites
+cd backend; npm run test:coverage                 # same + coverage of backend/src (CLI scripts excluded): 88.4% lines (2026-11-08)
+                                                  # suites added in Phase 6: portals, passwordReset, rbac (every route x role),
+                                                  # policy (escalate-only matrix, reasons), faculty (ownership), student (scoping),
+                                                  # admin (provisioning, classes, flagged list, batch runs); helpers takeSnapshot/
+                                                  # restoreSnapshot undo writes exactly (updated_at/marked_at kept as text)
 cd backend; node ../evaluation/chat_eval.js       # chat router eval -> docs/chat_eval.md (exit 1 on any fail);
                                                   # includes my_marks, improve-with-tutorial, who_can_help with a counselor
                                                   # and 9 questions for one live-cohort student per label (imported marks)
 cd backend; node ../evaluation/next_steps_whatif.js  # suggested marks vs the real model (ML running)
+cd ml_service; .venv\Scripts\python -m pytest tests  # 29: test_predict.py + test_contract.py (shape, argmax, batch = single on 50
+                                                     # dataset rows, limits, null imputation, determinism, 500-row agreement, model-info)
+cd backend; node ../evaluation/perf_check.js         # 10 timed runs per operation incl. 10 full 50k batch runs (~25 min; each run's
+                                                     # predictions undone + VACUUM) -> docs/PERFORMANCE.md
+cd backend; node ../evaluation/test_cases.js         # 51 manual cases (FR1-FR15 + portals) via API and Playwright -> docs/TEST_CASES.md;
+                                                     # changes data: demo:reset before and after
+ml_service\.venv\Scripts\python evaluation/report_numbers.py  # .pkl metrics, label/source/agreement stats, global importance
+                                                     # (the numbers in docs/REPORT_EVIDENCE.md)
 cd backend; node ../evaluation/demo_actions_check.js # performs + reverts every docs/DEMO_ACCOUNTS.md demo action (ML running;
                                                      # --write-demo-files regenerates docs/demo_files; reset again afterwards)
 python -m pip install -r evaluation/requirements.txt  # once: psycopg2, pandas, matplotlib 3.11.2 (system Python)
