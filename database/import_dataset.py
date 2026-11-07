@@ -54,7 +54,7 @@ def main():
 
         cur.execute(
             """INSERT INTO users (email, password_hash, role, must_reset_pw)
-               VALUES (%s, %s, 'student', TRUE)
+               VALUES (%s, %s, 'student', FALSE)
                ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
                RETURNING user_id""",
             (email, placeholder_hash),

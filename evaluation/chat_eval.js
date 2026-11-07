@@ -16,7 +16,7 @@ const { buildChatContext } = require("../backend/src/services/chatContext");
 const { respond, MAX_WORDS } = require("../backend/src/services/chatbot");
 
 const DEMO = ["BU-100040", "BU-106864", "BU-122785", "BU-112907", "BU-144766", "BU-101986"];
-const DATA_INTENTS = new Set(["why_risk", "standing", "weakest_course", "course_detail", "attendance", "improve"]);
+const DATA_INTENTS = new Set(["why_risk", "standing", "weakest_course", "my_marks", "course_detail", "attendance", "improve"]);
 const FORBIDDEN = /probab|% chance|chance of|guarantee|you will pass|you will fail|definitely|for sure/i;
 
 /** Questions for one student; `me` is their context, `other` another demo student's context. */
@@ -39,6 +39,10 @@ function questions(me, other, foreignCourse) {
     ["weakest_course", "Which course should I focus on?"],
     ["weakest_course", "What's my weakest subject?"],
     ["weakest_course", "konsa subject sab se kamzor hai?"],
+    ["my_marks", "What are my marks?"],
+    ["my_marks", "mere marks"],
+    ["my_marks", "Show me my grades in every course"],
+    ["my_marks", "meri marks kya hain?"],
     ["course_detail", `How am I doing in ${own.code}?`],
     ["course_detail", `Tell me about ${own2.title}`],
     ["course_detail", `${own.code.toLowerCase()} marks`],

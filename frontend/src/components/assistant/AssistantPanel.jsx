@@ -116,7 +116,16 @@ export default function AssistantPanel({ open, onClose, firstName, initialQuesti
     setHistory({ loaded: false, loading: true, error: null });
     try {
       const { data } = await client.get("/student/chat/history");
-      setMessages(data.map((m) => ({ id: m.id, role: m.role, content: m.content })));
+      // assistant rows keep their chips and links in meta, so a reloaded answer looks the same
+      setMessages(
+        data.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          suggestions: m.meta?.suggestions || [],
+          links: m.meta?.links || [],
+        }))
+      );
       setHistory({ loaded: true, loading: false, error: null });
     } catch (e) {
       setHistory({ loaded: false, loading: false, error: e.response?.data?.error || "We couldn't load your conversation." });

@@ -21,4 +21,21 @@ async function cleanupChat(studentIds, since) {
   await pool.query("DELETE FROM chat_messages WHERE student_id = ANY($1) AND created_at >= $2", [studentIds, since]);
 }
 
-module.exports = { login, studentId, cleanupChat, pool };
+/** A throwaway login (no student/faculty profile) for tests that change account state.
+ *  Remove it with dropTempUser(userId). */
+async function createTempUser(role = "student", { mustReset = false, password = PASSWORDS[role] } = {}) {
+  const bcrypt = require("bcrypt");
+  const email = `jest.${role}.${Date.now()}.${Math.floor(Math.random() * 1e6)}@smartedu.test`;
+  const { rows } = await pool.query(
+    "INSERT INTO users (email, password_hash, role, must_reset_pw) VALUES ($1, $2, $3, $4) RETURNING user_id",
+    [email, await bcrypt.hash(password, 4), role, mustReset]
+  );
+  return { userId: rows[0].user_id, email, password };
+}
+
+async function dropTempUser(userId) {
+  await pool.query("DELETE FROM audit_log WHERE actor_user_id = $1", [userId]);
+  await pool.query("DELETE FROM users WHERE user_id = $1", [userId]);
+}
+
+module.exports = { login, studentId, cleanupChat, createTempUser, dropTempUser, PASSWORDS, pool };

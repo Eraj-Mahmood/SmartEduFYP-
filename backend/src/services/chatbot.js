@@ -119,6 +119,18 @@ const WORDS = {
   ],
   noPromise: ["fail", "failing", "pass", "passing", "will i", "going to", "guarantee"],
   marks: ["marks", "grades", "grade", "result", "results", "score", "scores"],
+  // "my marks" in every course (not CGPA/standing)
+  myMarks: [
+    "my marks", "my mark", "my grades", "my grade", "my scores", "my course marks", "all my marks", "marks in each",
+    "marks in every", "marks in all", "show marks", "show me marks", "course marks", "subject marks", "what marks",
+    "mere marks", "meri marks", "mera marks", "mere grades", "mere grade", "mere number", "mere numbers",
+    "marks kya", "marks kitne", "kitne marks", "grades kya", "number kitne", "kitne number",
+  ],
+  // "how can I improve my marks" stays an improve question
+  improveStrong: [
+    "improve", "improvement", "better", "behtar", "bahtar", "raise", "increase", "boost", "how can i", "how do i",
+    "how to", "what should i do", "kya karun", "kya karoon",
+  ],
 };
 
 // Words that can precede "'s" without being a person ("what's", "it's", "teacher's"...).
@@ -194,6 +206,7 @@ function routeIntent(message, ctx, catalog = []) {
   if (has(norm, WORDS.whoCanHelp)) return { intent: "who_can_help" };
   if (has(norm, WORDS.why) || /(^| )what (does|do) .+ mean( |$)/.test(norm)) return { intent: "why_risk" };
   if (has(norm, WORDS.weakest)) return { intent: "weakest_course" };
+  if (has(norm, WORDS.myMarks) && !has(norm, WORDS.improveStrong)) return { intent: "my_marks", noPromise: has(norm, WORDS.noPromise) };
   if (has(norm, WORDS.improve)) return { intent: "improve" };
   if (has(norm, WORDS.standing)) return { intent: "standing", noPromise: has(norm, WORDS.noPromise), wantsMarks: has(norm, WORDS.marks) };
   if (has(norm, WORDS.help) || has(norm, WORDS.greeting) || !norm) return { intent: "greeting" };
@@ -316,6 +329,26 @@ function weakestCourse(ctx, r, rng) {
     answer: fit([`${intro} ${courseLine(c, ctx)}`, tip]),
     links: [LINKS.results],
     suggestions: [`Tell me about ${c.code}`, "How can I improve?", "Is my attendance OK?"],
+  };
+}
+
+function myMarks(ctx, r, rng) {
+  const marked = ctx.courses.filter((c) => c.mean != null);
+  if (!marked.length) {
+    return { answer: "No marks are entered for this term yet. They will show here once your teachers add them.", links: [LINKS.results] };
+  }
+  const intro = pick(rng, ["Your marks this term, by course:", "Here are your course marks so far:", "This term's marks per course:"]);
+  const lines = ctx.courses.map((c) =>
+    c.mean == null
+      ? `• ${c.code} ${c.title}: no marks yet`
+      : `• ${c.code} ${c.title}: average ${mark(c.mean)} (${c.grade}) - quiz ${mark(c.marks.quiz)}, midterm ${mark(c.marks.midterm)}, final ${mark(c.marks.final)}`
+  );
+  const w = ctx.weakest_course;
+  const tail = w && marked.length > 1 ? `Your lowest is ${w.code} (${mark(w.mean)}). Ask me about it for the details.` : null;
+  return {
+    answer: fit([intro, ...lines, tail, r.noPromise ? "I can't tell you your final result - that depends on the rest of the term." : null]),
+    links: [LINKS.results],
+    suggestions: w ? [`Tell me about ${w.code}`, "How can I improve?", "What is my CGPA?"] : undefined,
   };
 }
 
@@ -451,6 +484,7 @@ const TEMPLATES = {
   why_risk: whyRisk,
   standing,
   weakest_course: weakestCourse,
+  my_marks: myMarks,
   course_detail: courseDetail,
   attendance,
   improve,
@@ -464,6 +498,7 @@ const TEMPLATES = {
 const SUGGESTIONS = {
   why_risk: ["How can I improve?", "Which course should I focus on?", "Is my attendance OK?"],
   standing: ["Why is my status this?", "How can I improve?", "Which course should I focus on?"],
+  my_marks: ["Which course should I focus on?", "How can I improve?", "What is my CGPA?"],
   course_detail: ["Which course should I focus on?", "Is my attendance OK?", "How can I improve?"],
   attendance: ["How can I improve?", "Which course should I focus on?", "What is my CGPA?"],
   improve: ["Which course should I focus on?", "Is my attendance OK?", "Who can help me?"],

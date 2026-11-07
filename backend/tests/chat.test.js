@@ -45,6 +45,20 @@ describe("POST /api/student/chat", () => {
     expect(last.map((m) => m.role)).toEqual(["user", "assistant"]);
     expect(last[0].content).toBe("What is my CGPA?");
     expect(last[1].content).toBe(res.body.answer);
+    // the reply keeps its chips and links, so a reloaded conversation shows them again
+    expect(last[0].meta).toBeNull();
+    expect(last[1].meta).toEqual({ intent: "standing", suggestions: res.body.suggestions, links: res.body.links });
+  });
+
+  test("my_marks lists every course with its mark and grade", async () => {
+    const mine = await buildChatContext(askerId);
+    const res = await chat("What are my marks?");
+    expect(res.status).toBe(200);
+    expect(res.body.intent).toBe("my_marks");
+    for (const c of mine.courses.filter((x) => x.mean != null)) {
+      expect(res.body.answer).toContain(`${c.code} ${c.title}: average ${Math.round(c.mean)} (${c.grade})`);
+    }
+    expect(res.body.answer).not.toContain(mine.standing.official_cgpa.toFixed(2));
   });
 
   test("a body studentId cannot pick another student", async () => {

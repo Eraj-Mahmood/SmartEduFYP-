@@ -52,9 +52,9 @@ async function chat(studentId, message) {
       [studentId, message, reply.intent]
     );
     ({ rows: [saved] } = await client.query(
-      `INSERT INTO chat_messages (student_id, role, content, intent, source)
-       VALUES ($1, 'assistant', $2, $3, $4) RETURNING id, created_at`,
-      [studentId, reply.answer, reply.intent, source]
+      `INSERT INTO chat_messages (student_id, role, content, intent, source, meta)
+       VALUES ($1, 'assistant', $2, $3, $4, $5) RETURNING id, created_at`,
+      [studentId, reply.answer, reply.intent, source, JSON.stringify({ intent: reply.intent, suggestions: reply.suggestions || [], links: reply.links || [] })]
     ));
     await client.query("COMMIT");
   } catch (e) {
@@ -66,11 +66,11 @@ async function chat(studentId, message) {
   return { ...reply, source, id: saved.id, created_at: saved.created_at };
 }
 
-/** The student's last 50 messages, oldest first. */
+/** The student's last 50 messages, oldest first. Assistant rows carry meta {intent, suggestions, links}. */
 async function history(studentId) {
   const { rows } = await pool.query(
     `SELECT * FROM (
-       SELECT id, role, content, intent, source, created_at FROM chat_messages
+       SELECT id, role, content, intent, source, meta, created_at FROM chat_messages
        WHERE student_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2
      ) m ORDER BY created_at, id`,
     [studentId, HISTORY_LIMIT]

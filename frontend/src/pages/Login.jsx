@@ -5,7 +5,16 @@ import { useAuth } from "../context/AuthContext";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  // e.g. "This account has been deactivated" after the server rejected a session token
+  const [error, setError] = useState(() => {
+    try {
+      const notice = sessionStorage.getItem("smartedu_login_notice") || "";
+      sessionStorage.removeItem("smartedu_login_notice");
+      return notice;
+    } catch {
+      return "";
+    }
+  });
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();

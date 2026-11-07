@@ -11,9 +11,17 @@ client.interceptors.request.use((config) => {
 client.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    // a failed login is a 401 too; only a rejected session token sends you back to the login page
+    if (err.response?.status === 401 && !err.config?.url?.endsWith("/auth/login")) {
       localStorage.removeItem("smartedu_token");
       localStorage.removeItem("smartedu_role");
+      if (err.response.data?.code === "ACCOUNT_DISABLED") {
+        try {
+          sessionStorage.setItem("smartedu_login_notice", err.response.data.error);
+        } catch {
+          /* storage unavailable: the login page just shows no notice */
+        }
+      }
       window.location.href = "/login";
     }
     return Promise.reject(err);
