@@ -73,3 +73,59 @@ no LLM or API key is needed, and the ML service can be stopped.
 Other good ones: `Tell me about Natural Language Processing` (course by title), `What are my marks in CS301?`
 ("isn't one of your courses"), `I'm so stressed about my exams` (wellbeing reply with the support contacts
 from `backend/src/config/support.json`). To start the demo clean, use **Clear chat** in the panel.
+
+## Interventions demo (demo script step 6)
+
+Shows the Phase 4 workflow: a flagged student ends up with a named counselor, a tutorial for
+their weakest course and an intervention message. Checked end to end on 2026-11-07 (Playwright,
+1280px and 390px). Use three browser windows (or one private window per account).
+
+1. **Admin** (`admin@smartedu.edu`) → **Interventions** → search `BU-144766` (Nida Shah, Dropout-Likely).
+   The row shows the weakest course **AI401 (avg 57)**, its tutorial **Hugging Face LLM Course**,
+   Counselor **Assign** and Last intervention **never**.
+   - Press **Assign** → the picker lists Artificial Intelligence faculty first with their current
+     counselee counts → choose **Dr. Ayesha Khan** → **Assign**. A toast confirms; the row now
+     shows "Dr. Ayesha Khan · not contacted yet".
+   - Press **Send** → keep the template (it uses `{name}`, `{course}` and `{counselor}`) and
+     "Add each student's recommended tutorial". The preview shows Nida's own copy ending with
+     `Recommended for AI401: "Hugging Face LLM Course" - https://huggingface.co/learn/llm-course`.
+     Press **Send**; Last intervention becomes "just now".
+2. **Student** (`student144766@smartedu.edu`): the bell shows **2 unread** (the counselor notice
+   and the intervention). **What to do next** shows the counselor card (Dr. Ayesha Khan, Associate
+   Professor, a mailto link, "Assigned just now"), the tutorial card with **Open tutorial**, and
+   the ranked next steps. Clicking the intervention in the bell scrolls to that card. Asking
+   SmartEdu "Who can help me?" now names Dr. Khan and her email.
+3. **Faculty** (`ayesha.khan@smartedu.edu`) → **My counselees**: Nida Shah with her label, main
+   reason and "Not contacted yet". Opening her shows the next steps, the tutorial and a notes box
+   that saves itself ("Saved"); **Mark contacted today** and **Close assignment** are at the bottom.
+   The bell has "You've been assigned as counselor to Nida Shah (Dropout-Likely)"; clicking it
+   opens her drawer.
+
+Other things to show: select several rows and **Send to N** (each student gets their own name,
+course and tutorial); **Export CSV**; **Tutorials** (add, edit, deactivate, open link);
+**Audit log** (filter by entity `counselor_assignments`, open a row for the JSON).
+
+**To undo it** (so the demo can be repeated): Admin → **Interventions** → search `BU-144766` →
+click **Dr. Ayesha Khan** in the Counselor column → **Close assignment** → **Confirm**. (Dr. Khan
+can also press **Close assignment** in her drawer.) The row shows **Assign** again. The
+notifications and the audit history stay on purpose. For a completely clean bell before a
+presentation, delete the demo notifications in pgAdmin:
+
+```sql
+DELETE FROM notifications
+WHERE recipient_user_id IN (SELECT user_id FROM students WHERE roll_no = 'BU-144766'
+                            UNION SELECT user_id FROM users WHERE email = 'ayesha.khan@smartedu.edu')
+  AND sent_at > NOW() - INTERVAL '1 day';
+```
+
+`npm run screenshots` never touches these accounts' assignments or bells: it uses BU-115624
+(Haris Rehman) with Mr. Zain Abbas as counselor and closes that assignment at the end.
+
+## Forced password change
+
+Accounts created in **Users** get a temporary password and `must_reset_pw = TRUE`: after login
+they see only **Set a new password** (8+ characters, upper case, lower case and a digit, different
+from the temporary one); every other API call answers 403 `PASSWORD_RESET_REQUIRED` until then.
+All imported students, seeded faculty and the `createAdmin.js` admin have `must_reset_pw = FALSE`
+(migration 005), so the demo accounts above log in normally. Anyone can change their password
+from **Account → Change password**.

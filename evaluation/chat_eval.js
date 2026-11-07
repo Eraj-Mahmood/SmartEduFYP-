@@ -4,7 +4,11 @@
 //   - the detected intent is the expected one;
 //   - the answer is at most 120 words, has no probabilities or promises;
 //   - data answers contain at least one real number;
-//   - the answer contains no other demo student's roll no, email, name or GPA figures.
+//   - the answer contains no other demo student's roll no, email, name or GPA figures;
+//   - improve / weakest_course answers carry the recommended tutorial (line + link) when the
+//     student has one;
+//   - who_can_help with a counselor assigned names the counselor and their email (a second pass
+//     with a real faculty member as counselor in the context; nothing is written to the database).
 // Writes docs/chat_eval.md. Exit code 1 if anything fails.
 //
 // Usage (database running; the ML service is not needed): cd backend; node ../evaluation/chat_eval.js
@@ -133,12 +137,39 @@ const cell = (s) => String(s).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
       ];
       if (leaked.length) problems.push(`leaks ${leaked.join(", ")}`);
       if (r.suggestions.length > 3) problems.push("more than 3 suggestions");
+      if ((expected === "improve" || expected === "weakest_course") && me.tutorial) {
+        if (!r.links.some((l) => l.href === me.tutorial.url)) problems.push("no tutorial link");
+        if (!r.answer.includes(me.tutorial.title)) problems.push("no tutorial line");
+      }
       results.push({ roll: me.student.roll_no, label: me.status && me.status.label, expected, q, r, words, pass: problems.length === 0, problems });
     });
   });
 
+  // ---- who_can_help with a counselor assigned (context only)
+  const { rows: fac } = await pool.query(
+    `SELECT f.full_name AS name, f.designation, u.email FROM faculty f JOIN users u ON u.user_id = f.user_id
+     WHERE u.email = 'ayesha.khan@smartedu.edu'`
+  );
+  const counselor = { ...fac[0], assigned_at: new Date().toISOString() };
+  const COUNSELOR_QS = ["Who can help me?", "Do I have a counselor?", "kis se baat karun?", "Who should I talk to about my grades?"];
+  contexts.forEach((me, i) => {
+    const ctx = { ...me, counselor };
+    COUNSELOR_QS.forEach((q, k) => {
+      const r = respond(q, ctx, { catalog: catalogRows, rng: seeded(50000 + i * 100 + k) });
+      const problems = [];
+      if (r.intent !== "who_can_help") problems.push(`intent ${r.intent}`);
+      if (!r.answer.includes(counselor.name)) problems.push("counselor not named");
+      if (!r.answer.includes(counselor.email)) problems.push("no counselor email");
+      if (/No counselor is assigned/i.test(r.answer)) problems.push("says no counselor");
+      const words = r.answer.split(/\s+/).filter(Boolean).length;
+      if (words > MAX_WORDS) problems.push(`${words} words`);
+      results.push({ roll: me.student.roll_no, label: me.status && me.status.label, expected: "who_can_help", group: "who_can_help (counselor)", q, r, words, pass: problems.length === 0, problems });
+    });
+  });
+
   // ---- report
-  const intents = [...new Set(results.map((x) => x.expected))];
+  const groupOf = (x) => x.group || x.expected;
+  const intents = [...new Set(results.map(groupOf))];
   const total = results.filter((x) => x.pass).length;
   const lines = [
     "# Chat evaluation (Layer 1: intent router + templates)",
@@ -153,7 +184,7 @@ const cell = (s) => String(s).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
     "| Intent | Passed |",
     "|---|---|",
     ...intents.map((it) => {
-      const xs = results.filter((x) => x.expected === it);
+      const xs = results.filter((x) => groupOf(x) === it);
       return `| ${it} | ${xs.filter((x) => x.pass).length}/${xs.length} |`;
     }),
     "",
@@ -161,15 +192,15 @@ const cell = (s) => String(s).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
     "|---|---|---|---|---|---|",
     ...results.map(
       (x) =>
-        `| ${cell(x.q)} | ${x.roll} (${x.label}) | ${x.expected} | ${x.r.intent} | ${x.pass ? "pass" : `**FAIL** ${cell(x.problems.join("; "))}`} | ${cell(x.r.answer)} |`
+        `| ${cell(x.q)}${x.group ? " *(counselor assigned)*" : ""} | ${x.roll} (${x.label}) | ${x.expected} | ${x.r.intent} | ${x.pass ? "pass" : `**FAIL** ${cell(x.problems.join("; "))}`} | ${cell(x.r.answer)} |`
     ),
     "",
   ];
   fs.writeFileSync(path.join(__dirname, "../docs/chat_eval.md"), lines.join("\n"));
 
   for (const it of intents) {
-    const xs = results.filter((x) => x.expected === it);
-    console.log(`${it.padEnd(15)} ${xs.filter((x) => x.pass).length}/${xs.length}`);
+    const xs = results.filter((x) => groupOf(x) === it);
+    console.log(`${it.padEnd(25)} ${xs.filter((x) => x.pass).length}/${xs.length}`);
   }
   console.log(`TOTAL ${total}/${results.length}`);
   for (const x of results.filter((y) => !y.pass)) console.log(`FAIL ${x.roll} "${x.q}" -> ${x.r.intent}: ${x.problems.join("; ")}`);

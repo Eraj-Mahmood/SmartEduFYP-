@@ -14,9 +14,31 @@ export function AssignCounselorModal({ student, onClose, onAssigned }) {
   const workload = useApi(open ? "/admin/faculty/workload" : null, { params: { department: student?.department_id } });
   const [choice, setChoice] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
   const current = student?.counselor;
 
-  useEffect(() => setChoice(null), [student]);
+  useEffect(() => {
+    setChoice(null);
+    setConfirmClose(false);
+  }, [student]);
+
+  async function closeCurrent() {
+    if (!confirmClose) {
+      setConfirmClose(true);
+      return;
+    }
+    setClosing(true);
+    try {
+      await client.put(`/admin/counselors/${current.assignment_id}/close`);
+      toast(`Closed ${current.name}'s assignment with ${student.full_name}`, { type: "info" });
+      onAssigned(null);
+    } catch (e) {
+      toast(e.response?.data?.error || "Could not close the assignment", { type: "error" });
+    } finally {
+      setClosing(false);
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -94,9 +116,14 @@ export function AssignCounselorModal({ student, onClose, onAssigned }) {
             {student.reasons?.[0] && <span className="text-muted">{student.reasons[0]}</span>}
           </div>
           {current && (
-            <p className="rounded-lg bg-risk-50 border border-risk/30 px-3 py-2 text-sm text-ink">
-              Currently with <strong>{current.name}</strong> (since {timeAgo(current.assigned_at)}). Choosing someone else closes that assignment.
-            </p>
+            <div className="rounded-lg bg-risk-50 border border-risk/30 px-3 py-2 text-sm text-ink">
+              <p>
+                Currently with <strong>{current.name}</strong> (since {timeAgo(current.assigned_at)}). Choosing someone else closes that assignment.
+              </p>
+              <Button size="sm" variant={confirmClose ? "danger" : "ghost"} className="mt-1 -ml-2" loading={closing} onClick={closeCurrent}>
+                {confirmClose ? "Confirm: close without a new counselor" : "Close assignment"}
+              </Button>
+            </div>
           )}
           {workload.loading ? (
             <div className="space-y-2">

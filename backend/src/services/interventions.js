@@ -6,7 +6,8 @@ const support = require("../config/support.json");
 // Intervention messages from an admin to students: per-student placeholders and an optional
 // line with the student's recommended tutorial.
 //
-// Placeholders: {name} (student's full name), {course} (the course that needs most work),
+// Placeholders: {name} (student's full name), {course} (the course that needs most work, or
+// "your coursework" when they have no marked course this term),
 // {counselor} (their counselor's name). Anything else in braces is left as it is and reported.
 
 const PLACEHOLDERS = ["name", "course", "counselor"];
@@ -48,7 +49,7 @@ async function studentInfo(studentId) {
 function compose(st, { subject, message, includeTutorial }) {
   const vars = {
     name: st.full_name,
-    course: st.rec ? `${st.rec.course.course_code} (${st.rec.course.title})` : "your courses",
+    course: st.rec ? `${st.rec.course.course_code} (${st.rec.course.title})` : "your coursework",
     counselor: st.counselor ? st.counselor.name : `the ${support.office.name}`,
   };
   const s = fillTemplate(subject, vars);

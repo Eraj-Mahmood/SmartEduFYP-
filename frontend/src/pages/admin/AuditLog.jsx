@@ -107,6 +107,7 @@ export default function AuditLog() {
                     </span>
                   ),
                 },
+                { key: "action", header: "Action", sortable: false, render: (r) => <span className="font-mono text-xs">{r.action}</span> },
                 {
                   key: "actor",
                   header: "Actor",
@@ -118,7 +119,6 @@ export default function AuditLog() {
                     </span>
                   ),
                 },
-                { key: "action", header: "Action", sortable: false, render: (r) => <span className="font-mono text-xs">{r.action}</span> },
                 {
                   key: "entity",
                   header: "Entity",

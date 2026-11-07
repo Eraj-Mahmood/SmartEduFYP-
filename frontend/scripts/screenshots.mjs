@@ -1,6 +1,7 @@
 // npm run screenshots
 // Full-page screenshots of every main screen at 1280px and 390px, saved to docs/screenshots/,
-// plus the "Ask SmartEdu" panel after 3 questions for one student of each label.
+// plus the "Ask SmartEdu" panel after 3 questions for one student of each label, and the
+// Phase 4 intervention screens (see phase4Screenshots).
 // Needs the three services running (frontend dev server, backend, ML service) and a
 // Chromium for Playwright (one-time: npx playwright install chromium).
 // BASE_URL defaults to http://localhost:5173.
@@ -23,6 +24,8 @@ const ACCOUNTS = [
     ["interventions", "/admin/interventions"],
     ["users", "/admin/users"],
     ["assignments", "/admin/assignments"],
+    ["tutorials", "/admin/tutorials"],
+    ["audit-log", "/admin/audit-log"],
   ] },
   { name: "faculty-ayesha", email: "ayesha.khan@smartedu.edu", password: "Faculty@123", pages: async (api) => {
     // the class with the most students
@@ -82,6 +85,125 @@ async function chatScreenshot(page, account, viewport, problems) {
   await clear();
 }
 
+// Phase 4 screens. A non-demo flagged student (BU-115624) gets a non-demo counselor (Mr. Zain
+// Abbas) for the duration of the run, so the demo accounts' notifications stay untouched; the
+// assignment is closed again at the end.
+const P4 = { student: "115624", counselor: "zain.abbas@smartedu.edu" };
+
+async function apiAs(page, email, password) {
+  return page.evaluate(
+    async ({ email, password }) => {
+      const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+      const data = await res.json();
+      localStorage.setItem("smartedu_token", data.token);
+      localStorage.setItem("smartedu_role", data.role);
+      localStorage.removeItem("smartedu_must_reset");
+      return data.token;
+    },
+    { email, password }
+  );
+}
+
+const call = (page, method, path, body) =>
+  page.evaluate(
+    async ({ method, path, body }) => {
+      const res = await fetch(path, {
+        method,
+        headers: { Authorization: `Bearer ${localStorage.getItem("smartedu_token")}`, "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      return { status: res.status, body: await res.json().catch(() => null) };
+    },
+    { method, path, body }
+  );
+
+/** Assigns the screenshot counselor (admin session on `page`); returns the assignment id. */
+async function phase4Setup(page) {
+  await page.goto(`${BASE}/login`);
+  await apiAs(page, "admin@smartedu.edu", "Admin@123");
+  const st = await call(page, "GET", `/api/admin/students?search=BU-${P4.student}`);
+  const fac = await call(page, "GET", "/api/admin/faculty");
+  const studentId = st.body.rows[0].student_id;
+  const facultyId = fac.body.find((f) => f.email === P4.counselor).faculty_id;
+  const res = await call(page, "POST", "/api/admin/counselors", { studentId, facultyId });
+  if (res.status === 201) return res.body.id;
+  // already assigned from an interrupted run: find it
+  const list = await call(page, "GET", `/api/admin/counselors?status=active&faculty=${facultyId}&limit=100`);
+  return list.body.rows.find((r) => r.roll_no === `BU-${P4.student}`)?.id;
+}
+
+async function phase4Teardown(page, assignmentId) {
+  await page.goto(`${BASE}/login`);
+  await apiAs(page, "admin@smartedu.edu", "Admin@123");
+  if (assignmentId) await call(page, "PUT", `/api/admin/counselors/${assignmentId}/close`);
+}
+
+async function shot(page, name, viewport, problems, { fullPage = true } = {}) {
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  if (overflow > 0) problems.push(`${name} @${viewport.width}px overflows by ${overflow}px`);
+  await page.screenshot({ path: join(OUT, `${name}-${viewport.width}.png`), fullPage });
+}
+
+async function phase4Screenshots(page, viewport, problems) {
+  let n = 0;
+  // admin: assign modal and the bulk intervention composer with its preview
+  await page.goto(`${BASE}/login`);
+  await apiAs(page, "admin@smartedu.edu", "Admin@123");
+  await page.goto(`${BASE}/admin/interventions`);
+  await settle(page);
+  await page.getByRole("button", { name: "Assign", exact: true }).first().click();
+  await page.getByRole("dialog", { name: "Assign counselor" }).getByText(/counselees?$/).first().waitFor();
+  await page.waitForTimeout(500);
+  await shot(page, "admin-assign-modal", viewport, problems, { fullPage: false });
+  n++;
+  await page.keyboard.press("Escape");
+  const boxes = page.locator('tbody input[type="checkbox"]');
+  for (let i = 0; i < 3; i++) await boxes.nth(i).check();
+  await page.getByRole("button", { name: /^Send to 3$/ }).click();
+  const compose = page.getByRole("dialog");
+  await compose.getByText(/Recommended for|Hi /).first().waitFor({ timeout: 10000 });
+  await page.waitForTimeout(600);
+  await shot(page, "admin-send-intervention", viewport, problems, { fullPage: false });
+  n++;
+  await page.keyboard.press("Escape");
+
+  // faculty: My counselees list and the drawer
+  await page.goto(`${BASE}/login`);
+  await apiAs(page, P4.counselor, "Faculty@123");
+  await page.goto(`${BASE}/faculty/counselees`);
+  await settle(page);
+  await shot(page, "faculty-zain-counselees", viewport, problems);
+  n++;
+  await page.locator("ul li button").first().click();
+  await page.getByRole("heading", { name: "Recommended tutorial" }).waitFor();
+  await page.waitForTimeout(600);
+  await shot(page, "faculty-zain-counselee-drawer", viewport, problems, { fullPage: false });
+  n++;
+
+  // student: the "What to do next" card with counselor and tutorial
+  await page.goto(`${BASE}/login`);
+  await apiAs(page, `student${P4.student}@smartedu.edu`, "Student@123");
+  await page.goto(`${BASE}/student#what-next`);
+  await settle(page);
+  await page.locator("#what-next").scrollIntoViewIfNeeded();
+  await page.locator("section", { has: page.locator("#what-next") }).screenshot({ path: join(OUT, `student-BU-${P4.student}-what-next-${viewport.width}.png`) });
+  n++;
+
+  // Change Password: forced (temporary password) and voluntary
+  await page.evaluate(() => localStorage.setItem("smartedu_must_reset", "1"));
+  await page.goto(`${BASE}/change-password`);
+  await settle(page);
+  await page.fill("#new-password", "Temp-pass");
+  await shot(page, "change-password-forced", viewport, problems);
+  n++;
+  await page.evaluate(() => localStorage.removeItem("smartedu_must_reset"));
+  await page.goto(`${BASE}/change-password`);
+  await settle(page);
+  await shot(page, "change-password", viewport, problems);
+  n++;
+  return n;
+}
+
 async function settle(page) {
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(800); // let charts finish layout
@@ -92,6 +214,10 @@ async function main() {
   const browser = await chromium.launch();
   let count = 0;
   const problems = [];
+
+  const setupCtx = await browser.newContext();
+  const setupPage = await setupCtx.newPage();
+  const assignmentId = await phase4Setup(setupPage);
 
   for (const viewport of WIDTHS) {
     const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 });
@@ -134,8 +260,15 @@ async function main() {
         count++;
       }
     }
+    try {
+      count += await phase4Screenshots(page, viewport, problems);
+    } catch (e) {
+      problems.push(`phase 4 screens @${viewport.width}px: ${e.message.split("\n")[0]}`);
+    }
     await ctx.close();
   }
+  await phase4Teardown(setupPage, assignmentId);
+  await setupCtx.close();
   await browser.close();
   console.log(`Saved ${count} screenshots to ${OUT}`);
   if (problems.length) {
