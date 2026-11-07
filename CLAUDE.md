@@ -460,6 +460,10 @@ cd backend; npm run dev
 cd frontend; npm run dev
 ```
 
+All three at once: `start.cmd` (double-click; runs `start.ps1`: checks the one-time setup, skips a port that is
+already in use, opens one PowerShell window per service, waits for /health and opens http://localhost:5173/) or
+`./start.sh` on Mac/Linux (one terminal, prefixed logs, Ctrl+C stops all). README.md is the new-developer guide.
+
 Fresh database setup: start the ML service, `python -m pip install -r database/requirements.txt` (once),
 then `cd backend; npm run demo:reset` (creates the database itself; see `scripts/demoReset.js` above).
 By hand the order must be schema → `npm run migrate` → import → seed → names → `createAdmin.js` (it sets
