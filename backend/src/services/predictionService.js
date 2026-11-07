@@ -156,4 +156,29 @@ async function predictForMany(studentIds, { runId, trigger } = {}) {
   return { done: rows.length, failed: ids.length - rows.length };
 }
 
-module.exports = { predictForStudent, predictForMany, ruleBasedFallback };
+/**
+ * scoreWithoutSaving(builtList) -> one result per feature set, the same pipeline as a stored
+ * prediction (ML batch call or rule fallback -> policy -> staff reasons) but NOTHING is inserted.
+ * Used by the what-if simulator. Each result:
+ * {model_label, policy_label, final_label, policy_reason, source, model_version, drivers, reasons}.
+ */
+async function scoreWithoutSaving(builtList) {
+  const scored = await scoreMany(builtList);
+  return builtList.map((built, i) => {
+    const s = scored[i];
+    const drivers = s.source === "model" ? s.explanations : null;
+    const policy = applyPolicy(built.features, s.label);
+    return {
+      model_label: s.label,
+      policy_label: policy.policyLabel,
+      final_label: policy.finalLabel,
+      policy_reason: policy.reason,
+      source: s.source,
+      model_version: s.model_version,
+      drivers,
+      reasons: toReasons(drivers, built.features, policy.finalLabel, { audience: "staff" }),
+    };
+  });
+}
+
+module.exports = { predictForStudent, predictForMany, ruleBasedFallback, scoreWithoutSaving };

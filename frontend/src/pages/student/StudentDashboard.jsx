@@ -4,7 +4,7 @@ import AssistantPanel, { STARTERS } from "../../components/assistant/AssistantPa
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
 import {
-  RiskChip, Card, StatCard, ChartCard, EmptyState, Skeleton, SkeletonCard, Button, useToast, Icons, riskMeta,
+  RiskChip, Card, StatCard, ChartCard, EmptyState, Skeleton, SkeletonCard, Button, useToast, Icons, riskMeta, PredictionSource,
 } from "../../components/ui";
 import { Legend } from "../../components/charts/theme";
 import useApi from "../../lib/useApi";
@@ -72,11 +72,7 @@ function StatusHero({ data, refreshing, onRefresh, onAsk }) {
           <span className="inline-flex items-center gap-1">
             <Icons.Clock size={13} /> Updated {timeAgo(p.created_at)}
           </span>
-          {p.source === "fallback" && (
-            <span className="inline-flex items-center gap-1 text-risk-700">
-              <Icons.Info size={13} /> Estimated with rules - the model was unavailable
-            </span>
-          )}
+          <PredictionSource source={p.source} />
           {p.policy_reason && <span>Institution policy: {p.policy_reason}</span>}
         </div>
       )}

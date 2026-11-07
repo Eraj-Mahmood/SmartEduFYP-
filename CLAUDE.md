@@ -65,6 +65,14 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       `POST /attendance` (every enrollment must belong to the class, else 403 and nothing is written;
       a dropped enrollment → 400). Roster, attendance list and risk summary exclude `status='dropped'`.
       Roster and result-save reasons use the staff wording.
+      What-if: `POST /students/:id/what-if {overrides: {Attendance_Percentage?, Assignment_Avg?, Quiz_Avg?,
+      Midterm_Marks?, Final_Marks?}}` (0-100; other keys → 400; `{}` = today's inputs only) for students in
+      one of my classes (not dropped) or my active counselees, else 403 (`services/whatIf.js`): real
+      features → overrides (any mark change recomputes provisional SGPA from the mean of the four marks and
+      projected CGPA) → one ML `/predict/batch` call for baseline + scenario → policy → staff reasons →
+      `{baseline, scenario: {model_label, policy_label, final_label, source, drivers, reasons}, inputs:
+      {before, after}, label_changed, saved: false}`. Never inserts a prediction
+      (`predictionService.scoreWithoutSaving`).
       Counselees: `GET /counselees` (my ACTIVE assignments, each with final_label, staff reasons, next steps,
       recommended tutorial, attendance, notes, last_contacted_at), `GET /counselees/:id`, `PUT /counselees/:id
       {notes?, last_contacted_at?, close?}` (not in the future; audit-logged). Someone else's or a closed
@@ -77,6 +85,12 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       batch runs: `POST /predictions/run {scope: "all"|"department"|"class", scopeId}` → `202` with the
       `prediction_runs` row (one run at a time, else `409`); `GET /predictions/runs/:id` for progress;
       `GET /predictions/runs?limit=20` lists recent runs (scope name, who, duration).
+      Model transparency (`controllers/modelController.js`): `GET /model` → `{ml_online, model (the ML
+      /model-info, or null when offline), stats, limitations}`; stats over each student's latest prediction:
+      `source` counts (model | fallback), `agreement` (model_label vs policy_label: rate + 3×3 matrix,
+      model-sourced rows only), `escalated` (final ≠ model_label, by change), `label_distribution`,
+      `last_run`. `POST /students/:id/what-if {overrides}` (any student; see the faculty one below).
+      `ML_INFO_URL` overrides the derived `<ML_SERVICE_URL without /predict>/model-info`.
       `GET /students/:id/full` → profile, performance history (no `target_label`), every prediction (staff
       reasons), course results, `nextSteps` (staff wording) and `counselor`; 400 bad id, 404 unknown. The
       Interventions page opens it in `AdminStudentDrawer` (click a student's name).
@@ -217,6 +231,12 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
   .venv\Scripts\python -m pytest tests`.
   If the service is unreachable the backend uses `ruleBasedFallback()` (the policy.json rules,
   `model_version = "rule_fallback"`, `source = 'fallback'`).
+  `GET /model-info` → model type/version, trees, depth, the 20 feature names, class labels, the `.pkl`
+  metrics, scikit-learn version (runtime + pickled), model SHA-256 and `global_importance` (mean |SHAP|
+  per raw feature, averaged over classes plus per class, on a fixed 2,000-row sample of the dataset CSV,
+  `random_state` 42). Importance takes ~10 s, so it is computed on first use and cached in
+  `ml_service/global_importance_cache.json` (git-ignored; keyed by the model hash and sample settings);
+  `DATASET_CSV` overrides the CSV path, and without the CSV `global_importance` is null.
 - **Frontend** (`frontend/src/`)
   - `components/ui/` — the UI kit (import from `components/ui`): `RiskChip` (icon + text; `supportive`
     shows the student wording with the formal label underneath, `short` the staff wording),
@@ -230,7 +250,16 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     `risk.js` is the one map of label wording (Safe → "You're on track", At-Risk → "Needs attention",
     Dropout-Likely → "High risk - let's act now").
   - `components/Shell.jsx` — `PortalShell`: per-role navigation (`NAV`), active link state, bell,
-    collapsible menu below `md`. `RiskBadge`/`Card` exports kept for compatibility.
+    collapsible menu below `md` (below `lg` for roles with more than 5 links, i.e. admin).
+    `RiskBadge`/`Card` exports kept for compatibility.
+  - ML transparency (Phase 5): `ui/PredictionSource` badge ("Random Forest model" or "Rule estimate - ML
+    service offline"; `staff` adds "Model said X; the policy check raised it to Y"; `compact` for tables)
+    on the student status hero, the faculty roster drawer, the admin student drawer and the Interventions
+    table. `components/WhatIfPanel.jsx` (sliders, debounced POST, today → what-if chips, SHAP drivers,
+    reasons; nothing saved) is the "What if?" tab (`ui/Tabs`) of the faculty roster drawer and the admin
+    student drawer. `pages/admin/ModelPage.jsx` (`/admin/model`, nav "Model"): usage stat tiles, model
+    card, global-importance bar chart (top 10, share of total), "How a prediction is made" (5 stages),
+    model-vs-policy matrix, current labels + last run, limitations box.
   - `components/charts/theme.jsx` — shared recharts axis/grid styles, `TooltipBox`, HTML `Legend`.
   - `lib/useApi.js` (`{data, error, loading, reload, setData}`), `lib/format.js` (timeAgo, gpa, pct,
     shortDate - parses `YYYY-MM-DD` as a local date).
@@ -382,6 +411,16 @@ and the Phase 4 interventions demo (demo script step 6) with how to undo it.
   tutorial index answers 403 to Node's fetch (Cloudflare) but 200 to curl with a browser User-Agent, so it
   was re-activated (2026-11-07) and the seeder now asks curl before marking a URL failed. The seed has 20
   courses, not 22.
+- **ML audit (2026-11-07, Phase 5 step 3)** — where a label can come from: the only write to
+  `predictions` is `predictionService.insertRows`. `model_label` = the ML service's argmax of
+  `predict_proba` (`source='model'`), or `ruleBasedFallback()` only when the ML call fails
+  (`source='fallback'`, `model_version='rule_fallback'`). `policy_label` = `applyPolicy` rules;
+  `final_label` = the more severe of the two (escalate only); `predicted_label` = `final_label`. No code
+  path reads `target_label` (written only by `import_dataset.py`; read only by the demo-selection SQL),
+  and no path sets a label from a constant. The what-if simulator uses the same scorer and saves nothing.
+  Stored rows then: 155,333 model + 8 fallback; every latest prediction (50,000) is from the model; model
+  and policy agree on 99.91% (43 cases: model At-Risk, policy Safe); the policy escalated 0 latest labels.
+  Global importance top 5: CGPA 44%, Previous_SGPA 26%, Attendance 21%, SGPA 5%, submission rate 2%.
 - Labels are **policy-derived from a synthetic dataset** (`dataset_type`:
   "Synthetic policy-labelled student dataset"), not observed real-world outcomes.
 - The dataset has one row per student (50,000 rows → 50,000 students), so each student's

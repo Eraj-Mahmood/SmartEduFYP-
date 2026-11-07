@@ -13,3 +13,5 @@ export { RISK, RISK_LABELS, RISK_SEVERITY, riskMeta } from "./risk";
 export { colors, chart, riskColor } from "./tokens";
 export * as Icons from "./icons";
 export { default as Modal } from "./Modal";
+export { default as PredictionSource } from "./PredictionSource";
+export { default as Tabs } from "./Tabs";

@@ -72,3 +72,35 @@ def test_batch_of_three_gives_three_results():
     for row, out in zip(rows, results):
         single = client.post("/predict", json={"features": row}).json()
         assert out == single
+
+
+def test_changing_cgpa_and_attendance_changes_the_model_output():
+    """The label comes from the model's learned function: the same row with a lower CGPA and lower
+    attendance gets different probabilities and a riskier label (no hardcoded rule in this service)."""
+    base = client.post("/predict", json={"features": SAFE_ROW}).json()
+    worse = client.post("/predict", json={"features": {**SAFE_ROW, "CGPA": 1.6, "Attendance_Percentage": 55}}).json()
+    assert base["label"] == "Safe"
+    assert worse["label"] != "Safe"
+    assert worse["prob_safe"] < base["prob_safe"]
+    assert (worse["prob_safe"], worse["prob_at_risk"], worse["prob_dropout"]) != (
+        base["prob_safe"], base["prob_at_risk"], base["prob_dropout"])
+    # each change on its own also moves the probabilities
+    for change in ({"CGPA": 1.6}, {"Attendance_Percentage": 55}):
+        one = client.post("/predict", json={"features": {**SAFE_ROW, **change}}).json()
+        assert one["prob_safe"] != base["prob_safe"]
+
+
+def test_model_info():
+    info = client.get("/model-info").json()
+    assert info["model_type"] == "RandomForestClassifier"
+    assert info["feature_names"] == EXPECTED_FEATURES
+    assert info["n_features"] == 20
+    assert info["class_labels"] == ["At-Risk", "Dropout-Likely", "Safe"]
+    assert info["metrics"]["test_macro_f1"] > 0.99
+    assert info["sklearn_version"] == "1.9.0"
+    imp = info["global_importance"]
+    assert imp["sample"]["rows"] == 2000
+    assert len(imp["features"]) == 20
+    assert {f["feature"] for f in imp["features"]} == set(EXPECTED_FEATURES)
+    values = [f["mean_abs_shap"] for f in imp["features"]]
+    assert values == sorted(values, reverse=True) and values[0] > 0

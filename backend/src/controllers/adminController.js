@@ -103,7 +103,7 @@ async function latestPredictionPage(req, { riskOnly = false, withCourses = false
 
   const base = `
     WITH latest AS (
-      SELECT p.student_id, p.prediction_id, p.final_label, p.prob_dropout, p.reasons,
+      SELECT p.student_id, p.prediction_id, p.final_label, p.model_label, p.prob_dropout, p.reasons,
              p.policy_reason, p.source, p.created_at, (p.features->>'CGPA')::numeric AS projected_cgpa
       FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id
     ),

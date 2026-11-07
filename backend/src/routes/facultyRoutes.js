@@ -6,6 +6,7 @@ const { validate } = require("../middleware/validate");
 const { MARK_FIELDS } = require("../services/grading");
 const ctrl = require("../controllers/facultyController");
 const counselors = require("../controllers/counselorController");
+const model = require("../controllers/modelController");
 
 router.use(authenticate, authorize("faculty"));
 
@@ -39,6 +40,14 @@ router.post("/attendance", attendanceRules, validate, ctrl.markAttendance);
 
 // My counselees (only my own active assignments; 403 for anyone else's)
 const counseleeId = [param("id").isInt({ min: 1 }).withMessage("id must be a positive integer").toInt()];
+// What-if simulator (nothing saved): own class students and active counselees only
+router.post(
+  "/students/:studentId/what-if",
+  [param("studentId").isInt({ min: 1 }).withMessage("studentId must be a positive integer").toInt()],
+  validate,
+  model.facultyWhatIf
+);
+
 router.get("/counselees", counselors.myCounselees);
 router.get("/counselees/:id", counseleeId, validate, counselors.oneCounselee);
 router.put(

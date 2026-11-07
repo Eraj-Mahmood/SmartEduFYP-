@@ -20,6 +20,7 @@ const NAV = {
   admin: [
     { to: "/admin", label: "Overview", end: true },
     { to: "/admin/interventions", label: "Interventions" },
+    { to: "/admin/model", label: "Model" },
     { to: "/admin/tutorials", label: "Tutorials" },
     { to: "/admin/users", label: "Users" },
     { to: "/admin/assignments", label: "Assignments" },
@@ -209,6 +210,8 @@ export function PortalShell({ title, children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const role = localStorage.getItem("smartedu_role");
   const nav = NAV[role] || [];
+  // more than 5 links (admin) don't fit beside the logo on tablets: use the menu button below lg
+  const bp = nav.length > 5 ? { desktop: "hidden lg:flex", mobile: "lg:hidden" } : { desktop: "hidden md:flex", mobile: "md:hidden" };
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
   // a link also counts as active on the pages listed in its `also` prefixes
@@ -233,7 +236,7 @@ export function PortalShell({ title, children }) {
             </span>
           </div>
 
-          <nav aria-label="Main" className="hidden md:flex items-center gap-1">
+          <nav aria-label="Main" className={`${bp.desktop} items-center gap-1`}>
             {nav.map((l) => (
               <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => linkClass({ isActive: isActive || inSection(l) })}>
                 {l.label}
@@ -246,7 +249,7 @@ export function PortalShell({ title, children }) {
             <AccountMenu onLogout={handleLogout} />
             <button
               onClick={() => setMenuOpen((o) => !o)}
-              className="md:hidden p-2 rounded-lg hover:bg-white/10 text-white/90"
+              className={`${bp.mobile} p-2 rounded-lg hover:bg-white/10 text-white/90`}
               aria-label={menuOpen ? "Close menu" : "Open menu"}
               aria-expanded={menuOpen}
               aria-controls="mobile-nav"
@@ -257,7 +260,7 @@ export function PortalShell({ title, children }) {
         </div>
 
         {menuOpen && (
-          <nav id="mobile-nav" aria-label="Main" className="md:hidden border-t border-white/10 px-4 py-3 space-y-1 animate-fade-up">
+          <nav id="mobile-nav" aria-label="Main" className={`${bp.mobile} border-t border-white/10 px-4 py-3 space-y-1 animate-fade-up`}>
             {nav.map((l) => (
               <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => mobileLinkClass({ isActive: isActive || inSection(l) })}>
                 {l.label}

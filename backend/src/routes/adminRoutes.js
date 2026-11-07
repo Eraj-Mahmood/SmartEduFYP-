@@ -7,6 +7,7 @@ const ctrl = require("../controllers/adminController");
 const tutorials = require("../controllers/tutorialController");
 const counselors = require("../controllers/counselorController");
 const governance = require("../controllers/governanceController");
+const model = require("../controllers/modelController");
 
 router.use(authenticate, authorize("admin"));
 
@@ -125,6 +126,15 @@ router.post(
   validate,
   ctrl.runPredictions
 );
+// Model transparency (Phase 5): model card + live stats, and the what-if simulator (nothing saved)
+router.get("/model", model.modelOverview);
+router.post(
+  "/students/:studentId/what-if",
+  [param("studentId").isInt({ min: 1 }).withMessage("studentId must be a positive integer").toInt()],
+  validate,
+  model.adminWhatIf
+);
+
 router.get("/predictions/runs", ctrl.listPredictionRuns);
 router.get("/predictions/runs/:id", [param("id").isInt({ min: 1 }).withMessage("run id must be a positive integer")], validate, ctrl.getPredictionRun);
 

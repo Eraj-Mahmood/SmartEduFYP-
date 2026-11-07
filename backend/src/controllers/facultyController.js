@@ -17,7 +17,7 @@ async function repredictSafely(what, fn) {
 
 // Latest prediction for s.student_id, via the students.latest_prediction_id pointer
 const LATEST_PREDICTION_JOIN = `LEFT JOIN LATERAL (
-         SELECT p.final_label, p.reasons, p.drivers, p.features, p.policy_reason, p.created_at,
+         SELECT p.final_label, p.model_label, p.source, p.reasons, p.drivers, p.features, p.policy_reason, p.created_at,
                 (p.features->>'CGPA')::numeric AS projected_cgpa
          FROM predictions p WHERE p.prediction_id = s.latest_prediction_id
        ) lp ON TRUE`;

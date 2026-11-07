@@ -1,9 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+import hashlib
+import json
+import os
 import joblib
 import numpy as np
 import pandas as pd
 import shap
+import sklearn
 from pathlib import Path
 
 app = FastAPI(title="SmartEdu Prediction Service")
@@ -126,6 +130,106 @@ def predict_rows(rows):
 @app.get("/health")
 def health():
     return {"status": "ok", "model": package.get("model_name"), "features_expected": FEATURE_NAMES}
+
+
+# ---------------- model transparency ----------------
+# Global importance = mean |SHAP| per raw feature (one-hot columns folded back), over a fixed
+# sample of the dataset (IMPORTANCE_ROWS rows, random_state IMPORTANCE_SEED). It takes ~10 s, so
+# it is computed once and cached in IMPORTANCE_CACHE, keyed by the model file's SHA-256 and the
+# sample settings (a new model or sample recomputes it).
+DATASET_CSV = Path(os.environ.get(
+    "DATASET_CSV", Path(__file__).resolve().parent.parent / "SmartEdu_Synthetic_Dataset_V2_50000_Sheet_.csv"))
+IMPORTANCE_CACHE = Path(__file__).parent / "global_importance_cache.json"
+IMPORTANCE_ROWS = 2000
+IMPORTANCE_SEED = 42
+_importance = None
+
+
+def _model_sha256():
+    h = hashlib.sha256()
+    with open(MODEL_PATH, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+MODEL_SHA256 = _model_sha256()
+
+
+def compute_global_importance():
+    """mean |SHAP| per raw feature on the fixed dataset sample (averaged over the 3 classes,
+    plus per class), sorted most important first."""
+    df = pd.read_csv(DATASET_CSV)
+    sample = df.sample(n=min(IMPORTANCE_ROWS, len(df)), random_state=IMPORTANCE_SEED)[FEATURE_NAMES]
+    encoded = preprocessing.transform(sample)
+    shap_encoded = np.asarray(explainer.shap_values(encoded, check_additivity=False))
+    shap_raw = np.abs(np.einsum("rec,ef->rfc", shap_encoded, FOLD))  # (rows, 20, classes)
+    overall = shap_raw.mean(axis=(0, 2))
+    per_class = shap_raw.mean(axis=0)  # (20, classes)
+    features = [
+        {
+            "feature": FEATURE_NAMES[j],
+            "mean_abs_shap": round(float(overall[j]), 6),
+            "by_class": {c: round(float(per_class[j, k]), 6) for k, c in enumerate(TARGET_CLASSES)},
+        }
+        for j in np.argsort(-overall)
+    ]
+    return {
+        "method": "mean |SHAP| per raw feature (TreeExplainer, one-hot columns summed), averaged over classes",
+        "sample": {"rows": int(len(sample)), "random_state": IMPORTANCE_SEED, "source": DATASET_CSV.name},
+        "model_sha256": MODEL_SHA256,
+        "features": features,
+    }
+
+
+def global_importance():
+    """Cached global importance (file cache, recomputed if the model or sample settings change)."""
+    global _importance
+    if _importance is not None:
+        return _importance
+    if IMPORTANCE_CACHE.exists():
+        try:
+            cached = json.loads(IMPORTANCE_CACHE.read_text(encoding="utf-8"))
+            sample = cached.get("sample", {})
+            if (cached.get("model_sha256") == MODEL_SHA256 and sample.get("rows") == IMPORTANCE_ROWS
+                    and sample.get("random_state") == IMPORTANCE_SEED):
+                _importance = cached
+                return _importance
+        except (ValueError, OSError):
+            pass
+    if not DATASET_CSV.exists():
+        return None  # no dataset on this machine: model-info still works without the chart
+    _importance = compute_global_importance()
+    try:
+        IMPORTANCE_CACHE.write_text(json.dumps(_importance, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+    return _importance
+
+
+def _metrics():
+    keys = ["cross_validation_macro_f1", "test_macro_f1", "test_accuracy", "best_parameters", "dataset_type"]
+    return {k: package[k] for k in keys if k in package}
+
+
+@app.get("/model-info")
+def model_info():
+    return {
+        "model_name": package.get("model_name"),
+        "model_type": type(model).__name__,
+        "model_version": MODEL_VERSION,
+        "n_estimators": getattr(model, "n_estimators", None),
+        "max_depth": getattr(model, "max_depth", None),
+        "feature_names": FEATURE_NAMES,
+        "n_features": len(FEATURE_NAMES),
+        "encoded_features": int(len(_ENCODED_TO_RAW)),
+        "class_labels": TARGET_CLASSES,
+        "metrics": _metrics(),
+        "sklearn_version": sklearn.__version__,
+        "sklearn_version_pickled": getattr(model, "_sklearn_version", None),
+        "model_sha256": MODEL_SHA256,
+        "global_importance": global_importance(),
+    }
 
 
 MAX_BATCH = 2000

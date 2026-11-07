@@ -12,3 +12,6 @@ venv/
 env/
 .env.*
 !.env.example
+
+# ML service: derived global-importance cache (recomputed from the model + dataset)
+ml_service/global_importance_cache.json

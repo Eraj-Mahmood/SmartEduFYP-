@@ -1,4 +1,6 @@
-import { Drawer, RiskChip, EmptyState, Icons, SkeletonText } from "../../components/ui";
+import { useEffect, useState } from "react";
+import { Drawer, RiskChip, EmptyState, Icons, SkeletonText, PredictionSource, Tabs } from "../../components/ui";
+import WhatIfPanel from "../../components/WhatIfPanel";
 import useApi from "../../lib/useApi";
 import { gpa, num, timeAgo } from "../../lib/format";
 
@@ -21,8 +23,15 @@ function NextSteps({ steps }) {
   );
 }
 
+const TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "whatif", label: "What if?" },
+];
+
 export default function AdminStudentDrawer({ studentId, onClose }) {
   const { data, error, loading } = useApi(studentId ? `/admin/students/${studentId}/full` : null);
+  const [tab, setTab] = useState("overview");
+  useEffect(() => setTab("overview"), [studentId]);
   const ready = data && data.profile?.student_id === studentId;
   const p = ready ? data.predictions[0] : null;
 
@@ -39,6 +48,11 @@ export default function AdminStudentDrawer({ studentId, onClose }) {
       ) : !ready || loading ? (
         <SkeletonText lines={8} />
       ) : (
+        <>
+        <Tabs tabs={TABS} value={tab} onChange={setTab} label="Student details" className="mb-5" />
+        {tab === "whatif" ? (
+          <WhatIfPanel endpoint={`/admin/students/${studentId}/what-if`} />
+        ) : (
         <div className="space-y-5">
           <section className="bg-surface rounded-card border border-line p-4">
             {p ? (
@@ -49,6 +63,7 @@ export default function AdminStudentDrawer({ studentId, onClose }) {
                     <Icons.Clock size={12} /> Predicted {timeAgo(p.created_at)}
                   </span>
                 </div>
+                <PredictionSource className="mt-2" source={p.source} modelLabel={p.model_label} finalLabel={p.final_label} staff />
                 {p.reasons?.length > 0 && (
                   <ul className="mt-3 space-y-1 text-sm text-ink/90 list-disc pl-5">
                     {p.reasons.map((r) => (
@@ -97,6 +112,8 @@ export default function AdminStudentDrawer({ studentId, onClose }) {
             </section>
           )}
         </div>
+        )}
+        </>
       )}
     </Drawer>
   );

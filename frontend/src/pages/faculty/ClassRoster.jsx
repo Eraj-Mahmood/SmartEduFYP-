@@ -3,8 +3,9 @@ import { useParams, Link } from "react-router-dom";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
 import {
-  Card, ChartCard, DataTable, Drawer, EmptyState, RiskChip, Button, Skeleton, useToast, Icons, RISK_SEVERITY,
+  Card, ChartCard, DataTable, Drawer, EmptyState, RiskChip, Button, Skeleton, useToast, Icons, RISK_SEVERITY, PredictionSource, Tabs,
 } from "../../components/ui";
+import WhatIfPanel from "../../components/WhatIfPanel";
 import useApi from "../../lib/useApi";
 import { gpa, pct, num, timeAgo } from "../../lib/format";
 import { GradeDistributionChart, SessionAttendanceChart } from "./ClassCharts";
@@ -48,7 +49,13 @@ function MarkInput({ value, onChange, onEnter, label, invalid }) {
   );
 }
 
+const DRAWER_TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "whatif", label: "What if?" },
+];
+
 function StudentDrawer({ row, onClose, classId }) {
+  const [tab, setTab] = useState("overview");
   if (!row) return <Drawer open={false} onClose={onClose} />;
   return (
     <Drawer
@@ -62,6 +69,10 @@ function StudentDrawer({ row, onClose, classId }) {
         </Link>
       }
     >
+      <Tabs tabs={DRAWER_TABS} value={tab} onChange={setTab} label="Student details" className="mb-5" />
+      {tab === "whatif" ? (
+        <WhatIfPanel endpoint={`/faculty/students/${row.student_id}/what-if`} />
+      ) : (
       <div className="space-y-5">
         <div className="bg-surface rounded-card border border-line p-4">
           <div className="flex items-center justify-between gap-3">
@@ -70,6 +81,7 @@ function StudentDrawer({ row, onClose, classId }) {
               <Icons.Clock size={12} /> {row.last_predicted_at ? `Predicted ${timeAgo(row.last_predicted_at)}` : "Not predicted yet"}
             </span>
           </div>
+          <PredictionSource className="mt-2" source={row.source} modelLabel={row.model_label} finalLabel={row.final_label} staff />
           {row.reasons?.length > 0 && (
             <>
               <h3 className="mt-4 text-sm font-semibold">Why</h3>
@@ -109,6 +121,7 @@ function StudentDrawer({ row, onClose, classId }) {
           </dl>
         </div>
       </div>
+      )}
     </Drawer>
   );
 }
@@ -333,7 +346,7 @@ export default function ClassRoster() {
         </div>
       )}
 
-      <StudentDrawer row={openRow} onClose={() => setOpenId(null)} classId={facultyCourseId} />
+      <StudentDrawer key={openRow?.student_id || "none"} row={openRow} onClose={() => setOpenId(null)} classId={facultyCourseId} />
     </PortalShell>
   );
 }

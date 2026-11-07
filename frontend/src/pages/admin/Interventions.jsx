@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
-import { Card, DataTable, Pagination, RiskChip, Button, EmptyState, Icons, RISK_SEVERITY, useToast } from "../../components/ui";
+import { Card, DataTable, Pagination, RiskChip, Button, EmptyState, Icons, RISK_SEVERITY, useToast, PredictionSource } from "../../components/ui";
 import useApi from "../../lib/useApi";
 import { timeAgo } from "../../lib/format";
 import { AssignCounselorModal, ComposeModal } from "./InterventionModals";
@@ -123,7 +123,17 @@ export default function Interventions() {
           </button>
         ),
       },
-      { key: "final_label", header: "Label", render: (r) => <RiskChip label={r.final_label} size="sm" short />, sortValue: (r) => RISK_SEVERITY[r.final_label] },
+      {
+        key: "final_label",
+        header: "Label",
+        render: (r) => (
+          <span className="inline-flex flex-col items-start gap-1">
+            <RiskChip label={r.final_label} size="sm" short />
+            <PredictionSource compact source={r.source} modelLabel={r.model_label} finalLabel={r.final_label} staff />
+          </span>
+        ),
+        sortValue: (r) => RISK_SEVERITY[r.final_label],
+      },
       {
         key: "reasons",
         header: "Reasons",
