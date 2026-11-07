@@ -78,7 +78,7 @@ function PreviewTable({ kind, rows, total }) {
                 <tr key={r.row} className={`border-t border-line align-top ${r.errors.length ? "bg-danger-50/70" : ""}`}>
                   <td className="px-3 py-2 font-mono text-xs text-muted">{r.row}</td>
                   <td className={`px-3 py-2 ${badCols.has("roll_no") ? "text-danger-700" : ""}`}>
-                    <span className="block font-mono text-xs">{r.roll_no || "—"}</span>
+                    <span className="block font-mono text-xs whitespace-nowrap">{r.roll_no || "—"}</span>
                     {r.name && <span className="block text-xs text-muted">{r.name}</span>}
                   </td>
                   {cols.map((c) => (

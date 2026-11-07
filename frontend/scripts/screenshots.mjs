@@ -24,6 +24,7 @@ const ACCOUNTS = [
     ["overview", "/admin"],
     ["interventions", "/admin/interventions"],
     ["model", "/admin/model"],
+    ["live-cohort", "/admin/live-cohort"],
     ["users", "/admin/users"],
     ["assignments", "/admin/assignments"],
     ["tutorials", "/admin/tutorials"],
@@ -143,6 +144,11 @@ async function phase4Teardown(page, assignmentId) {
 async function shot(page, name, viewport, problems, { fullPage = true } = {}) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   if (overflow > 0) problems.push(`${name} @${viewport.width}px overflows by ${overflow}px`);
+  if (fullPage) {
+    // a full-page capture taken while scrolled down draws the sticky header mid-page
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(400);
+  }
   await page.screenshot({ path: join(OUT, `${name}-${viewport.width}.png`), fullPage });
 }
 

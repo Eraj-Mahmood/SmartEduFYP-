@@ -18,6 +18,8 @@ Passwords are the defaults from the setup scripts: `createAdmin.js` (as run in t
 |---|---|---|---|---|
 | Admin | — | `admin@smartedu.edu` | `Admin@123` | Sees all students, predictions and interventions. |
 | Faculty | Dr. Ayesha Khan (AI) | `ayesha.khan@smartedu.edu` | `Faculty@123` | Teaches AI301 and AI302 section A. Four of the six demo students are in her classes, covering all three labels. |
+| Faculty | Mr. Bilal Raza (CS) | `bilal.raza@smartedu.edu` | `Faculty@123` | Teaches CS401 section A (no demo students): the **upload demo** class. |
+| Faculty | Dr. Amina Sheikh (CS) | `amina.sheikh@smartedu.edu` | `Faculty@123` | Teaches the **live cohort** class (CS301 section LIVE, 30 SYNTHETIC students `SYN-*`). |
 
 ## Students (password `Student@123` for all)
 
@@ -120,6 +122,71 @@ WHERE recipient_user_id IN (SELECT user_id FROM students WHERE roll_no = 'BU-144
 
 `npm run screenshots` never touches these accounts' assignments or bells: it uses BU-115624
 (Haris Rehman) with Mr. Zain Abbas as counselor and closes that assignment at the end.
+
+## Phase 5 demos: the model, what-if, uploads, live data
+
+### The model is real (Admin → Model)
+
+Log in as admin → **Model**. Point out: the model card (RandomForestClassifier, 300 trees,
+scikit-learn 1.9.0, the 20 features, CV / test macro F1 0.9992 / 0.9994), **What the model relies
+on** (global SHAP importance: CGPA 44%, previous SGPA 26%, attendance 21%, ...), the tiles (100% of
+the 50,000 latest predictions come from the model; model and policy agree on 99.91%; the policy has
+raised 0 labels), **How a prediction is made** (5 stages) and the **Limitations** box (synthetic,
+policy-derived labels; early-warning benchmark macro F1 0.934). Every prediction view carries a small
+**Random Forest model** badge (or **Rule estimate - ML service offline** when the ML service is down:
+stop it and refresh a student to show the fallback).
+
+### What-if (nothing is saved)
+
+As `ayesha.khan@smartedu.edu`: **My classes** → the AI class with **Rabia Gill (BU-100040)** →
+click her row → **What if?** tab. She is **Safe** (100% attendance). Drag **Attendance** to **55%**:
+the result turns **Dropout-Likely**, the badge still says **Random Forest model** (it is the model's
+own label, not a rule), and **Attendance 55% ↑ raises risk** jumps to the top of the drivers. Drag
+the marks down instead to show SGPA / projected CGPA being recomputed. **Back to today's numbers**
+resets it. Admin: Interventions → click a student's name → **What if?**. Nothing is stored: her
+prediction history is unchanged afterwards.
+
+### Upload with errors (CS401 A, `bilal.raza@smartedu.edu`)
+
+File: [`docs/demo_files/demo_marks_upload_CS401_A.csv`](demo_files/demo_marks_upload_CS401_A.csv)
+(the class's real marks, a weak midterm/final for Anum Cheema, and **2 deliberate errors**: the quiz
+mark `8O` (letter O) on row 4 and roll number `BU-100099`, who isn't in the class, on row 10).
+
+1. Log in as `bilal.raza@smartedu.edu` → **My classes** → **CS401 Operating Systems** → **Upload** tab.
+2. Keep **Marks**; optionally **Download marks template** (the roster, marks empty).
+3. Drop the demo file on the box. The preview shows **9 rows · 7 valid · 2 with errors**, both
+   errors listed and highlighted in the table (the bad cell shows `8O`). Nothing is saved yet.
+4. **Save 7 valid rows** → **Rows saved 7 · Rows rejected 2 · Students re-predicted 7 · Labels
+   changed 1**: **BU-129601 Anum Cheema: Safe → At-Risk** (projected CGPA 2.40 → 2.21).
+5. **Students** tab: the saved rows carry a small **live** tag; the upload is in the history.
+
+**To undo it:** upload [`docs/demo_files/demo_marks_undo_CS401_A.csv`](demo_files/demo_marks_undo_CS401_A.csv)
+(Anum's original marks) the same way: she goes back to **Safe**. The rows stay tagged live and both
+uploads stay in the history (that is the audit trail). `npm run screenshots` also uploads to this
+class, but only re-saves the current marks.
+
+### Live cohort and evaluation (Objective 7)
+
+Already imported: `evaluation/sample_live_cohort.csv` (30 **SYNTHETIC** students, roll numbers
+`SYN-*`) as CS301 section LIVE, taught by Dr. Amina Sheikh, with 8 sessions of attendance uploaded.
+To show it: Admin → Overview → **Data sources** (30 live students) → **Interventions** → **Data
+source: With live data**; log in as `amina.sheikh@smartedu.edu` → **CS301 LIVE**. The import page is
+Admin → Overview → Data sources → **Import a live cohort**.
+
+Run the evaluation (database running):
+
+```powershell
+python -m pip install -r evaluation/requirements.txt   # once
+python evaluation/live_eval.py                          # -> docs/live_eval.md, docs/live_eval_confusion.png
+```
+
+Current result: 30 students, accuracy 1.000 against the synthetic outcomes, model vs policy 27/30
+(three students at exactly 75% attendance: rule says Safe, model says At-Risk). It is a pipeline test,
+not real-world accuracy, and the report says so.
+
+To start again from scratch: `cd backend; node src/scripts/removeLiveCohort.js` (lists imports) →
+`node src/scripts/removeLiveCohort.js <id>`, then import the file again on the admin page, press
+**Run predictions for this class**, and upload attendance as Dr. Sheikh.
 
 ## Forced password change
 

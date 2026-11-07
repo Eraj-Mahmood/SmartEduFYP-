@@ -391,7 +391,9 @@ function attendance(ctx, r, rng) {
       ? `That's below the ${T.severe_attendance_pct}% severe-absence limit, so it's the most urgent thing to fix.`
       : a.pct < T.min_attendance_pct
         ? `That's below the ${T.min_attendance_pct}% requirement.`
-        : pick(rng, [`That's above the ${T.min_attendance_pct}% requirement - well done.`, `You're above ${T.min_attendance_pct}% - good.`]);
+        : a.pct === T.min_attendance_pct
+          ? `That's exactly the ${T.min_attendance_pct}% requirement - one more missed class would put you below it.`
+          : pick(rng, [`That's above the ${T.min_attendance_pct}% requirement - well done.`, `You're above ${T.min_attendance_pct}% - good.`]);
   const per = ctx.courses.filter((c) => c.attendance_pct != null).map((c) => `${c.code} ${pct(c.attendance_pct)}`);
   const step = ctx.next_steps.find((s) => s.id === "attendance");
   const low = ctx.courses.filter((c) => c.attendance_pct != null && c.attendance_pct < T.min_attendance_pct).map((c) => c.code);

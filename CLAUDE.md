@@ -432,6 +432,8 @@ npm 11 blocks install scripts: `bcrypt` (backend) and `esbuild` (frontend) are a
 
 ## Working rules
 
+- **FEATURE FREEZE since tag `v5-freeze` (2026-11-07): bug fixes only.** No new features, screens or
+  endpoints without the owner's explicit say-so.
 - Single developer, work directly on `main`. Do not create branches.
 - One commit per step, conventional message (e.g. `fix(ml): pin scikit-learn`).
   Commit only after that step's check passes.
@@ -453,7 +455,11 @@ The six curated demo students (2 per label, grades consistent with CGPA, label =
 faculty login that shows them are in [docs/DEMO_ACCOUNTS.md](docs/DEMO_ACCOUNTS.md); they were
 found with `database/find_consistent_demo_students.sql`. The same file has a repeatable
 live re-prediction demo (one faculty save that moves BU-112907 from At-Risk to Safe), the chat demo,
-and the Phase 4 interventions demo (demo script step 6) with how to undo it.
+and the Phase 4 interventions demo (demo script step 6) with how to undo it. Phase 5 demos are there
+too: the Model page, the what-if demo (BU-100040 at 55% attendance → Dropout-Likely, nothing saved),
+the upload demo (`docs/demo_files/demo_marks_upload_CS401_A.csv` as bilal.raza: 7 saved, 2 deliberate
+errors, Anum Cheema Safe → At-Risk; `demo_marks_undo_CS401_A.csv` undoes it) and the live cohort +
+`live_eval.py` run.
 
 ## Known facts
 
