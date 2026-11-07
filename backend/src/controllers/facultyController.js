@@ -78,6 +78,7 @@ async function classRoster(req, res) {
     const { rows } = await pool.query(
       `SELECT e.enrollment_id, s.student_id, s.roll_no, s.full_name, e.status,
               cr.assignment_avg, cr.quiz_avg, cr.midterm_marks, cr.final_marks, cr.grade,
+              cr.data_source AS result_source, cr.upload_id AS result_upload_id,
               lp.final_label, lp.reasons, lp.drivers, lp.features, lp.policy_reason, lp.projected_cgpa,
               lp.created_at AS last_predicted_at,
               att.present, att.sessions,

@@ -73,6 +73,24 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       `{baseline, scenario: {model_label, policy_label, final_label, source, drivers, reasons}, inputs:
       {before, after}, label_changed, saved: false}`. Never inserts a prediction
       (`predictionService.scoreWithoutSaving`).
+      Bulk uploads (FR13, `controllers/uploadController.js` + `services/uploads.js`, CSV helpers in
+      `services/csv.js`, multer in `middleware/upload.js`):
+      - `GET /classes/:id/templates/results.csv` (roll_no, name, assignment_avg, quiz_avg, midterm_marks,
+        final_marks) and `attendance.csv` (roll_no, name, class_date = today, status), one row per enrolled
+        student, values empty, UTF-8 BOM.
+      - `POST /classes/:id/upload?kind=results|attendance&mode=preview|commit` (multipart field `file`;
+        `.csv` only, ≤ 2 MB, ≤ 2,000 rows, headers matched loosely, `csv-parse` 7.0.3, `multer` 2.5.0).
+        Per row: roll no enrolled and not dropped in THIS class; marks 0-100 or empty (empty keeps the saved
+        mark); class_date a real `YYYY-MM-DD` not in the future; status `present|absent|leave` (the
+        `attendance_status` enum; any case); no duplicate roll (results) or (roll, date) (attendance). A
+        template row with nothing filled in is skipped, not an error. Errors are `{row (file line, header
+        = 1), roll_no, column, message}`. Response: `{summary {rows_total, rows_ok, rows_failed,
+        rows_skipped}, errors, preview (first 20 rows with ok/errors), upload, repredicted, labels_changed}`.
+        `preview` writes no marks/attendance (logs an `uploads` row, status `previewed`); `commit` writes the
+        good rows in one transaction (`data_source='live'`, `upload_id`, server-derived grade, upsert on
+        enrollment / (enrollment, date)), then `predictForMany(trigger 'upload')` and audit-logs
+        `UPLOAD_RESULTS` / `UPLOAD_ATTENDANCE`; no good rows → status `failed`, nothing written.
+      - `GET /uploads?classId=&limit=` → my upload history. Another faculty member's class → 403.
       Counselees: `GET /counselees` (my ACTIVE assignments, each with final_label, staff reasons, next steps,
       recommended tutorial, attendance, notes, last_contacted_at), `GET /counselees/:id`, `PUT /counselees/:id
       {notes?, last_contacted_at?, close?}` (not in the future; audit-logged). Someone else's or a closed
@@ -310,6 +328,16 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     `007_counselor_assignments.sql` — `counselor_assignments` (partial unique index: one active per
     student) and `notifications.link`. `008_notification_tutorial.sql` — `notifications.related_tutorial_id`
     and `kind`. `009_audit_log_indexes.sql`. `010_password_changed_at.sql` — `users.password_changed_at`.
+    `011_uploads.sql` — `uploads` (faculty_course_id (NULL until a cohort import creates its class),
+    uploaded_by, kind results|attendance|cohort, filename, rows_total/ok/failed, errors JSONB, summary
+    JSONB, status previewed|committed|failed, created_at, committed_at); `upload_id` on course_results,
+    attendance and student_semester_performance; `students.data_source` (synthetic | live) and
+    `students.actual_outcome` (safe | at_risk | dropout | unknown, from a live cohort file).
+  - **Data sources** (`data_source` columns): `synthetic` = imported from the 50k dataset or seeded;
+    `live` = entered in the app (single result save, attendance marking), uploaded by faculty (then
+    `upload_id` also points at the `uploads` row that wrote it) or created by an admin live-cohort import.
+    The upload log (`uploads`) is the source record for every bulk write: who, which class, which file,
+    which rows were rejected and why.
   - `import_dataset.py` — loads the 50k-row CSV: one user+student per `Student_ID`
     (email `student<ID>@smartedu.edu`, roll `BU-<ID>`) and one
     `student_semester_performance` row each (incl. the dataset's `target_label`).

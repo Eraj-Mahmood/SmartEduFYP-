@@ -7,6 +7,8 @@ const { MARK_FIELDS } = require("../services/grading");
 const ctrl = require("../controllers/facultyController");
 const counselors = require("../controllers/counselorController");
 const model = require("../controllers/modelController");
+const uploads = require("../controllers/uploadController");
+const { singleCsv } = require("../middleware/upload");
 
 router.use(authenticate, authorize("faculty"));
 
@@ -40,6 +42,11 @@ router.post("/attendance", attendanceRules, validate, ctrl.markAttendance);
 
 // My counselees (only my own active assignments; 403 for anyone else's)
 const counseleeId = [param("id").isInt({ min: 1 }).withMessage("id must be a positive integer").toInt()];
+// Bulk uploads (FR13): templates prefilled with the roster, preview/commit, history
+router.get("/classes/:facultyCourseId/templates/:template", classIdRule, validate, uploads.template);
+router.post("/classes/:facultyCourseId/upload", classIdRule, validate, singleCsv, uploads.upload);
+router.get("/uploads", uploads.history);
+
 // What-if simulator (nothing saved): own class students and active counselees only
 router.post(
   "/students/:studentId/what-if",
