@@ -8,6 +8,15 @@ const llm = require("../src/services/chatLlm");
 const app = require("../src/app");
 const { login, studentId, cleanupChat, pool } = require("./helpers");
 
+// These tests cover the Anthropic provider whatever backend/.env selects (Gemini: chat.gemini.test.js).
+require("dotenv").config();
+const savedProvider = process.env.CHAT_LLM_PROVIDER;
+process.env.CHAT_LLM_PROVIDER = "anthropic";
+afterAll(() => {
+  if (savedProvider === undefined) delete process.env.CHAT_LLM_PROVIDER;
+  else process.env.CHAT_LLM_PROVIDER = savedProvider;
+});
+
 const CTX = { student: { name: "Test Student", roll_no: "BU-100008", email: "student100008@smartedu.edu" } };
 const FAKE_KEY = "sk-ant-test-THIS-MUST-NEVER-BE-LOGGED";
 

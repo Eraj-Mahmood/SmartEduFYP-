@@ -164,7 +164,7 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     steps, `tutorial` (the recommendation, or null), `counselor` (or null), last 3 interventions; no
     probabilities) →
     **Layer 1** `chatbot.js` `respond(message, ctx, {catalog})` → **Layer 2** `chatLlm.js` only if the
-    intent is `unknown` and `CHAT_LLM_ENABLED=true` with `ANTHROPIC_API_KEY` set → both messages saved
+    intent is `unknown` and `CHAT_LLM_ENABLED=true` with the provider's key set → both messages saved
     to `chat_messages` (migration 004) in one transaction, `source` = template | llm | fallback.
     - Layer 1 normalises the message (lowercase, no punctuation), matches English + Roman Urdu keywords
       and course codes/titles, in this order: `wellbeing` (self-harm wording → emergency number),
@@ -177,10 +177,28 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       recommended tutorial (the chat panel opens http(s) links in a new tab).
       Answers ≤ 120 words, real numbers, no probabilities or promises, ≤ 3 suggestions + page links,
       wording varies. Support contacts come from `config/support.json` (**placeholders — replace**).
-    - Layer 2: `@anthropic-ai/sdk` 0.131.0, `CHAT_LLM_MODEL` (default `claude-haiku-5-5`),
-      `CHAT_LLM_TIMEOUT_MS` (8000, no retries), effort low; system prompt keeps it to the JSON context.
-      Post-check: any other roll no / student ID / email → refusal template. Timeout/error/refusal →
-      Layer 1 unknown reply (`source='fallback'`). Only the error class is logged, never the key.
+    - Layer 2: a provider interface, `CHAT_LLM_PROVIDER` = `anthropic` (default) | `gemini`.
+      - `anthropic`: `@anthropic-ai/sdk` 0.131.0, key `ANTHROPIC_API_KEY`, default model `claude-haiku-5-5`,
+        effort low.
+      - `gemini`: official `@google/genai` 2.31.0 (pinned; 3.0.0 was < 14 days old), key `GEMINI_API_KEY`,
+        default model `gemini-3.8-flash` (newest Flash with a free tier, checked 2026-11-07), thinking
+        level LOW, `retryOptions.attempts: 1` (the SDK retries 5× by default). The timeout is enforced
+        client-side with an `abortSignal`, NOT `httpOptions.timeout`: the SDK sends that as an
+        `X-Server-Timeout` deadline and the API rejects < 10 s with HTTP 400.
+      - Both: `CHAT_LLM_MODEL` overrides the model, `CHAT_LLM_TIMEOUT_MS` (8000, no retries), same system
+        prompt and 120-word cap. Post-check: any other roll no / student ID, or any email except the
+        student's own, their counselor's and the support office's → refusal template. Timeout / HTTP 429 /
+        any error / model refusal → Layer 1 unknown reply (`source='fallback'`). Only the error class and
+        status are logged ("rate limited (429)", "timeout"), never the key.
+      - **Gemini free tier: Google may use prompts and answers to improve its products** ("Used to improve
+        our products: Yes" on the free tier). Only the synthetic dataset may be sent to it - never real
+        student records (live cohort imports included); use a paid key or turn Layer 2 off for real data.
+        Free-tier daily quota is small (the 2026-11-07 live test hit 429 after ~20 requests) and
+        `gemini-3.8-flash` often answered 503 "high demand" or exceeded 8 s; the app degrades to Layer 1.
+      - Tests: `chat.llm.test.js` (Anthropic, provider pinned) and `chat.gemini.test.js` (mocked client:
+        success, post-check, blocked, 429; the real SDK against a local 429 / never-answering server, run
+        in a child process via `tests/fixtures/gemini_real_sdk.js` because Jest's sandbox breaks Node's
+        fetch inside the SDK's retry wrapper). They never call Google or Anthropic.
   - **Re-prediction** happens on student refresh (`student_refresh`), after every faculty result save
     (`faculty_result`, that student), after every attendance save (`faculty_attendance`, the affected
     students via `predictForMany`) and in admin runs (`admin_run`); stored in `predictions.triggered_by`.
@@ -309,8 +327,10 @@ cd backend; node ../evaluation/next_steps_whatif.js  # suggested marks vs the re
 ```
 
 Chat env vars (`backend/.env`, documented in `.env.example`): `CHAT_RATE_LIMIT_PER_MIN` (20),
-`CHAT_LLM_ENABLED` (false), `ANTHROPIC_API_KEY` (never commit), `CHAT_LLM_MODEL` (claude-haiku-5-5),
-`CHAT_LLM_TIMEOUT_MS` (8000). The demo works with the LLM off.
+`CHAT_LLM_ENABLED` (false), `CHAT_LLM_PROVIDER` (anthropic | gemini), `ANTHROPIC_API_KEY` /
+`GEMINI_API_KEY` (never commit), `CHAT_LLM_MODEL` (empty = provider default: claude-haiku-5-5 /
+gemini-3.8-flash), `CHAT_LLM_TIMEOUT_MS` (8000). The demo works with the LLM off. The local `.env` uses
+Gemini (free tier: synthetic data only, see above).
 
 npm 11 blocks install scripts: `bcrypt` (backend) and `esbuild` (frontend) are allowed via
 `allowScripts` in their `package.json`.
