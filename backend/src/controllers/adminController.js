@@ -4,6 +4,7 @@ const { logAction } = require("../middleware/audit");
 const { startRun, getRun } = require("../services/predictionRuns");
 const { staffReasons } = require("../services/reasons");
 const interventions = require("../services/interventions");
+const { recommendFor } = require("../services/tutorials");
 
 // Latest prediction per student, via the students.latest_prediction_id pointer
 const LATEST_PREDICTIONS = `SELECT p.* FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id`;
@@ -53,6 +54,45 @@ function latestFilters(q, { riskOnly = false } = {}) {
   return { where, params };
 }
 
+/**
+ * Adds the intervention workflow columns to at-risk rows (one page, <= 100 rows):
+ * weakest_course + tutorial (the recommender's pick), counselor (active assignment) and
+ * last_intervention_at (latest admin intervention message).
+ */
+async function withWorkflow(rows) {
+  if (!rows.length) return rows;
+  const ids = rows.map((r) => r.student_id);
+  const [counselors, sent, recs] = await Promise.all([
+    pool.query(
+      `SELECT ca.student_id, ca.id, ca.faculty_id, f.full_name, ca.last_contacted_at, ca.created_at
+       FROM counselor_assignments ca JOIN faculty f ON f.faculty_id = ca.faculty_id
+       WHERE ca.status = 'active' AND ca.student_id = ANY($1)`,
+      [ids]
+    ),
+    pool.query(
+      `SELECT s.student_id, MAX(n.sent_at) AS last_sent
+       FROM students s JOIN notifications n ON n.recipient_user_id = s.user_id
+       WHERE s.student_id = ANY($1) AND COALESCE(n.kind, 'intervention') = 'intervention'
+       GROUP BY s.student_id`,
+      [ids]
+    ),
+    Promise.all(rows.map((r) => recommendFor(r.student_id, { label: r.final_label }))),
+  ]);
+  const cBy = new Map(counselors.rows.map((c) => [c.student_id, c]));
+  const sBy = new Map(sent.rows.map((x) => [x.student_id, x.last_sent]));
+  return rows.map((r, i) => {
+    const c = cBy.get(r.student_id);
+    const rec = recs[i];
+    return {
+      ...r,
+      weakest_course: rec ? { course_id: rec.course.course_id, course_code: rec.course.course_code, title: rec.course.title, mean: rec.course.mean } : null,
+      tutorial: rec && rec.tutorial ? { tutorial_id: rec.tutorial.tutorial_id, title: rec.tutorial.title, url: rec.tutorial.url } : null,
+      counselor: c ? { assignment_id: c.id, faculty_id: c.faculty_id, name: c.full_name, last_contacted_at: c.last_contacted_at, assigned_at: c.created_at } : null,
+      last_intervention_at: sBy.get(r.student_id) || null,
+    };
+  });
+}
+
 async function latestPredictionPage(req, { riskOnly = false, withCourses = false } = {}) {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
@@ -96,7 +136,7 @@ async function latestPredictionPage(req, { riskOnly = false, withCourses = false
   const total = count.rows[0].total;
   // staff wording ("CGPA 1.98 is below 2.00"); drivers and features are not sent
   const out = rows.rows.map(({ drivers, features, ...r }) => ({ ...r, reasons: staffReasons({ ...r, drivers, features }) }));
-  return { rows: out, total, page, limit, totalPages: Math.ceil(total / limit) };
+  return { rows: riskOnly ? await withWorkflow(out) : out, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
 function randomPassword() {

@@ -13,10 +13,14 @@ const NAV = {
     { to: "/student/results", label: "Results" },
     { to: "/student/attendance", label: "Attendance" },
   ],
-  faculty: [{ to: "/faculty", label: "My classes" }],
+  faculty: [
+    { to: "/faculty", label: "My classes", end: true },
+    { to: "/faculty/counselees", label: "My counselees" },
+  ],
   admin: [
     { to: "/admin", label: "Overview", end: true },
     { to: "/admin/interventions", label: "Interventions" },
+    { to: "/admin/tutorials", label: "Tutorials" },
     { to: "/admin/users", label: "Users" },
     { to: "/admin/assignments", label: "Assignments" },
   ],
@@ -25,6 +29,7 @@ const NAV = {
 const ROLE_TITLE = { student: "Student", faculty: "Faculty", admin: "Admin" };
 
 function NotificationBell() {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -55,10 +60,15 @@ function NotificationBell() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  // mark it read, then open the screen it is about (e.g. the counselee, or "What to do next")
   async function openAndMarkRead(n) {
     if (!n.read_at) {
-      await client.put(`/notifications/${n.notification_id}/read`);
+      await client.put(`/notifications/${n.notification_id}/read`).catch(() => {});
       load();
+    }
+    if (n.link && n.link.startsWith("/")) {
+      setOpen(false);
+      navigate(n.link);
     }
   }
 
@@ -107,7 +117,10 @@ function NotificationBell() {
                   <span className="text-sm font-medium">{n.subject}</span>
                 </div>
                 <p className="text-xs text-muted mt-1 line-clamp-2">{n.message}</p>
-                <p className="text-[11px] text-muted/80 mt-1">{new Date(n.sent_at).toLocaleString()}</p>
+                <p className="text-[11px] text-muted/80 mt-1 flex items-center justify-between gap-2">
+                  {new Date(n.sent_at).toLocaleString()}
+                  {n.link && <span className="text-brand font-medium">Open →</span>}
+                </p>
               </button>
             ))
           )}

@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import AssistantPanel, { STARTERS } from "../../components/assistant/AssistantPanel";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
@@ -9,6 +10,7 @@ import { Legend } from "../../components/charts/theme";
 import useApi from "../../lib/useApi";
 import { timeAgo, gpa, pct, longDate, firstName } from "../../lib/format";
 import { StandingChart, standingLegend, AttendanceChart, attendanceLegend, MarksChart, marksLegend, TimelineChart } from "./StudentCharts";
+import WhatToDoNext from "./WhatToDoNext";
 
 const HERO_TONE = {
   safe: "border-l-safe bg-gradient-to-r from-safe-50/80 to-surface",
@@ -17,7 +19,7 @@ const HERO_TONE = {
   neutral: "border-l-brand bg-surface",
 };
 
-function StatusHero({ data, steps, refreshing, onRefresh, onAsk }) {
+function StatusHero({ data, refreshing, onRefresh, onAsk }) {
   const p = data.latestPrediction;
   const meta = riskMeta(p?.final_label);
   return (
@@ -41,7 +43,7 @@ function StatusHero({ data, steps, refreshing, onRefresh, onAsk }) {
       </div>
 
       {p ? (
-        <div className="mt-5 grid gap-5 md:grid-cols-2">
+        <div className="mt-5">
           <div>
             <h3 className="text-sm font-semibold text-ink mb-2">Why</h3>
             <ul className="space-y-1.5">
@@ -59,19 +61,6 @@ function StatusHero({ data, steps, refreshing, onRefresh, onAsk }) {
             >
               <Icons.Send size={14} /> Ask about this
             </button>
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-ink mb-2">What to do next</h3>
-            <ol className="space-y-1.5">
-              {steps.slice(0, 3).map((s, i) => (
-                <li key={s.id} className="flex gap-2 text-[15px] leading-snug text-ink/90">
-                  <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-ink/[0.07] text-[11px] font-semibold flex items-center justify-center" aria-hidden="true">
-                    {i + 1}
-                  </span>
-                  {s.text}
-                </li>
-              ))}
-            </ol>
           </div>
         </div>
       ) : (
@@ -122,6 +111,14 @@ export default function StudentDashboard() {
   const openAssistant = (question = null) => setAssistant({ open: true, question });
   const clearAssistantQuestion = useCallback(() => setAssistant((a) => ({ ...a, question: null })), []);
   const { toast } = useToast();
+  const { hash } = useLocation();
+
+  // a notification link like /student#what-next scrolls to that card once it has loaded
+  useEffect(() => {
+    if (!hash || !data || !next.data) return;
+    const el = document.getElementById(hash.slice(1));
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [hash, data, next.data]);
 
   async function refresh() {
     setRefreshing(true);
@@ -181,13 +178,16 @@ export default function StudentDashboard() {
       </div>
 
       <div className="space-y-5">
-        <StatusHero
-          data={data}
-          steps={next.data || []}
-          refreshing={refreshing}
-          onRefresh={refresh}
-          onAsk={() => openAssistant(STARTERS[0])}
-        />
+        <StatusHero data={data} refreshing={refreshing} onRefresh={refresh} onAsk={() => openAssistant(STARTERS[0])} />
+
+        {data.latestPrediction && (
+          <WhatToDoNext
+            counselor={data.counselor}
+            recommendation={data.recommendation}
+            steps={next.data || []}
+            flagged={data.latestPrediction.final_label !== "Safe"}
+          />
+        )}
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard label={data.officialCgpa.label} value={gpa(data.officialCgpa.value)} sublabel="Last completed term" info={data.officialCgpa.note} />
