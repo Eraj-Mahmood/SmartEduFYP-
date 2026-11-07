@@ -64,8 +64,10 @@ describe("forced reset", () => {
     expect(res.body.token).toEqual(expect.any(String));
     expect(res.body.mustResetPassword).toBe(false);
     expect((await request(app).get("/api/notifications/mine").set(as(res.body.token))).status).toBe(200);
-    // the old token works too: the block lives on the account, not in the token
-    expect((await request(app).get("/api/notifications/mine").set(as(token))).status).toBe(200);
+    // a token issued before the change is revoked
+    const old = await request(app).get("/api/notifications/mine").set(as(token));
+    expect(old.status).toBe(401);
+    expect(old.body.code).toBe("TOKEN_REVOKED");
     expect((await signIn(u, "NewPass123")).body.mustResetPassword).toBe(false);
     expect((await signIn(u)).status).toBe(401);
   });
@@ -77,5 +79,8 @@ test("a user without a pending reset can change their password voluntarily", asy
   const { body } = await signIn(u);
   const res = await change(body.token, u.password, "Another-Pass9");
   expect(res.status).toBe(200);
+  // old token 401 straight away (same second as the change), the new one keeps working
+  expect((await request(app).get("/api/auth/me").set(as(body.token))).status).toBe(401);
+  expect((await request(app).get("/api/auth/me").set(as(res.body.token))).status).toBe(200);
   expect((await signIn(u, "Another-Pass9")).status).toBe(200);
 });

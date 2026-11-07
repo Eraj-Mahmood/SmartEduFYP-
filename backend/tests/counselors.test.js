@@ -81,12 +81,26 @@ describe("counselor workflow", () => {
     expect(me).toHaveProperty("final_label");
     expect(Array.isArray(me.reasons)).toBe(true);
     expect(Array.isArray(me.next_steps)).toBe(true);
+    // staff wording: describes the student, never addresses them
+    expect(me.next_steps.length).toBeGreaterThan(0);
+    for (const s of me.next_steps) expect(s.text).not.toMatch(/\b(your|you)\b/i);
+    expect(me.next_steps.map((s) => s.text).join(" ")).toMatch(/Needs |Attendance |Weakest course /);
     expect(me).not.toHaveProperty("features");
     expect(me).not.toHaveProperty("drivers");
 
     expect((await request(app).get(`/api/faculty/counselees/${first.id}`).set(as(zain))).status).toBe(403);
     expect((await request(app).put(`/api/faculty/counselees/${first.id}`).set(as(zain)).send({ notes: "x" })).status).toBe(403);
     expect((await request(app).get("/api/faculty/counselees").set(as(zain))).body.find((c) => c.id === first.id)).toBeUndefined();
+  });
+
+  test("the admin student view has staff next steps and the counselor", async () => {
+    const res = await request(app).get(`/api/admin/students/${sid}/full`).set(as(admin));
+    expect(res.status).toBe(200);
+    expect(res.body.counselor).toMatchObject({ faculty_id: ayeshaId });
+    expect(res.body.nextSteps.length).toBeGreaterThan(0);
+    for (const s of res.body.nextSteps) expect(s.text).not.toMatch(/\b(your|you)\b/i);
+    expect((await request(app).get("/api/admin/students/999999999/full").set(as(admin))).status).toBe(404);
+    expect((await request(app).get("/api/admin/students/abc/full").set(as(admin))).status).toBe(400);
   });
 
   test("the counselor can save notes and the contact date", async () => {

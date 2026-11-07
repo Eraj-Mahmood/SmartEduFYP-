@@ -128,11 +128,31 @@ const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 /** GET the URL (redirects followed). -> {ok, status, error} */
 async function checkUrl(url) {
+  let out;
   try {
     const res = await fetch(url, { redirect: "follow", headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) });
-    return { ok: res.ok, status: res.status };
+    out = { ok: res.ok, status: res.status };
   } catch (e) {
-    return { ok: false, status: null, error: e.name === "TimeoutError" ? "timeout" : e.cause?.code || e.message };
+    out = { ok: false, status: null, error: e.name === "TimeoutError" ? "timeout" : e.cause?.code || e.message };
+  }
+  // Some CDNs (docs.opencv.org behind Cloudflare) answer 403 to Node's TLS fingerprint even with a
+  // browser User-Agent, while a browser gets 200. Ask curl (ships with Windows 10+) before giving up.
+  if (!out.ok) {
+    const viaCurl = curlStatus(url);
+    if (viaCurl >= 200 && viaCurl < 300) return { ok: true, status: viaCurl, via: "curl" };
+  }
+  return out;
+}
+
+/** HTTP status from curl with the browser User-Agent (redirects followed), or null if curl fails. */
+function curlStatus(url) {
+  try {
+    const { execFileSync } = require("child_process");
+    const nul = process.platform === "win32" ? "NUL" : "/dev/null";
+    const code = execFileSync("curl", ["-sL", "-o", nul, "-w", "%{http_code}", "-m", "20", "-A", UA, url], { encoding: "utf8", timeout: 25000 });
+    return parseInt(code, 10) || null;
+  } catch {
+    return null;
   }
 }
 

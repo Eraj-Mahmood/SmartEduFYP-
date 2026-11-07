@@ -6,6 +6,7 @@ import { Card, DataTable, Pagination, RiskChip, Button, EmptyState, Icons, RISK_
 import useApi from "../../lib/useApi";
 import { timeAgo } from "../../lib/format";
 import { AssignCounselorModal, ComposeModal } from "./InterventionModals";
+import AdminStudentDrawer from "./AdminStudentDrawer";
 
 // The intervention workflow: every flagged student with their weakest course, its tutorial,
 // their counselor and the last intervention, so an admin can see what is still missing and act
@@ -38,6 +39,7 @@ export default function Interventions() {
   const [assignFor, setAssignFor] = useState(null);
   const [composeFor, setComposeFor] = useState([]);
   const [exporting, setExporting] = useState(false);
+  const [viewId, setViewId] = useState(null); // student shown in the detail drawer
   const { toast } = useToast();
 
   // CSV of every flagged student matching the current filters (not just this page)
@@ -113,12 +115,12 @@ export default function Interventions() {
         key: "roll_no",
         header: "Student",
         render: (r) => (
-          <span className="whitespace-nowrap">
-            <span className="block font-medium">{r.full_name}</span>
+          <button type="button" onClick={() => setViewId(r.student_id)} className="whitespace-nowrap text-left group" title="Open student details">
+            <span className="block font-medium group-hover:underline">{r.full_name}</span>
             <span className="block font-mono text-xs text-muted">
               {r.roll_no} · {r.department_code}
             </span>
-          </span>
+          </button>
         ),
       },
       { key: "final_label", header: "Label", render: (r) => <RiskChip label={r.final_label} size="sm" short />, sortValue: (r) => RISK_SEVERITY[r.final_label] },
@@ -294,6 +296,7 @@ export default function Interventions() {
         </div>
       )}
 
+      <AdminStudentDrawer studentId={viewId} onClose={() => setViewId(null)} />
       <AssignCounselorModal
         student={assignFor}
         onClose={() => setAssignFor(null)}

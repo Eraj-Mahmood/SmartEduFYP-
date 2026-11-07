@@ -186,7 +186,7 @@ function CounseleeDrawer({ counselee, onClose, onChange, onClosed }) {
             ) : (
               <p className="text-sm text-muted">No steps - not enough of this term's data yet.</p>
             )}
-            <p className="mt-2 text-xs text-muted">Worded for the student - this is what they see on their dashboard.</p>
+            <p className="mt-2 text-xs text-muted">The student sees the same steps on their dashboard, addressed to them.</p>
           </section>
 
           <section>

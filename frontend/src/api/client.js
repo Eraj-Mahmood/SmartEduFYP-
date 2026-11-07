@@ -15,7 +15,7 @@ client.interceptors.response.use(
     if (err.response?.status === 401 && !err.config?.url?.endsWith("/auth/login")) {
       localStorage.removeItem("smartedu_token");
       localStorage.removeItem("smartedu_role");
-      if (err.response.data?.code === "ACCOUNT_DISABLED") {
+      if (["ACCOUNT_DISABLED", "TOKEN_REVOKED"].includes(err.response.data?.code)) {
         try {
           sessionStorage.setItem("smartedu_login_notice", err.response.data.error);
         } catch {

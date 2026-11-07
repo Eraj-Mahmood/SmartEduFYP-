@@ -10,7 +10,8 @@ const RESET_ALLOWED = new Set(["/api/auth/change-password", "/api/auth/me", "/ap
  * One primary-key lookup per request rejects tokens of deactivated (or deleted) users
  * straight away, instead of letting them work until the token expires. The same lookup
  * enforces the forced password change: while must_reset_pw is TRUE every route except
- * RESET_ALLOWED answers 403 PASSWORD_RESET_REQUIRED.
+ * RESET_ALLOWED answers 403 PASSWORD_RESET_REQUIRED, and a token issued before
+ * users.password_changed_at answers 401 TOKEN_REVOKED.
  */
 async function authenticate(req, res, next) {
   const header = req.headers.authorization || "";
@@ -28,9 +29,19 @@ async function authenticate(req, res, next) {
   }
 
   try {
-    const { rows } = await pool.query("SELECT is_active, must_reset_pw FROM users WHERE user_id = $1", [payload.userId]);
+    const { rows } = await pool.query(
+      "SELECT is_active, must_reset_pw, password_changed_at FROM users WHERE user_id = $1",
+      [payload.userId]
+    );
     if (rows.length === 0 || !rows[0].is_active) {
       return res.status(401).json({ error: "This account has been deactivated. Contact admin.", code: "ACCOUNT_DISABLED" });
+    }
+    // A token issued before the last password change is revoked. iatMs (ms, set by signToken) avoids
+    // the 1-second resolution of `iat`; older tokens without it fall back to iat.
+    const changedAt = rows[0].password_changed_at;
+    const issuedMs = Number.isFinite(payload.iatMs) ? payload.iatMs : payload.iat * 1000;
+    if (changedAt && issuedMs < changedAt.getTime()) {
+      return res.status(401).json({ error: "Your password was changed. Please sign in again.", code: "TOKEN_REVOKED" });
     }
     req.user = { userId: payload.userId, role: payload.role, email: payload.email, mustResetPw: rows[0].must_reset_pw };
     if (req.user.mustResetPw && !RESET_ALLOWED.has(req.originalUrl.split("?")[0].replace(/\/+$/, ""))) {

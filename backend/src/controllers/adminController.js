@@ -5,6 +5,8 @@ const { startRun, getRun } = require("../services/predictionRuns");
 const { staffReasons } = require("../services/reasons");
 const interventions = require("../services/interventions");
 const { recommendFor } = require("../services/tutorials");
+const { getNextSteps } = require("../services/nextSteps");
+const { getActiveCounselor } = require("../services/counselors");
 
 // Latest prediction per student, via the students.latest_prediction_id pointer
 const LATEST_PREDICTIONS = `SELECT p.* FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id`;
@@ -370,8 +372,9 @@ async function listFaculty(req, res) {
 /** GET /api/admin/students/:studentId/full - complete profile incl. history + predictions (read-only) */
 async function studentFullProfile(req, res) {
   try {
-    const id = req.params.studentId;
-    const [profile, history, predictions, results] = await Promise.all([
+    const id = parseInt(req.params.studentId);
+    if (!(id > 0)) return res.status(400).json({ error: "studentId must be a positive integer" });
+    const [profile, history, predictions, results, nextSteps, counselor] = await Promise.all([
       pool.query(
         `SELECT s.*, d.name AS department, u.email FROM students s
          JOIN departments d ON d.department_id = s.department_id
@@ -396,12 +399,17 @@ async function studentFullProfile(req, res) {
          WHERE e.student_id = $1`,
         [id]
       ),
+      getNextSteps(id, { audience: "staff" }),
+      getActiveCounselor(id),
     ]);
+    if (!profile.rows.length) return res.status(404).json({ error: "Student not found" });
     res.json({
       profile: profile.rows[0],
       performanceHistory: history.rows,
       predictions: predictions.rows.map((p) => ({ ...p, reasons: staffReasons(p) })),
       courseResults: results.rows,
+      nextSteps: nextSteps.map((s) => ({ id: s.id, text: s.text })), // staff wording
+      counselor,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -29,7 +29,9 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     primary-key lookup per request: a deactivated or deleted user's token gets **401
     `ACCOUNT_DISABLED`** at once, and while `must_reset_pw` is TRUE every route except
     `/api/auth/change-password`, `/api/auth/me` and `/api/auth/logout` gets **403
-    `PASSWORD_RESET_REQUIRED`**.
+    `PASSWORD_RESET_REQUIRED`**. The same lookup reads `users.password_changed_at` (migration 010): a token
+    issued before it (the token's `iatMs` claim, else `iat`) gets **401 `TOKEN_REVOKED`**; change-password
+    and `createAdmin.js` set it, and change-password returns a fresh token.
   - `middleware/audit.js` — `logAction()` writes to `audit_log`, never throws.
   - `middleware/validate.js` — turns express-validator errors into `400 {error, details}`.
   - `routes/*Routes.js` + `controllers/*Controller.js`, one pair per area:
@@ -75,6 +77,9 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       batch runs: `POST /predictions/run {scope: "all"|"department"|"class", scopeId}` → `202` with the
       `prediction_runs` row (one run at a time, else `409`); `GET /predictions/runs/:id` for progress;
       `GET /predictions/runs?limit=20` lists recent runs (scope name, who, duration).
+      `GET /students/:id/full` → profile, performance history (no `target_label`), every prediction (staff
+      reasons), course results, `nextSteps` (staff wording) and `counselor`; 400 bad id, 404 unknown. The
+      Interventions page opens it in `AdminStudentDrawer` (click a student's name).
       `GET /dashboard` → `kpis` (students, faculty, courses, flagged, predicted, lastRun), `riskCounts`,
       `riskByDepartment`, `runsTrend` (label counts per run). `/at-risk-students` and `/predictions` are
       server-paginated `{rows, total, page, limit, totalPages}` with filters `department` (id), `label`,
@@ -143,6 +148,8 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       needed in every course for projected CGPA 2.00 and 2.30 with the Phase 1 formulas; honest when
       2.30 needs > 100, then a realistic goal; notes when attendance also blocks Safe), `weakest_course`
       (mean < 70), `tutorial` (the recommended tutorial, priority 41), `submission` (< 90%).
+      `getNextSteps(id, {audience: 'staff'})` describes the student instead of addressing them ("Needs a
+      72 (B) average in every course to reach 2.30"); used by the counselee summary and the admin student view.
       `whatIfFeatures(features, mark)` is used by
       `evaluation/next_steps_whatif.js` (model agreed 12/12 on the 4 At-Risk/Dropout-Likely demo students).
     - `predictionService.js` — `predictForStudent(id, {trigger})`, `predictForMany(ids, {runId, trigger})`:
@@ -220,7 +227,8 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     standalone, before anything else; voluntary: Account menu).
   - Auth flow: `localStorage.smartedu_must_reset` is set from login's `mustResetPassword` or by the axios
     interceptor on 403 `PASSWORD_RESET_REQUIRED`; `ProtectedRoute` then sends everything to
-    `/change-password`. On 401 `ACCOUNT_DISABLED` the interceptor returns to /login with the notice.
+    `/change-password`. On 401 `ACCOUNT_DISABLED` or `TOKEN_REVOKED` the interceptor returns to /login
+    with the notice. The faculty "My classes" link is also highlighted on class pages (`also` prefixes in `NAV`).
     Notification clicks navigate to `notification.link`.
   - `components/assistant/AssistantPanel.jsx` — the "Ask SmartEdu" chat: right panel (full-screen
     sheet on phones), starter chips, bubbles, typing indicator, suggestion chips + link buttons,
@@ -254,7 +262,7 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     kind video|notes|practice, description, is_active, created_by; unique (course_id, url)).
     `007_counselor_assignments.sql` — `counselor_assignments` (partial unique index: one active per
     student) and `notifications.link`. `008_notification_tutorial.sql` — `notifications.related_tutorial_id`
-    and `kind`. `009_audit_log_indexes.sql`.
+    and `kind`. `009_audit_log_indexes.sql`. `010_password_changed_at.sql` — `users.password_changed_at`.
   - `import_dataset.py` — loads the 50k-row CSV: one user+student per `Student_ID`
     (email `student<ID>@smartedu.edu`, roll `BU-<ID>`) and one
     `student_semester_performance` row each (incl. the dataset's `target_label`).
@@ -349,9 +357,11 @@ and the Phase 4 interventions demo (demo script step 6) with how to undo it.
   student's stored reasons (none of the latest rows still use pre-fix wording).
 - The model file's metadata holds the official metrics: CV macro F1 **0.9992**,
   test macro F1 **0.9994**, test accuracy **0.9996**.
-- Tutorials (seeded 2026-11-07): 35 for all 20 courses, every course has an active one. Two failed the
-  HTTP check from this machine and are stored inactive: Stanford CS224N (connection reset) and the
-  OpenCV 4.x tutorial index (403 to Node's fetch; curl got 200). The seed has 20 courses, not 22.
+- Tutorials (seeded 2026-11-07): 35 for all 20 courses, every course has an active one. Stanford CS224N
+  still fails the HTTP check (connection reset, re-checked 2026-11-07) and stays inactive. The OpenCV 4.x
+  tutorial index answers 403 to Node's fetch (Cloudflare) but 200 to curl with a browser User-Agent, so it
+  was re-activated (2026-11-07) and the seeder now asks curl before marking a URL failed. The seed has 20
+  courses, not 22.
 - Labels are **policy-derived from a synthetic dataset** (`dataset_type`:
   "Synthetic policy-labelled student dataset"), not observed real-world outcomes.
 - The dataset has one row per student (50,000 rows → 50,000 students), so each student's

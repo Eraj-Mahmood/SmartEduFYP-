@@ -68,7 +68,8 @@ async function login(req, res) {
 
 function signToken(user) {
   return jwt.sign(
-    { userId: user.user_id, role: user.role, email: user.email },
+    // iatMs: issue time in ms, compared with users.password_changed_at by authenticate()
+    { userId: user.user_id, role: user.role, email: user.email, iatMs: Date.now() },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || "8h" }
   );
@@ -89,7 +90,8 @@ function passwordProblems(pw) {
  * POST /api/auth/change-password {currentPassword, newPassword}
  * Any logged-in user can change their own password; it is required on first login for
  * admin-issued credentials (must_reset_pw). The new password needs 8+ characters with upper
- * case, lower case and a digit, and must differ from the current one. Returns a fresh token.
+ * case, lower case and a digit, and must differ from the current one. Returns a fresh token;
+ * every token issued before the change stops working (401 TOKEN_REVOKED).
  */
 async function changePassword(req, res) {
   const { currentPassword, newPassword } = req.body || {};
@@ -111,9 +113,11 @@ async function changePassword(req, res) {
     }
 
     const newHash = await bcrypt.hash(newPassword, 10);
+    // Node's clock (not the DB's), so the fresh token below is always issued after this instant
+    // and every earlier token is revoked (middleware/auth.js).
     await pool.query(
-      "UPDATE users SET password_hash = $1, must_reset_pw = FALSE, updated_at = NOW() WHERE user_id = $2",
-      [newHash, req.user.userId]
+      "UPDATE users SET password_hash = $1, must_reset_pw = FALSE, password_changed_at = $3, updated_at = NOW() WHERE user_id = $2",
+      [newHash, req.user.userId, new Date()]
     );
     await logAction(req.user.userId, "CHANGE_PASSWORD", "users", req.user.userId, { forced: !!req.user.mustResetPw });
     return res.json({ message: "Password updated", token: signToken(rows[0]), role: rows[0].role, mustResetPassword: false });

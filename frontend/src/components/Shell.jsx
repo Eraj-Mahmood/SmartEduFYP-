@@ -14,7 +14,7 @@ const NAV = {
     { to: "/student/attendance", label: "Attendance" },
   ],
   faculty: [
-    { to: "/faculty", label: "My classes", end: true },
+    { to: "/faculty", label: "My classes", end: true, also: ["/faculty/class/"] }, // class roster/attendance pages
     { to: "/faculty/counselees", label: "My counselees" },
   ],
   admin: [
@@ -211,6 +211,8 @@ export function PortalShell({ title, children }) {
   const nav = NAV[role] || [];
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
+  // a link also counts as active on the pages listed in its `also` prefixes
+  const inSection = (l) => Boolean(l.also?.some((p) => location.pathname.startsWith(p)));
 
   function handleLogout() {
     logout();
@@ -233,7 +235,7 @@ export function PortalShell({ title, children }) {
 
           <nav aria-label="Main" className="hidden md:flex items-center gap-1">
             {nav.map((l) => (
-              <NavLink key={l.to} to={l.to} end={l.end} className={linkClass}>
+              <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => linkClass({ isActive: isActive || inSection(l) })}>
                 {l.label}
               </NavLink>
             ))}
@@ -257,7 +259,7 @@ export function PortalShell({ title, children }) {
         {menuOpen && (
           <nav id="mobile-nav" aria-label="Main" className="md:hidden border-t border-white/10 px-4 py-3 space-y-1 animate-fade-up">
             {nav.map((l) => (
-              <NavLink key={l.to} to={l.to} end={l.end} className={mobileLinkClass}>
+              <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => mobileLinkClass({ isActive: isActive || inSection(l) })}>
                 {l.label}
               </NavLink>
             ))}

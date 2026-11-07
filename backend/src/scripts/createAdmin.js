@@ -13,7 +13,8 @@ async function main() {
   const { rows } = await pool.query(
     `INSERT INTO users (email, password_hash, role, must_reset_pw)
      VALUES ($1, $2, 'admin', FALSE)
-     ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_reset_pw = FALSE, is_active = TRUE
+     ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_reset_pw = FALSE, is_active = TRUE,
+       password_changed_at = NOW()
      RETURNING user_id, email, role`,
     [email.toLowerCase().trim(), hash]
   );

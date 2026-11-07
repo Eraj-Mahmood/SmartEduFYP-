@@ -149,7 +149,7 @@ async function counseleeSummary(a) {
   ]);
   const p = pred.rows[0] || null;
   const [nextSteps, recommendation] = await Promise.all([
-    getNextSteps(a.student_id),
+    getNextSteps(a.student_id, { audience: "staff" }),
     recommendFor(a.student_id, { summary, label: p ? p.final_label : null }),
   ]);
   return {
