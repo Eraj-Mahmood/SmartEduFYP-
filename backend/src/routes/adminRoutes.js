@@ -4,6 +4,7 @@ const { authenticate, authorize } = require("../middleware/auth");
 const { body, param } = require("express-validator");
 const { validate } = require("../middleware/validate");
 const ctrl = require("../controllers/adminController");
+const tutorials = require("../controllers/tutorialController");
 
 router.use(authenticate, authorize("admin"));
 
@@ -37,6 +38,28 @@ router.get("/class-records/:facultyCourseId", ctrl.classRecords);
 router.get("/at-risk-students", ctrl.atRiskStudents);
 router.get("/predictions", ctrl.predictionsDetailed);
 router.post("/notifications", ctrl.sendNotification);
+
+// Tutorials (study material per course)
+const idParam = (name = "id") => param(name).isInt({ min: 1 }).withMessage(`${name} must be a positive integer`).toInt();
+const tutorialRules = (optional) => {
+  const o = (chain) => (optional ? chain.optional() : chain);
+  return [
+    o(body("course_id")).isInt({ min: 1 }).withMessage("course_id must be a positive integer").toInt(),
+    o(body("title")).isString().trim().isLength({ min: 1, max: 200 }).withMessage("title must be 1-200 characters"),
+    o(body("url"))
+      .isURL({ protocols: ["http", "https"], require_protocol: true })
+      .withMessage("url must be a full http(s) link")
+      .isLength({ max: 500 }),
+    o(body("kind")).isIn(["video", "notes", "practice"]).withMessage("kind must be video, notes or practice"),
+    body("provider").optional({ values: "null" }).isString().trim().isLength({ max: 100 }),
+    body("description").optional({ values: "null" }).isString().trim().isLength({ max: 1000 }),
+    body("is_active").optional().isBoolean().withMessage("is_active must be true or false").toBoolean(),
+  ];
+};
+router.get("/tutorials", tutorials.list);
+router.post("/tutorials", tutorialRules(false), validate, tutorials.create);
+router.put("/tutorials/:id", [idParam(), ...tutorialRules(true)], validate, tutorials.update);
+router.put("/tutorials/:id/deactivate", [idParam()], validate, tutorials.deactivate);
 
 // Batch re-prediction (background runs)
 router.post(
