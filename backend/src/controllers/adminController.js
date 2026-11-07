@@ -3,6 +3,7 @@ const pool = require("../config/db");
 const { logAction } = require("../middleware/audit");
 const { startRun, getRun } = require("../services/predictionRuns");
 const { staffReasons } = require("../services/reasons");
+const interventions = require("../services/interventions");
 
 // Latest prediction per student, via the students.latest_prediction_id pointer
 const LATEST_PREDICTIONS = `SELECT p.* FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id`;
@@ -22,21 +23,40 @@ const SORTS = {
  * search (roll no, name or email), sort (severity | recent | roll | cgpa).
  * riskOnly limits the list to At-Risk and Dropout-Likely.
  */
-async function latestPredictionPage(req, { riskOnly = false, withCourses = false } = {}) {
-  const page = Math.max(1, parseInt(req.query.page) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
+/**
+ * WHERE conditions for the latest-prediction lists (aliases: p = latest prediction, s = students,
+ * u = users). q: label, department (id), semester, search, noCounselor, notContacted.
+ * noCounselor: no active counselor. notContacted: no intervention message sent yet and no
+ * contact recorded by a counselor.
+ */
+function latestFilters(q, { riskOnly = false } = {}) {
   const params = [];
   const where = [];
   const add = (sql, value) => {
     params.push(value);
     where.push(sql.replace(/\?/g, `$${params.length}`)); // every ? in one condition is the same value
   };
+  const yes = (v) => v === true || v === "1" || v === "true";
   if (riskOnly) where.push("p.final_label IN ('At-Risk', 'Dropout-Likely')");
-  if (req.query.label && LABELS.includes(req.query.label)) add("p.final_label = ?", req.query.label);
-  if (parseInt(req.query.department)) add("s.department_id = ?", parseInt(req.query.department));
-  if (parseInt(req.query.semester)) add("s.current_semester = ?", parseInt(req.query.semester));
-  const search = (req.query.search || "").trim();
+  if (q.label && LABELS.includes(q.label)) add("p.final_label = ?", q.label);
+  if (parseInt(q.department)) add("s.department_id = ?", parseInt(q.department));
+  if (parseInt(q.semester)) add("s.current_semester = ?", parseInt(q.semester));
+  const search = String(q.search || "").trim();
   if (search) add("(s.roll_no ILIKE ? OR s.full_name ILIKE ? OR u.email ILIKE ?)", `%${search}%`);
+  if (yes(q.noCounselor)) {
+    where.push("NOT EXISTS (SELECT 1 FROM counselor_assignments ca WHERE ca.student_id = s.student_id AND ca.status = 'active')");
+  }
+  if (yes(q.notContacted)) {
+    where.push(`NOT EXISTS (SELECT 1 FROM notifications n WHERE n.recipient_user_id = s.user_id AND COALESCE(n.kind, 'intervention') = 'intervention')
+      AND NOT EXISTS (SELECT 1 FROM counselor_assignments ca WHERE ca.student_id = s.student_id AND ca.last_contacted_at IS NOT NULL)`);
+  }
+  return { where, params };
+}
+
+async function latestPredictionPage(req, { riskOnly = false, withCourses = false } = {}) {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
+  const { where, params } = latestFilters(req.query, { riskOnly });
   const order = SORTS[req.query.sort] || SORTS.severity;
 
   const base = `
@@ -527,17 +547,110 @@ async function classRecords(req, res) {
 
 // ---------------- INTERVENTION NOTIFICATIONS ----------------
 
-/** POST /api/admin/notifications - send to a student or faculty, optionally linked to a prediction */
+/**
+ * POST /api/admin/notifications {recipient_user_id, subject, message, related_prediction_id?, includeTutorial?}
+ * To a student: {name}/{course}/{counselor} are filled in and, with includeTutorial (default: true
+ * when the student is At-Risk or Dropout-Likely), one line with their recommended tutorial is added.
+ * To a faculty member: sent as written. Returns the row plus unknownPlaceholders.
+ */
 async function sendNotification(req, res) {
   try {
-    const { recipient_user_id, subject, message, related_prediction_id } = req.body;
+    const { recipient_user_id, subject, message, related_prediction_id, includeTutorial } = req.body;
+    const st = await pool.query("SELECT student_id FROM students WHERE user_id = $1", [recipient_user_id]);
+    if (st.rows.length) {
+      const out = await interventions.sendInterventions([st.rows[0].student_id], { subject, message, includeTutorial, sender: req.user.userId });
+      const n = out.notifications[0];
+      await logAction(req.user.userId, "SEND_NOTIFICATION", "notifications", n.notification_id, {
+        roll_no: n.roll_no,
+        related_tutorial_id: n.related_tutorial_id,
+      });
+      const { rows } = await pool.query("SELECT * FROM notifications WHERE notification_id = $1", [n.notification_id]);
+      return res.status(201).json({ ...rows[0], unknownPlaceholders: out.unknownPlaceholders });
+    }
     const { rows } = await pool.query(
-      `INSERT INTO notifications (sender_admin_id, recipient_user_id, subject, message, related_prediction_id)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      `INSERT INTO notifications (sender_admin_id, recipient_user_id, subject, message, related_prediction_id, kind)
+       VALUES ($1,$2,$3,$4,$5,'intervention') RETURNING *`,
       [req.user.userId, recipient_user_id, subject, message, related_prediction_id || null]
     );
     await logAction(req.user.userId, "SEND_NOTIFICATION", "notifications", rows[0].notification_id, {});
-    res.status(201).json(rows[0]);
+    res.status(201).json({ ...rows[0], unknownPlaceholders: [] });
+  } catch (err) {
+    if (err.code === "23503") return res.status(400).json({ error: "Unknown recipient" });
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * POST /api/admin/notifications/bulk {studentIds | filter, subject, message, includeTutorial?}
+ * At most 500 students per call: more studentIds -> 400; a filter matching more sends to the
+ * first 500 (most severe first) and says so. Returns {sent, matched, capped, unknownPlaceholders}.
+ * The filter takes the at-risk list filters (label, department, semester, search, noCounselor, notContacted).
+ */
+async function bulkNotify(req, res) {
+  try {
+    const { studentIds, filter, subject, message, includeTutorial } = req.body;
+    let ids;
+    let matched;
+    if (Array.isArray(studentIds)) {
+      if (studentIds.length > interventions.MAX_BULK) {
+        return res.status(400).json({ error: `At most ${interventions.MAX_BULK} students per call` });
+      }
+      ids = studentIds;
+      matched = ids.length;
+    } else {
+      const { where, params } = latestFilters(filter || {}, { riskOnly: true });
+      const from = `FROM students s JOIN users u ON u.user_id = s.user_id
+        JOIN predictions p ON p.prediction_id = s.latest_prediction_id
+        ${where.length ? "WHERE " + where.join(" AND ") : ""}`;
+      const [count, rows] = await Promise.all([
+        pool.query(`SELECT COUNT(*)::int AS n ${from}`, params),
+        pool.query(
+          `SELECT s.student_id ${from}
+           ORDER BY CASE p.final_label WHEN 'Dropout-Likely' THEN 0 WHEN 'At-Risk' THEN 1 ELSE 2 END, s.roll_no
+           LIMIT ${interventions.MAX_BULK}`,
+          params
+        ),
+      ]);
+      matched = count.rows[0].n;
+      ids = rows.rows.map((r) => r.student_id);
+    }
+    const out = await interventions.sendInterventions(ids, { subject, message, includeTutorial, sender: req.user.userId });
+    await logAction(req.user.userId, "BULK_NOTIFY", "notifications", null, {
+      sent: out.sent,
+      matched,
+      subject,
+      include_tutorial: includeTutorial ?? "default",
+      filter: Array.isArray(studentIds) ? undefined : filter || {},
+      student_ids: Array.isArray(studentIds) ? ids.slice(0, 50) : undefined,
+      notification_ids: out.notifications.slice(0, 50).map((n) => n.notification_id),
+    });
+    res.status(201).json({
+      sent: out.sent,
+      matched,
+      capped: matched > ids.length,
+      skipped: out.skipped,
+      unknownPlaceholders: out.unknownPlaceholders,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/** POST /api/admin/notifications/preview {studentId, subject, message, includeTutorial?} -> one filled-in message (not sent) */
+async function previewNotification(req, res) {
+  try {
+    const { studentId, subject, message, includeTutorial } = req.body;
+    const st = await interventions.studentInfo(studentId);
+    if (!st) return res.status(404).json({ error: "Student not found" });
+    const c = interventions.compose(st, { subject, message, includeTutorial });
+    res.json({
+      roll_no: st.roll_no,
+      full_name: st.full_name,
+      subject: c.subject,
+      message: c.message,
+      related_tutorial_id: c.tutorial_id,
+      unknownPlaceholders: c.unknown,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -619,6 +732,6 @@ module.exports = {
   listCourses, listClasses, listEnrollments,
   createCourse, assignFacultyToCourse, unassignFacultyFromCourse,
   enrollStudent, dropEnrollment, classRecords,
-  sendNotification, atRiskStudents, predictionsDetailed,
+  sendNotification, bulkNotify, previewNotification, atRiskStudents, predictionsDetailed,
   runPredictions, getPredictionRun, listPredictionRuns,
 };

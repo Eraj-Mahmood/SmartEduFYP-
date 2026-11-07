@@ -45,8 +45,8 @@ async function getAssignment(id, db = pool) {
 
 async function notify(db, { sender, recipient, subject, message, predictionId = null, link = null }) {
   await db.query(
-    `INSERT INTO notifications (sender_admin_id, recipient_user_id, subject, message, related_prediction_id, link)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+    `INSERT INTO notifications (sender_admin_id, recipient_user_id, subject, message, related_prediction_id, link, kind)
+     VALUES ($1, $2, $3, $4, $5, $6, 'counselor')`,
     [sender, recipient, subject, message, predictionId, link]
   );
 }

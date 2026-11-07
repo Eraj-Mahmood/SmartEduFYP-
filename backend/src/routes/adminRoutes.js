@@ -38,7 +38,35 @@ router.get("/class-records/:facultyCourseId", ctrl.classRecords);
 // Interventions
 router.get("/at-risk-students", ctrl.atRiskStudents);
 router.get("/predictions", ctrl.predictionsDetailed);
-router.post("/notifications", ctrl.sendNotification);
+const messageRules = [
+  body("subject").isString().trim().isLength({ min: 1, max: 200 }).withMessage("subject must be 1-200 characters"),
+  body("message").isString().trim().isLength({ min: 1, max: 4000 }).withMessage("message must be 1-4000 characters"),
+  body("includeTutorial").optional({ values: "null" }).isBoolean().withMessage("includeTutorial must be true or false").toBoolean(),
+];
+router.post(
+  "/notifications",
+  [body("recipient_user_id").isInt({ min: 1 }).withMessage("recipient_user_id must be a positive integer").toInt(), ...messageRules],
+  validate,
+  ctrl.sendNotification
+);
+router.post(
+  "/notifications/bulk",
+  [
+    body("studentIds").optional().isArray({ min: 1 }).withMessage("studentIds must be a non-empty array"),
+    body("studentIds.*").isInt({ min: 1 }).withMessage("each student id must be a positive integer").toInt(),
+    body("filter").optional().isObject().withMessage("filter must be an object"),
+    body().custom((b) => Array.isArray(b.studentIds) !== (b.filter !== undefined)).withMessage("send either studentIds or filter"),
+    ...messageRules,
+  ],
+  validate,
+  ctrl.bulkNotify
+);
+router.post(
+  "/notifications/preview",
+  [body("studentId").isInt({ min: 1 }).withMessage("studentId must be a positive integer").toInt(), ...messageRules],
+  validate,
+  ctrl.previewNotification
+);
 
 // Tutorials (study material per course)
 const idParam = (name = "id") => param(name).isInt({ min: 1 }).withMessage(`${name} must be a positive integer`).toInt();
