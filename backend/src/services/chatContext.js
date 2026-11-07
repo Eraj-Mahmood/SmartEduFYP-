@@ -76,7 +76,9 @@ async function buildChatContext(studentId, db = pool) {
             reason: o.recommendation.reason,
           }
         : null,
-    counselor: null, // Phase 4
+    counselor: o.counselor
+      ? { name: o.counselor.name, designation: o.counselor.designation, email: o.counselor.email, assigned_at: o.counselor.assigned_at }
+      : null,
     interventions: interventions.rows.map((n) => ({ subject: n.subject, message: n.message, sent_at: n.sent_at })),
     thresholds: o.thresholds,
   };

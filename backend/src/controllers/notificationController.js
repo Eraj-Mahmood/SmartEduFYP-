@@ -4,7 +4,7 @@ const pool = require("../config/db");
 async function mine(req, res) {
   try {
     const { rows } = await pool.query(
-      `SELECT notification_id, subject, message, sent_at, read_at
+      `SELECT notification_id, subject, message, link, related_prediction_id, sent_at, read_at
        FROM notifications
        WHERE recipient_user_id = $1
        ORDER BY sent_at DESC

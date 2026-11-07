@@ -5,6 +5,7 @@ const { body, param } = require("express-validator");
 const { validate } = require("../middleware/validate");
 const ctrl = require("../controllers/adminController");
 const tutorials = require("../controllers/tutorialController");
+const counselors = require("../controllers/counselorController");
 
 router.use(authenticate, authorize("admin"));
 
@@ -60,6 +61,20 @@ router.get("/tutorials", tutorials.list);
 router.post("/tutorials", tutorialRules(false), validate, tutorials.create);
 router.put("/tutorials/:id", [idParam(), ...tutorialRules(true)], validate, tutorials.update);
 router.put("/tutorials/:id/deactivate", [idParam()], validate, tutorials.deactivate);
+
+// Counselor assignments
+router.post(
+  "/counselors",
+  [
+    body("studentId").isInt({ min: 1 }).withMessage("studentId must be a positive integer").toInt(),
+    body("facultyId").isInt({ min: 1 }).withMessage("facultyId must be a positive integer").toInt(),
+  ],
+  validate,
+  counselors.assign
+);
+router.put("/counselors/:id/close", [idParam()], validate, counselors.close);
+router.get("/counselors", counselors.list);
+router.get("/faculty/workload", counselors.workload);
 
 // Batch re-prediction (background runs)
 router.post(

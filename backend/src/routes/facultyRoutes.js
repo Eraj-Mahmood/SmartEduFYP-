@@ -5,6 +5,7 @@ const { body, param } = require("express-validator");
 const { validate } = require("../middleware/validate");
 const { MARK_FIELDS } = require("../services/grading");
 const ctrl = require("../controllers/facultyController");
+const counselors = require("../controllers/counselorController");
 
 router.use(authenticate, authorize("faculty"));
 
@@ -35,5 +36,26 @@ router.get("/classes/:facultyCourseId/attendance", classIdRule, validate, ctrl.c
 router.get("/classes/:facultyCourseId/risk-summary", classIdRule, validate, ctrl.classRiskSummary);
 router.put("/results/:enrollmentId", resultRules, validate, ctrl.upsertResult);
 router.post("/attendance", attendanceRules, validate, ctrl.markAttendance);
+
+// My counselees (only my own active assignments; 403 for anyone else's)
+const counseleeId = [param("id").isInt({ min: 1 }).withMessage("id must be a positive integer").toInt()];
+router.get("/counselees", counselors.myCounselees);
+router.get("/counselees/:id", counseleeId, validate, counselors.oneCounselee);
+router.put(
+  "/counselees/:id",
+  [
+    ...counseleeId,
+    body("notes").optional({ values: "null" }).isString().withMessage("notes must be text").isLength({ max: 5000 }).withMessage("notes can be at most 5000 characters"),
+    body("last_contacted_at")
+      .optional({ values: "null" })
+      .isISO8601()
+      .withMessage("last_contacted_at must be a date")
+      .custom((v) => new Date(v).getTime() <= Date.now() + 5 * 60 * 1000)
+      .withMessage("last_contacted_at can't be in the future"),
+    body("close").optional().isBoolean().withMessage("close must be true or false").toBoolean(),
+  ],
+  validate,
+  counselors.updateCounselee
+);
 
 module.exports = router;
