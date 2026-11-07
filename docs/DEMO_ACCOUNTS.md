@@ -214,3 +214,13 @@ from the temporary one); every other API call answers 403 `PASSWORD_RESET_REQUIR
 All imported students, seeded faculty and the `createAdmin.js` admin have `must_reset_pw = FALSE`
 (migration 005), so the demo accounts above log in normally. Anyone can change their password
 from **Account → Change password**.
+
+**Admin password reset:** Admin → **Users** → find the account → **Reset password** → **Reset
+password** again to confirm. A box shows a 12-character temporary password **once** (Copy button) and
+the portal to use; the old password and every open session stop working at once, and the next sign-in
+must set a new password. The audit log records `RESET_PASSWORD` (who, for whom - never the password).
+
+**Signing in as a live-cohort student:** imported `SYN-*` accounts have an unknown random password.
+Reset one as above (e.g. search `SYN-101155`, email `live.syn-101155@smartedu.edu`), sign in at
+**Student sign in** with the temporary password, set a new one, and the dashboard shows the imported
+CS301 marks. `npm run demo:reset` puts every account back as it was.

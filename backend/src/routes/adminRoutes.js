@@ -22,6 +22,7 @@ router.post("/users/faculty", ctrl.createFacultyUser);
 const userIdRule = [param("userId").isInt({ min: 1 }).withMessage("userId must be a positive integer").toInt()];
 router.put("/users/:userId/deactivate", userIdRule, validate, governance.deactivateUser);
 router.put("/users/:userId/reactivate", userIdRule, validate, governance.reactivateUser);
+router.put("/users/:userId/reset-password", userIdRule, validate, governance.resetPassword);
 
 // Audit log viewer
 router.get("/audit-log", governance.auditLog);

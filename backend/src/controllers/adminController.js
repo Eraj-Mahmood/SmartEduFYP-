@@ -153,9 +153,8 @@ async function latestPredictionPage(req, { riskOnly = false, withCourses = false
   return { rows: riskOnly ? await withWorkflow(out) : out, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
-function randomPassword() {
-  return Math.random().toString(36).slice(-6) + Math.random().toString(36).slice(-4).toUpperCase() + "!1";
-}
+// crypto-random (services/passwords.js); was Math.random
+const randomPassword = () => require("../services/passwords").temporaryPassword();
 
 /** GET /api/admin/departments - for populating the dropdown in the create-user form */
 async function listDepartments(req, res) {

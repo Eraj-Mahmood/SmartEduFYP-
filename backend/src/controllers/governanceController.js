@@ -2,6 +2,8 @@ const pool = require("../config/db");
 const { logAction } = require("../middleware/audit");
 const { staffReasons } = require("../services/reasons");
 const { latestFilters } = require("./adminController");
+const bcrypt = require("bcrypt");
+const { temporaryPassword } = require("../services/passwords");
 
 // Admin governance: account activation, the audit-log viewer and the flagged-students CSV.
 
@@ -27,6 +29,35 @@ async function setActive(req, res, active) {
 const deactivateUser = (req, res) => setActive(req, res, false);
 /** PUT /api/admin/users/:userId/reactivate */
 const reactivateUser = (req, res) => setActive(req, res, true);
+
+/**
+ * PUT /api/admin/users/:userId/reset-password -> {message, user, tempPassword}
+ * Generates a temporary password (returned once, never stored or logged in clear), sets
+ * must_reset_pw = TRUE (the account must choose its own at the next sign-in) and
+ * password_changed_at = now() (every token issued before stops working: 401 TOKEN_REVOKED).
+ * Audit RESET_PASSWORD with the email and role only. Not for your own account (use Change password).
+ */
+async function resetPassword(req, res) {
+  try {
+    const userId = Number(req.params.userId);
+    if (userId === req.user.userId) {
+      return res.status(400).json({ error: "Use Account → Change password for your own account." });
+    }
+    const tempPassword = temporaryPassword();
+    const hash = await bcrypt.hash(tempPassword, 10);
+    const { rows } = await pool.query(
+      `UPDATE users SET password_hash = $1, must_reset_pw = TRUE, password_changed_at = NOW(), updated_at = NOW()
+       WHERE user_id = $2 RETURNING user_id, email, role, is_active`,
+      [hash, userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: "User not found" });
+    await logAction(req.user.userId, "RESET_PASSWORD", "users", userId, { email: rows[0].email, role: rows[0].role });
+    res.set("Cache-Control", "no-store");
+    res.json({ message: "Password reset. Share the temporary password with the user; it is shown only once.", user: rows[0], tempPassword });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
 
 // ---------------- audit log ----------------
 
@@ -178,4 +209,4 @@ async function exportAtRisk(req, res) {
   }
 }
 
-module.exports = { deactivateUser, reactivateUser, auditLog, exportAtRisk, csvField, CSV_COLUMNS };
+module.exports = { deactivateUser, reactivateUser, resetPassword, auditLog, exportAtRisk, csvField, CSV_COLUMNS };

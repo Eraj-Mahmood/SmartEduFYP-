@@ -159,7 +159,14 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
         Placeholders `{name}`, `{course}`, `{counselor}`; unknown ones are kept and returned in
         `unknownPlaceholders`.
       - Governance (`controllers/governanceController.js`): `PUT /users/:userId/deactivate` and
-        `/reactivate` (404 unknown; an admin can't deactivate themselves), `GET /audit-log?actor&action&
+        `/reactivate` (404 unknown; an admin can't deactivate themselves), `PUT /users/:userId/reset-password`
+        (Phase 6, approved exception: a 12-character crypto-random temporary password from
+        `services/passwords.js` (upper + lower + digit, no look-alikes; also used for admin-created accounts,
+        which used Math.random before), `must_reset_pw = TRUE`, `password_changed_at = now()` so every older
+        token gets 401 `TOKEN_REVOKED`; returns `{message, user, tempPassword}` once with `Cache-Control:
+        no-store`; audit `RESET_PASSWORD` with email + role only; 404 unknown, 400 bad id or own account;
+        tests `passwordReset.test.js`; this is how a live-cohort student gets a first password),
+        `GET /audit-log?actor&action&
         entity&from&to&page&limit` (newest first, plus the distinct actions/entities for the filters).
     - `notifications` — any logged-in user, scoped to `recipient_user_id`; rows carry `link` (the in-app
       screen a click opens), `kind` (`intervention` | `counselor`) and `related_tutorial_id`
@@ -342,7 +349,9 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     (`AdminDashboard` + `AdminCharts` + `RunPredictionsCard`, `Interventions` (workflow table, filters,
     multi-select; `InterventionModals.jsx`: assign-counselor picker with workloads + close, compose with
     placeholder chips and live preview; Export CSV), `Tutorials` (`?course=<id>`), ManageUsers (with
-    deactivate/reactivate), Assignments, `AuditLog` (filters + JSON drawer)), `ChangePassword` (forced:
+    deactivate/reactivate and **Reset password**: `pages/admin/ResetPasswordModal.jsx`, a confirmation step,
+    then a one-time box with the temporary password, Copy (clipboard, else select for Ctrl+C) and the
+    portal to sign in at; the password is cleared when the box closes), Assignments, `AuditLog` (filters + JSON drawer)), `ChangePassword` (forced:
     standalone, before anything else; voluntary: Account menu).
   - Portals (Phase 6): `/` = `pages/PortalChooser.jsx` (Student and Faculty cards, a smaller Admin row);
     `/login/student|faculty|admin` = `pages/Login.jsx` with a `portal` prop (title, accent, hint, "Not a

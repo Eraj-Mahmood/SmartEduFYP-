@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
 import { Card, Button, DataTable, Pagination, Icons, useToast } from "../../components/ui";
+import ResetPasswordModal from "./ResetPasswordModal";
 
 export default function ManageUsers() {
   const [tab, setTab] = useState("student");
@@ -17,6 +18,8 @@ export default function ManageUsers() {
   const [error, setError] = useState("");
   const [confirmId, setConfirmId] = useState(null); // user_id waiting for "Confirm" on deactivate
   const [busyId, setBusyId] = useState(null);
+  const [resetUser, setResetUser] = useState(null); // {user_id, full_name, email, role} for the reset dialog
+  const closeReset = useCallback(() => setResetUser(null), []);
   const { toast } = useToast();
 
   // Deactivate (two clicks) / reactivate. A deactivated user's open sessions stop working at once.
@@ -58,6 +61,15 @@ export default function ManageUsers() {
             Reactivate
           </Button>
         )}
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<Icons.Lock size={14} />}
+          onClick={() => setResetUser({ user_id: r.user_id, full_name: r.full_name, email: r.email, role: tab })}
+          aria-label={`Reset password for ${r.full_name}`}
+        >
+          Reset password
+        </Button>
       </span>
     ),
   };
@@ -227,6 +239,7 @@ export default function ManageUsers() {
           <Pagination page={studentPage} totalPages={studentTotalPages} total={studentTotal} onPage={(p) => loadStudents(p, studentSearch)} label="students" />
         )}
       </Card>
+      <ResetPasswordModal user={resetUser} onClose={closeReset} />
     </PortalShell>
   );
 }
