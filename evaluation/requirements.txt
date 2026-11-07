@@ -1,0 +1,5 @@
+# evaluation/live_eval.py (and the sample cohort generator). Run with the system Python that has
+# the database driver: python -m pip install -r evaluation/requirements.txt
+psycopg2-binary==2.9.12
+pandas==2.2.3
+matplotlib==3.11.2

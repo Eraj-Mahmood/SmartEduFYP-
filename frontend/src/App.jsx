@@ -22,6 +22,7 @@ import Interventions from "./pages/admin/Interventions";
 import Tutorials from "./pages/admin/Tutorials";
 import AuditLog from "./pages/admin/AuditLog";
 import ModelPage from "./pages/admin/ModelPage";
+import LiveCohort from "./pages/admin/LiveCohort";
 
 export default function App() {
   return (
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="/admin/tutorials" element={<ProtectedRoute allowedRole="admin"><Tutorials /></ProtectedRoute>} />
           <Route path="/admin/audit-log" element={<ProtectedRoute allowedRole="admin"><AuditLog /></ProtectedRoute>} />
           <Route path="/admin/model" element={<ProtectedRoute allowedRole="admin"><ModelPage /></ProtectedRoute>} />
+          <Route path="/admin/live-cohort" element={<ProtectedRoute allowedRole="admin"><LiveCohort /></ProtectedRoute>} />
 
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="*" element={<Navigate to="/login" replace />} />

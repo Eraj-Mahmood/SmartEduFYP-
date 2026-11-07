@@ -15,11 +15,12 @@ const LABELS = ["Safe", "At-Risk", "Dropout-Likely"];
 
 // A student "has live data" when they came from a live cohort import or any of their current
 // marks/attendance rows were entered in the app or uploaded (data_source = 'live').
-const HAS_LIVE_DATA = `(s.data_source = 'live'
-  OR EXISTS (SELECT 1 FROM enrollments le JOIN course_results lcr ON lcr.enrollment_id = le.enrollment_id
-             WHERE le.student_id = s.student_id AND lcr.data_source = 'live')
-  OR EXISTS (SELECT 1 FROM enrollments le JOIN attendance la ON la.enrollment_id = le.enrollment_id
-             WHERE le.student_id = s.student_id AND la.data_source = 'live'))`;
+// The set of students with live rows is small, so it is built once (hashed) rather than probed with
+// EXISTS for each of the 50,000 students.
+const HAS_LIVE_DATA = `(s.data_source = 'live' OR s.student_id IN (
+  SELECT le.student_id FROM enrollments le JOIN course_results lcr ON lcr.enrollment_id = le.enrollment_id WHERE lcr.data_source = 'live'
+  UNION
+  SELECT le.student_id FROM enrollments le JOIN attendance la ON la.enrollment_id = le.enrollment_id WHERE la.data_source = 'live'))`;
 const SEVERITY_ORDER = "CASE p.final_label WHEN 'Dropout-Likely' THEN 0 WHEN 'At-Risk' THEN 1 ELSE 2 END";
 const SORTS = {
   severity: `${SEVERITY_ORDER}, p.prob_dropout DESC NULLS LAST, p.roll_no`,

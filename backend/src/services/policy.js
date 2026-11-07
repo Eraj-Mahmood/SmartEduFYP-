@@ -10,11 +10,13 @@ const T = config.thresholds;
 // Rule conditions, keyed by the rule ids in policy.json. "consecutive_low_cgpa" is computed
 // from CGPA and Previous_SGPA (exactly how the dataset defines Consecutive_Low_CGPA) so it
 // reacts to live/projected values instead of the imported flag.
+// a missing value (live cohort) never fires a rule: null < 2 is true in JavaScript
+const has = (v) => v !== null && v !== undefined && !Number.isNaN(Number(v));
 const CONDITIONS = {
-  consecutive_low_cgpa: (f) => f.CGPA < T.probation_cgpa && f.Previous_SGPA < T.probation_cgpa,
-  severe_absence: (f) => f.Attendance_Percentage < T.severe_attendance_pct,
-  low_cgpa: (f) => f.CGPA < T.at_risk_cgpa,
-  low_attendance: (f) => f.Attendance_Percentage < T.min_attendance_pct,
+  consecutive_low_cgpa: (f) => has(f.CGPA) && has(f.Previous_SGPA) && f.CGPA < T.probation_cgpa && f.Previous_SGPA < T.probation_cgpa,
+  severe_absence: (f) => has(f.Attendance_Percentage) && f.Attendance_Percentage < T.severe_attendance_pct,
+  low_cgpa: (f) => has(f.CGPA) && f.CGPA < T.at_risk_cgpa,
+  low_attendance: (f) => has(f.Attendance_Percentage) && f.Attendance_Percentage < T.min_attendance_pct,
 };
 
 const fmt = {

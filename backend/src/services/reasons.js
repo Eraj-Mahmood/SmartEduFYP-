@@ -190,10 +190,11 @@ const TEXTS = { student: TEXT, staff: STAFF_TEXT };
 // Used when there are no SHAP drivers (rule fallback): flag what the policy cares about.
 function driversFromFeatures(f) {
   const concerns = [];
-  if (f.CGPA < T.at_risk_cgpa) concerns.push("CGPA");
-  if (f.Attendance_Percentage < T.min_attendance_pct) concerns.push("Attendance_Percentage");
+  const has = (v) => v !== null && v !== undefined;
+  if (has(f.CGPA) && f.CGPA < T.at_risk_cgpa) concerns.push("CGPA");
+  if (has(f.Attendance_Percentage) && f.Attendance_Percentage < T.min_attendance_pct) concerns.push("Attendance_Percentage");
   if (f.Failed_Courses > 0) concerns.push("Failed_Courses");
-  if (f.Assignment_Submission_Rate < LOW_SUBMISSION_PCT) concerns.push("Assignment_Submission_Rate");
+  if (has(f.Assignment_Submission_Rate) && f.Assignment_Submission_Rate < LOW_SUBMISSION_PCT) concerns.push("Assignment_Submission_Rate");
   if (concerns.length) return concerns.map((feature) => ({ feature, direction: "raises_risk" }));
   return ["CGPA", "Attendance_Percentage"].map((feature) => ({ feature, direction: "lowers_risk" }));
 }
@@ -212,7 +213,8 @@ function toReasons(drivers, features, finalLabel, { audience = "student" } = {})
   const rank = (d) => (PROFILE_FEATURES.has(d.feature) ? 2 : 0) + (d.direction === "raises_risk" ? 0 : 1);
   const ordered = list
     .map((d, i) => ({ ...d, i }))
-    .filter((d) => TEXT[d.feature])
+    // no sentence about a value we don't have (live cohorts may miss some features)
+    .filter((d) => TEXT[d.feature] && (PROFILE_FEATURES.has(d.feature) || (features[d.feature] ?? d.value) != null))
     .sort((a, b) => rank(a) - rank(b) || a.i - b.i);
 
   // CGPA, SGPA and Previous_SGPA say much the same thing: use at most 2 of them unless

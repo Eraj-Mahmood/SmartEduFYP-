@@ -104,3 +104,20 @@ def test_model_info():
     assert {f["feature"] for f in imp["features"]} == set(EXPECTED_FEATURES)
     values = [f["mean_abs_shap"] for f in imp["features"]]
     assert values == sorted(values, reverse=True) and values[0] > 0
+
+
+def test_missing_values_are_imputed():
+    """null features (a live cohort without e.g. Gender or study hours) are filled by the pipeline's
+    imputers: a null category gets the training set's most frequent value, not an 'unknown' column."""
+    nulls = {**AT_RISK_ROW, "Gender": None, "Scholarship": None, "Hostel": None, "Age": None,
+             "Study_Hours_Per_Week": None, "LMS_Login_Count": None, "Assignment_Submission_Rate": None}
+    res = client.post("/predict", json={"features": nulls})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["label"] in ("Safe", "At-Risk", "Dropout-Likely")
+    fill = ml_app.preprocessing.named_transformers_["categorical"].named_steps["imputer"].statistics_
+    filled = {**nulls, "Gender": fill[1], "Scholarship": fill[2], "Hostel": fill[3]}
+    same = client.post("/predict", json={"features": filled}).json()
+    assert body["prob_safe"] == pytest.approx(same["prob_safe"])
+    for e in body["explanations"]:
+        assert e["value"] is None or e["value"] == nulls[e["feature"]]

@@ -8,6 +8,8 @@ const tutorials = require("../controllers/tutorialController");
 const counselors = require("../controllers/counselorController");
 const governance = require("../controllers/governanceController");
 const model = require("../controllers/modelController");
+const cohort = require("../controllers/cohortController");
+const { singleCsv } = require("../middleware/upload");
 
 router.use(authenticate, authorize("admin"));
 
@@ -128,6 +130,9 @@ router.post(
 );
 // Model transparency (Phase 5): model card + live stats, and the what-if simulator (nothing saved)
 router.get("/model", model.modelOverview);
+// Live cohort import (Objective 7): template + preview/commit
+router.get("/live-cohort/template.csv", cohort.template);
+router.post("/live-cohort", singleCsv, cohort.importLiveCohort);
 router.post(
   "/students/:studentId/what-if",
   [param("studentId").isInt({ min: 1 }).withMessage("studentId must be a positive integer").toInt()],

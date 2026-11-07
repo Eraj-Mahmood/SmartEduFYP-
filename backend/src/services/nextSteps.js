@@ -228,6 +228,7 @@ function tutorialStep(rec, staff = false) {
 }
 
 function submissionStep(features, staff = false) {
+  if (features.Assignment_Submission_Rate == null) return null; // unknown (live cohort)
   const rate = Number(features.Assignment_Submission_Rate);
   if (!(rate < MIN_SUBMISSION_PCT)) return null;
   return {

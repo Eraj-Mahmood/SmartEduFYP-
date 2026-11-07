@@ -74,11 +74,16 @@ def _to_frame(rows):
         if missing:
             where = f" in row {i}" if len(rows) > 1 else ""
             raise HTTPException(status_code=400, detail=f"Missing required features{where}: {missing}")
-    return pd.DataFrame([{f: features[f] for f in FEATURE_NAMES} for features in rows])[FEATURE_NAMES]
+    # A missing value (JSON null) becomes NaN so the pipeline's imputers fill it: SimpleImputer treats
+    # NaN as missing but passes None through, which the one-hot encoder would read as an unknown category.
+    return pd.DataFrame(
+        [{f: (np.nan if features[f] is None else features[f]) for f in FEATURE_NAMES} for features in rows]
+    )[FEATURE_NAMES]
 
 
 def _json_value(v):
-    return v.item() if isinstance(v, np.generic) else v
+    v = v.item() if isinstance(v, np.generic) else v
+    return None if isinstance(v, float) and np.isnan(v) else v  # NaN is not valid JSON
 
 
 def predict_rows(rows):

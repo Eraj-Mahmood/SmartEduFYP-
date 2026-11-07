@@ -51,6 +51,9 @@ export default function DataSourcesCard({ sources }) {
         {sources.uploads.last_committed_at ? `, last ${timeAgo(sources.uploads.last_committed_at)}` : ""}.{" "}
         <Link to="/admin/interventions" className="font-medium text-brand hover:underline whitespace-nowrap">
           Filter flagged students by source →
+        </Link>{" "}
+        <Link to="/admin/live-cohort" className="font-medium text-brand hover:underline whitespace-nowrap">
+          Import a live cohort →
         </Link>
       </p>
     </Card>

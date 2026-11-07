@@ -20,6 +20,8 @@ const SGPA_SLOPE = 0.064;
 const SGPA_INTERCEPT = -2.453;
 
 const round2 = (x) => Math.round(x * 100) / 100;
+// NUMERIC columns arrive as strings; a missing value stays null (the ML pipeline imputes it) instead of 0
+const n = (v) => (v === null || v === undefined ? null : Number(v));
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
 /** Grade points (0-4) for one course on the dataset's SGPA scale. */
@@ -80,17 +82,17 @@ async function buildFeaturesMany(studentIds, db = pool) {
       Department: r.department_code,
       Gender: r.gender,
       Age: r.age,
-      Attendance_Percentage: Number(r.attendance_percentage),
-      Assignment_Avg: Number(r.assignment_avg),
-      Quiz_Avg: Number(r.quiz_avg),
-      Midterm_Marks: Number(r.midterm_marks),
-      Final_Marks: Number(r.final_marks),
-      Study_Hours_Per_Week: Number(r.study_hours_per_week),
+      Attendance_Percentage: n(r.attendance_percentage),
+      Assignment_Avg: n(r.assignment_avg),
+      Quiz_Avg: n(r.quiz_avg),
+      Midterm_Marks: n(r.midterm_marks),
+      Final_Marks: n(r.final_marks),
+      Study_Hours_Per_Week: n(r.study_hours_per_week),
       LMS_Login_Count: r.lms_login_count,
-      Assignment_Submission_Rate: Number(r.assignment_submission_rate),
-      Previous_SGPA: Number(r.previous_sgpa),
-      SGPA: Number(r.sgpa),
-      CGPA: Number(r.cgpa),
+      Assignment_Submission_Rate: n(r.assignment_submission_rate),
+      Previous_SGPA: n(r.previous_sgpa),
+      SGPA: n(r.sgpa),
+      CGPA: n(r.cgpa),
       Failed_Courses: r.failed_courses,
       Credits_Enrolled: r.credits_enrolled,
       Credits_Passed: r.credits_passed,
@@ -116,7 +118,7 @@ async function buildFeaturesMany(studentIds, db = pool) {
 
       const credits = cs.reduce((sum, c) => sum + c.credit_hours, 0);
       features.SGPA = round2(cs.reduce((sum, c) => sum + c.credit_hours * coursePoints(c), 0) / credits);
-      features.CGPA = round2((features.Previous_SGPA + features.SGPA) / 2);
+      features.CGPA = features.Previous_SGPA == null ? null : round2((features.Previous_SGPA + features.SGPA) / 2);
       sources.SGPA = "provisional";
       sources.CGPA = "projected";
     }

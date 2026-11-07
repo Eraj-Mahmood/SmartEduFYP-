@@ -109,6 +109,17 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       model-sourced rows only), `escalated` (final ≠ model_label, by change), `label_distribution`,
       `last_run`. `POST /students/:id/what-if {overrides}` (any student; see the faculty one below).
       `ML_INFO_URL` overrides the derived `<ML_SERVICE_URL without /predict>/model-info`.
+      Live cohort (Objective 7, `controllers/cohortController.js` + `services/liveCohort.js`; column guide
+      `docs/LIVE_DATA_TEMPLATE.md`): `GET /live-cohort/template.csv`, `POST /live-cohort?mode=preview|commit`
+      (multipart `file` + `courseId`, `facultyId`, `section` (default LIVE), optional `semester`,
+      `academicYear`). Each valid row → user (`live.<roll>@smartedu.edu`, random unseen password,
+      must_reset_pw) + student (`data_source='live'`, `actual_outcome`) + enrollment in the live section
+      (created if needed) + a `student_semester_performance` row (`data_source='live'`, `upload_id`,
+      `target_label` NULL). SGPA = 2×CGPA − Previous_SGPA and Credits_Passed = credits − 3×failed are
+      derived; anything else missing stays NULL for the ML imputers and is listed in `missing_features`.
+      No prediction at import (run one for the class). Audit `IMPORT_LIVE_COHORT`. UI: `/admin/live-cohort`
+      (`pages/admin/LiveCohort.jsx`, linked from the Data sources panel; preview → import → "Run predictions
+      for this class"). `removeCohort(uploadId)` / `scripts/removeLiveCohort.js [id]` undo an import.
       `GET /students/:id/full` → profile, performance history (no `target_label`), every prediction (staff
       reasons), course results, `nextSteps` (staff wording) and `counselor`; 400 bad id, 404 unknown. The
       Interventions page opens it in `AdminStudentDrawer` (click a student's name).
@@ -249,6 +260,11 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
   .venv\Scripts\python -m pytest tests`.
   If the service is unreachable the backend uses `ruleBasedFallback()` (the policy.json rules,
   `model_version = "rule_fallback"`, `source = 'fallback'`).
+  Missing values: a JSON `null` feature becomes NaN before the pipeline, so its imputers fill it (median
+  for numbers, most frequent for Department/Gender/Scholarship/Hostel; `None` would pass through and be
+  one-hot encoded as an unknown category); NaN values in `explanations` come back as `null`. The backend
+  keeps NULL features as `null` (`featureBuilder` maps NULL columns to null, not 0), policy rules never
+  fire on a missing value, and reasons / the submission next step skip unknown values.
   `GET /model-info` → model type/version, trees, depth, the 20 feature names, class labels, the `.pkl`
   metrics, scikit-learn version (runtime + pickled), model SHA-256 and `global_importance` (mean |SHAP|
   per raw feature, averaged over classes plus per class, on a fixed 2,000-row sample of the dataset CSV,
@@ -394,7 +410,16 @@ cd backend; npm test                              # Jest + Supertest against the
 cd backend; node ../evaluation/chat_eval.js       # chat router eval -> docs/chat_eval.md (exit 1 on any fail);
                                                   # includes my_marks, improve-with-tutorial and who_can_help with a counselor
 cd backend; node ../evaluation/next_steps_whatif.js  # suggested marks vs the real model (ML running)
+python -m pip install -r evaluation/requirements.txt  # once: psycopg2, pandas, matplotlib 3.11.2 (system Python)
+python evaluation/make_sample_live_cohort.py          # -> evaluation/sample_live_cohort.csv (30 SYNTHETIC rows, SYN-*)
+python evaluation/live_eval.py                        # live students' latest predictions -> docs/live_eval.md + docs/live_eval_confusion.png
 ```
+
+Live-data flow (Objective 7): admin imports a cohort (`/admin/live-cohort`) → runs predictions for its class →
+the faculty member uploads marks/attendance on the class's Upload tab → `python evaluation/live_eval.py`.
+`live_eval.py` reads `DATABASE_URL` from `backend/.env` (or `--dsn`), compares the final label with
+`actual_outcome` where present (else with the policy label, said so), lists disagreements with SHAP drivers
+and model-vs-policy splits, and labels the report SYNTHETIC when every roll number starts with `SYN-`.
 
 Chat env vars (`backend/.env`, documented in `.env.example`): `CHAT_RATE_LIMIT_PER_MIN` (20),
 `CHAT_LLM_ENABLED` (false), `CHAT_LLM_PROVIDER` (anthropic | gemini), `ANTHROPIC_API_KEY` /
@@ -462,6 +487,15 @@ and the Phase 4 interventions demo (demo script step 6) with how to undo it.
   Stored rows then: 155,333 model + 8 fallback; every latest prediction (50,000) is from the model; model
   and policy agree on 99.91% (43 cases: model At-Risk, policy Safe); the policy escalated 0 latest labels.
   Global importance top 5: CGPA 44%, Previous_SGPA 26%, Attendance 21%, SGPA 5%, submission rate 2%.
+- **Live cohort (2026-11-07):** the SYNTHETIC sample (`evaluation/sample_live_cohort.csv`, 30 students
+  SYN-*, 10 per label, random stratified sample - no train/test split record exists, so probably training
+  rows) is imported as class 26 (CS301 section LIVE, Dr. Amina Sheikh). Flow run: import → class run #11
+  (re-run as #14 once the ML service imputed null categories; 30/30 from the model, 7 features imputed
+  for every student) → amina uploaded 240 attendance rows
+  (8 sessions each, upload #34) → `live_eval.py`: accuracy 1.000 and macro F1 1.000 against the
+  (synthetic) outcome; model vs policy agree 27/30 - three students at exactly 75% attendance (6/8): the
+  rule (< 75%) says Safe, the model says At-Risk, matching their outcome. These numbers test the pipeline,
+  not real-world accuracy.
 - Labels are **policy-derived from a synthetic dataset** (`dataset_type`:
   "Synthetic policy-labelled student dataset"), not observed real-world outcomes.
 - The dataset has one row per student (50,000 rows → 50,000 students), so each student's
