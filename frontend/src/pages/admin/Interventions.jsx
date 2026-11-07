@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
-import { Card, DataTable, Pagination, RiskChip, Button, EmptyState, Icons, RISK_SEVERITY } from "../../components/ui";
+import { Card, DataTable, Pagination, RiskChip, Button, EmptyState, Icons, RISK_SEVERITY, useToast } from "../../components/ui";
 import useApi from "../../lib/useApi";
 import { timeAgo } from "../../lib/format";
 import { AssignCounselorModal, ComposeModal } from "./InterventionModals";
@@ -36,6 +37,31 @@ export default function Interventions() {
   const [selected, setSelected] = useState({}); // student_id -> row
   const [assignFor, setAssignFor] = useState(null);
   const [composeFor, setComposeFor] = useState([]);
+  const [exporting, setExporting] = useState(false);
+  const { toast } = useToast();
+
+  // CSV of every flagged student matching the current filters (not just this page)
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const p = { ...filters, noCounselor: filters.noCounselor ? 1 : "", notContacted: filters.notContacted ? 1 : "" };
+      Object.keys(p).forEach((k) => (p[k] === "" || p[k] === false) && delete p[k]);
+      const res = await client.get("/admin/at-risk-students/export", { params: p, responseType: "blob" });
+      const name = /filename="([^"]+)"/.exec(res.headers["content-disposition"] || "")?.[1] || "flagged-students.csv";
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      toast("Could not export the list", { type: "error" });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   // debounce the search box
   useEffect(() => {
@@ -184,9 +210,14 @@ export default function Interventions() {
             Students whose latest prediction is At-Risk or Dropout-Likely. Make sure each one has a counselor, a tutorial for their weakest course and a message.
           </p>
         </div>
-        <Link to="/admin/tutorials" className="text-sm font-medium text-brand hover:underline self-start sm:self-auto inline-flex items-center gap-1">
-          <Icons.Book size={15} /> Manage tutorials
-        </Link>
+        <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
+          <Link to="/admin/tutorials" className="text-sm font-medium text-brand hover:underline inline-flex items-center gap-1">
+            <Icons.Book size={15} /> Manage tutorials
+          </Link>
+          <Button variant="secondary" size="sm" onClick={exportCsv} loading={exporting} icon={<Icons.Download size={15} />}>
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       <Card>

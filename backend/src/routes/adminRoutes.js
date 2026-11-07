@@ -6,6 +6,7 @@ const { validate } = require("../middleware/validate");
 const ctrl = require("../controllers/adminController");
 const tutorials = require("../controllers/tutorialController");
 const counselors = require("../controllers/counselorController");
+const governance = require("../controllers/governanceController");
 
 router.use(authenticate, authorize("admin"));
 
@@ -15,7 +16,12 @@ router.get("/departments", ctrl.listDepartments);
 // User provisioning
 router.post("/users/student", ctrl.createStudentUser);
 router.post("/users/faculty", ctrl.createFacultyUser);
-router.put("/users/:userId/deactivate", ctrl.deactivateUser);
+const userIdRule = [param("userId").isInt({ min: 1 }).withMessage("userId must be a positive integer").toInt()];
+router.put("/users/:userId/deactivate", userIdRule, validate, governance.deactivateUser);
+router.put("/users/:userId/reactivate", userIdRule, validate, governance.reactivateUser);
+
+// Audit log viewer
+router.get("/audit-log", governance.auditLog);
 
 // Directory (read access to everyone's data)
 router.get("/students", ctrl.listStudents);
@@ -37,6 +43,7 @@ router.get("/class-records/:facultyCourseId", ctrl.classRecords);
 
 // Interventions
 router.get("/at-risk-students", ctrl.atRiskStudents);
+router.get("/at-risk-students/export", governance.exportAtRisk);
 router.get("/predictions", ctrl.predictionsDetailed);
 const messageRules = [
   body("subject").isString().trim().isLength({ min: 1, max: 200 }).withMessage("subject must be 1-200 characters"),

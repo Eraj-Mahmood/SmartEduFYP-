@@ -23,6 +23,7 @@ const NAV = {
     { to: "/admin/tutorials", label: "Tutorials" },
     { to: "/admin/users", label: "Users" },
     { to: "/admin/assignments", label: "Assignments" },
+    { to: "/admin/audit-log", label: "Audit log" },
   ],
 };
 

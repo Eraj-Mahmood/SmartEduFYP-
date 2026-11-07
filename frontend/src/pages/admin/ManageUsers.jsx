@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
-import { Card, Button, DataTable, Pagination, Icons } from "../../components/ui";
+import { Card, Button, DataTable, Pagination, Icons, useToast } from "../../components/ui";
 
 export default function ManageUsers() {
   const [tab, setTab] = useState("student");
@@ -15,6 +15,52 @@ export default function ManageUsers() {
   const [form, setForm] = useState({});
   const [issuedCred, setIssuedCred] = useState(null);
   const [error, setError] = useState("");
+  const [confirmId, setConfirmId] = useState(null); // user_id waiting for "Confirm" on deactivate
+  const [busyId, setBusyId] = useState(null);
+  const { toast } = useToast();
+
+  // Deactivate (two clicks) / reactivate. A deactivated user's open sessions stop working at once.
+  async function setActive(row, active) {
+    if (!active && confirmId !== row.user_id) {
+      setConfirmId(row.user_id);
+      return;
+    }
+    setConfirmId(null);
+    setBusyId(row.user_id);
+    try {
+      await client.put(`/admin/users/${row.user_id}/${active ? "reactivate" : "deactivate"}`);
+      toast(`${row.full_name} ${active ? "can sign in again" : "is deactivated and signed out"}`, { type: active ? "success" : "info" });
+      if (tab === "student") loadStudents(studentPage, studentSearch);
+      else loadFaculty();
+    } catch (e) {
+      toast(e.response?.data?.error || "Could not update the account", { type: "error" });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const activeColumn = {
+    key: "is_active",
+    header: "Account",
+    sortable: false,
+    render: (r) => (
+      <span className="flex items-center gap-2 whitespace-nowrap">
+        <span className={`inline-flex items-center gap-1 text-xs font-medium ${r.is_active ? "text-safe-700" : "text-muted"}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${r.is_active ? "bg-safe" : "bg-ink/30"}`} aria-hidden="true" />
+          {r.is_active ? "Active" : "Deactivated"}
+        </span>
+        {r.is_active ? (
+          <Button size="sm" variant={confirmId === r.user_id ? "danger" : "ghost"} loading={busyId === r.user_id} onClick={() => setActive(r, false)} onBlur={() => confirmId === r.user_id && setConfirmId(null)}>
+            {confirmId === r.user_id ? "Confirm deactivate" : "Deactivate"}
+          </Button>
+        ) : (
+          <Button size="sm" variant="secondary" loading={busyId === r.user_id} onClick={() => setActive(r, true)}>
+            Reactivate
+          </Button>
+        )}
+      </span>
+    ),
+  };
 
   function loadStudents(page = studentPage, search = studentSearch) {
     client
@@ -85,7 +131,7 @@ export default function ManageUsers() {
     { key: "department", header: "Dept", sortable: false },
     { key: "cgpa", header: "CGPA", sortable: false, align: "right" },
     { key: "email", header: "Email", sortable: false, className: "text-muted" },
-    { key: "is_active", header: "Active", sortable: false, render: (r) => (r.is_active ? "Yes" : "No") },
+    activeColumn,
   ];
   const facultyColumns = [
     { key: "employee_no", header: "Employee no", sortable: false, className: "font-mono text-xs whitespace-nowrap" },
@@ -93,7 +139,7 @@ export default function ManageUsers() {
     { key: "department", header: "Dept", sortable: false },
     { key: "classes_taught", header: "Classes", sortable: false, align: "right" },
     { key: "email", header: "Email", sortable: false, className: "text-muted" },
-    { key: "is_active", header: "Active", sortable: false, render: (r) => (r.is_active ? "Yes" : "No") },
+    activeColumn,
   ];
 
   return (
@@ -174,7 +220,7 @@ export default function ManageUsers() {
           rows={tab === "student" ? students : faculty}
           rowKey={(r) => (tab === "student" ? r.student_id : r.faculty_id)}
           columns={tab === "student" ? studentColumns : facultyColumns}
-          minWidth={720}
+          minWidth={860}
           emptyMessage={tab === "student" ? "No students found" : "No faculty yet"}
         />
         {tab === "student" && (

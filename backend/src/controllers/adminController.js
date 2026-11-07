@@ -303,16 +303,7 @@ async function createFacultyUser(req, res) {
   }
 }
 
-/** PUT /api/admin/users/:userId/deactivate */
-async function deactivateUser(req, res) {
-  try {
-    await pool.query("UPDATE users SET is_active = FALSE WHERE user_id = $1", [req.params.userId]);
-    await logAction(req.user.userId, "DEACTIVATE_USER", "users", req.params.userId, {});
-    res.json({ message: "User deactivated" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-}
+// Deactivate / reactivate: controllers/governanceController.js
 
 // ---------------- DIRECTORY VIEWS (admin sees everything) ----------------
 
@@ -342,7 +333,7 @@ async function listStudents(req, res) {
     params.push(limit, offset);
     const { rows } = await pool.query(
       `SELECT s.student_id, s.roll_no, s.full_name, d.name AS department, s.current_semester,
-              s.cgpa, s.scholarship, s.hostel, u.email, u.is_active
+              s.cgpa, s.scholarship, s.hostel, u.user_id, u.email, u.is_active
        FROM students s
        JOIN departments d ON d.department_id = s.department_id
        JOIN users u ON u.user_id = s.user_id
@@ -363,7 +354,7 @@ async function listFaculty(req, res) {
   try {
     const { rows } = await pool.query(
       `SELECT f.faculty_id, f.employee_no, f.full_name, d.name AS department, f.designation,
-              u.email, u.is_active,
+              u.user_id, u.email, u.is_active,
               (SELECT COUNT(*) FROM faculty_courses fc WHERE fc.faculty_id = f.faculty_id) AS classes_taught
        FROM faculty f
        JOIN departments d ON d.department_id = f.department_id
@@ -767,11 +758,11 @@ async function getPredictionRun(req, res) {
 }
 
 module.exports = {
-  dashboard, listDepartments, createStudentUser, createFacultyUser, deactivateUser,
+  dashboard, listDepartments, createStudentUser, createFacultyUser,
   listStudents, listFaculty, studentFullProfile,
   listCourses, listClasses, listEnrollments,
   createCourse, assignFacultyToCourse, unassignFacultyFromCourse,
   enrollStudent, dropEnrollment, classRecords,
-  sendNotification, bulkNotify, previewNotification, atRiskStudents, predictionsDetailed,
+  sendNotification, bulkNotify, previewNotification, latestFilters, atRiskStudents, predictionsDetailed,
   runPredictions, getPredictionRun, listPredictionRuns,
 };
