@@ -108,7 +108,7 @@ so the project can be set up and demoed from a fresh clone without re-running th
    Vite proxies `/api` to `http://localhost:5000` (see `vite.config.js`).
 
 6. **Log in**
-   Go to `http://localhost:5173/login` with `admin@smartedu.edu` / `Admin@123`.
+   Go to `http://localhost:5173/` → **Admin** (`/login/admin`) with `admin@smartedu.edu` / `Admin@123`.
    From the admin **Users** page, create faculty accounts, then courses and
    faculty-course assignments from **Assignments**, then enroll students into
    classes. Faculty log in to enter results/attendance; students log in read-only.

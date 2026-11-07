@@ -6,7 +6,7 @@ const pool = require("../src/config/db");
 const PASSWORDS = { student: "Student@123", faculty: "Faculty@123", admin: "Admin@123" };
 
 async function login(app, email, role) {
-  const res = await request(app).post("/api/auth/login").send({ email, password: PASSWORDS[role] });
+  const res = await request(app).post("/api/auth/login").send({ email, password: PASSWORDS[role], portal: role });
   if (res.status !== 200) throw new Error(`login ${email} failed: ${res.status} ${JSON.stringify(res.body)}`);
   return res.body.token;
 }
@@ -30,7 +30,7 @@ async function createTempUser(role = "student", { mustReset = false, password = 
     "INSERT INTO users (email, password_hash, role, must_reset_pw) VALUES ($1, $2, $3, $4) RETURNING user_id",
     [email, await bcrypt.hash(password, 4), role, mustReset]
   );
-  return { userId: rows[0].user_id, email, password };
+  return { userId: rows[0].user_id, email, password, role };
 }
 
 async function dropTempUser(userId) {

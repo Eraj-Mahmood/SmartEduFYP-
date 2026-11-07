@@ -23,7 +23,7 @@ afterAll(async () => {
 test("deactivate then reactivate: the token is refused while off and works again after", async () => {
   const u = await createTempUser("student");
   temps.push(u);
-  const { body } = await request(app).post("/api/auth/login").send({ email: u.email, password: u.password });
+  const { body } = await request(app).post("/api/auth/login").send({ email: u.email, password: u.password, portal: "student" });
   const me = () => request(app).get("/api/auth/me").set(as(body.token));
 
   expect((await request(app).put(`/api/admin/users/${u.userId}/deactivate`).set(as(admin))).status).toBe(200);

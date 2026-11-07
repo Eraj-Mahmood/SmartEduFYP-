@@ -1,4 +1,5 @@
 import axios from "axios";
+import { sessionEndPath } from "../lib/portals";
 
 const client = axios.create({ baseURL: "/api" });
 
@@ -13,6 +14,8 @@ client.interceptors.response.use(
   (err) => {
     // a failed login is a 401 too; only a rejected session token sends you back to the login page
     if (err.response?.status === 401 && !err.config?.url?.endsWith("/auth/login")) {
+      // back to this user's own portal sign-in (expired, disabled or revoked session)
+      const target = sessionEndPath(localStorage.getItem("smartedu_role"), window.location.pathname);
       localStorage.removeItem("smartedu_token");
       localStorage.removeItem("smartedu_role");
       if (["ACCOUNT_DISABLED", "TOKEN_REVOKED"].includes(err.response.data?.code)) {
@@ -22,7 +25,7 @@ client.interceptors.response.use(
           /* storage unavailable: the login page just shows no notice */
         }
       }
-      window.location.href = "/login";
+      window.location.href = target;
     }
     // a temporary password must be changed first: go to the Change Password screen
     if (err.response?.status === 403 && err.response.data?.code === "PASSWORD_RESET_REQUIRED") {

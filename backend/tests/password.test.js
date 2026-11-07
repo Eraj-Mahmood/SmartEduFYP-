@@ -11,7 +11,7 @@ afterAll(async () => {
   await pool.end();
 });
 
-const signIn = (u, password = u.password) => request(app).post("/api/auth/login").send({ email: u.email, password });
+const signIn = (u, password = u.password) => request(app).post("/api/auth/login").send({ email: u.email, password, portal: u.role });
 const as = (t) => ({ Authorization: `Bearer ${t}` });
 const change = (t, currentPassword, newPassword) => request(app).post("/api/auth/change-password").set(as(t)).send({ currentPassword, newPassword });
 

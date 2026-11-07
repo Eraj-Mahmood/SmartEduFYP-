@@ -46,8 +46,8 @@ function check(ok, label, detail = "") {
   if (!ok) failures++;
 }
 const as = (t) => ({ Authorization: `Bearer ${t}` });
-async function login(email, password) {
-  const r = await request(app).post("/api/auth/login").send({ email, password });
+async function login(email, password, portal) {
+  const r = await request(app).post("/api/auth/login").send({ email, password, portal: portal || (email.startsWith("admin@") ? "admin" : email.startsWith("student") ? "student" : "faculty") });
   if (r.status !== 200) throw new Error(`login ${email}: ${r.status} ${JSON.stringify(r.body)}`);
   return r.body.token;
 }

@@ -3,36 +3,53 @@ const jwt = require("jsonwebtoken");
 const pool = require("../config/db");
 const { logAction } = require("../middleware/audit");
 
+const PORTALS = ["student", "faculty", "admin"];
+const PORTAL_NAMES = { student: "Student", faculty: "Faculty", admin: "Admin" };
+const GENERIC_401 = { error: "Invalid email or password" };
+// compared against when the email is unknown, so an unknown email takes as long as a wrong password
+const DUMMY_HASH = bcrypt.hashSync("smartedu-no-such-user", 10);
+
 /**
- * POST /api/auth/login
- * Single login endpoint for student / faculty / admin.
+ * POST /api/auth/login {email, password, portal}
+ * One endpoint, three portals (student | faculty | admin). Order: rate limit (app.js) -> input
+ * (missing / invalid portal: 400) -> credentials (unknown email or wrong password: the same generic
+ * 401 on every portal) -> deactivated (403) -> portal: the password is right but the account's role
+ * belongs to another portal -> 403 WRONG_PORTAL with correctPortal, no token, audit-logged.
  * The `role` returned tells the frontend which portal to redirect to -
  * but the ACTUAL enforcement happens server-side via authorize() on every route.
  */
 async function login(req, res) {
-  const { email, password } = req.body;
+  const { email, password, portal } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: "Email and password are required" });
+  }
+  if (!PORTALS.includes(portal)) {
+    return res.status(400).json({ error: "portal must be one of: student, faculty, admin" });
   }
 
   try {
     const { rows } = await pool.query(
       "SELECT user_id, email, password_hash, role, is_active, must_reset_pw FROM users WHERE email = $1",
-      [email.toLowerCase().trim()]
+      [String(email).toLowerCase().trim()]
     );
 
-    if (rows.length === 0) {
-      return res.status(401).json({ error: "Invalid email or password" });
+    const user = rows[0];
+    const match = await bcrypt.compare(String(password), user ? user.password_hash : DUMMY_HASH);
+    if (!user || !match) {
+      return res.status(401).json(GENERIC_401);
     }
 
-    const user = rows[0];
     if (!user.is_active) {
       return res.status(403).json({ error: "This account has been deactivated. Contact admin." });
     }
 
-    const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) {
-      return res.status(401).json({ error: "Invalid email or password" });
+    if (user.role !== portal) {
+      await logAction(user.user_id, "LOGIN_WRONG_PORTAL", "users", user.user_id, { portal, correctPortal: user.role });
+      return res.status(403).json({
+        error: `This is a ${user.role} account - please use the ${PORTAL_NAMES[user.role]} sign in`,
+        code: "WRONG_PORTAL",
+        correctPortal: user.role,
+      });
     }
 
     // Pull the role-specific profile id (student_id / faculty_id) so the

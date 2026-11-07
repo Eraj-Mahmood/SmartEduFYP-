@@ -4,6 +4,7 @@ import ProtectedRoute from "./routes/ProtectedRoute";
 import { ToastProvider } from "./components/ui/Toast";
 
 import Login from "./pages/Login";
+import PortalChooser from "./pages/PortalChooser";
 import ChangePassword from "./pages/ChangePassword";
 
 import StudentDashboard from "./pages/student/StudentDashboard";
@@ -30,7 +31,12 @@ export default function App() {
       <AuthProvider>
         <ToastProvider>
         <Routes>
-          <Route path="/login" element={<Login />} />
+          {/* "/" chooses a portal; each portal has its own sign-in page */}
+          <Route path="/" element={<PortalChooser />} />
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="/login/student" element={<Login portal="student" />} />
+          <Route path="/login/faculty" element={<Login portal="faculty" />} />
+          <Route path="/login/admin" element={<Login portal="admin" />} />
           <Route path="/change-password" element={<ChangePassword />} />
 
           {/* STUDENT PORTAL - read-only */}
@@ -54,8 +60,7 @@ export default function App() {
           <Route path="/admin/model" element={<ProtectedRoute allowedRole="admin"><ModelPage /></ProtectedRoute>} />
           <Route path="/admin/live-cohort" element={<ProtectedRoute allowedRole="admin"><LiveCohort /></ProtectedRoute>} />
 
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </ToastProvider>
       </AuthProvider>

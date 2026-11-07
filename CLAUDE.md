@@ -35,7 +35,13 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
   - `middleware/audit.js` — `logAction()` writes to `audit_log`, never throws.
   - `middleware/validate.js` — turns express-validator errors into `400 {error, details}`.
   - `routes/*Routes.js` + `controllers/*Controller.js`, one pair per area:
-    - `auth` — `POST /login` (returns token, role, `mustResetPassword`, profile), `POST /change-password`
+    - `auth` — `POST /login {email, password, portal}` (Phase 6: separate portals; `portal` = student |
+      faculty | admin, missing/invalid → 400; order: rate limit → credentials (unknown email or wrong
+      password: the same generic 401 `Invalid email or password` on every portal, an unknown email still
+      runs one bcrypt compare) → deactivated 403 → role ≠ portal: 403 `{code: 'WRONG_PORTAL',
+      correctPortal, error: "This is a faculty account - please use the Faculty sign in"}`, no token,
+      audit `LOGIN_WRONG_PORTAL` with `{portal, correctPortal}`; tests `portals.test.js`; returns token, role,
+      `mustResetPassword`, profile), `POST /change-password`
       (current password + new one with 8+ chars, upper, lower and a digit, not the current one; returns a
       fresh token; audit-logged), `GET /me` (with `mustResetPassword`), `POST /logout` (stateless no-op).
       Only accounts created in the admin UI start with `must_reset_pw = TRUE` (migration 005 cleared it
@@ -326,10 +332,18 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     placeholder chips and live preview; Export CSV), `Tutorials` (`?course=<id>`), ManageUsers (with
     deactivate/reactivate), Assignments, `AuditLog` (filters + JSON drawer)), `ChangePassword` (forced:
     standalone, before anything else; voluntary: Account menu).
+  - Portals (Phase 6): `/` = `pages/PortalChooser.jsx` (Student and Faculty cards, a smaller Admin row);
+    `/login/student|faculty|admin` = `pages/Login.jsx` with a `portal` prop (title, accent, hint, "Not a
+    student? Choose another portal"; a WRONG_PORTAL answer shows the server's message and a "Go to <X>
+    sign in" button that keeps the email); `/login` and unknown URLs → `/`. Portal settings (titles,
+    hints, accents) and `loginPathFor` / `portalFromPath` / `sessionEndPath` live in `lib/portals.js`.
+    A signed-in user visiting `/` or a login page goes to their dashboard (or `/change-password`).
   - Auth flow: `localStorage.smartedu_must_reset` is set from login's `mustResetPassword` or by the axios
     interceptor on 403 `PASSWORD_RESET_REQUIRED`; `ProtectedRoute` then sends everything to
-    `/change-password`. On 401 `ACCOUNT_DISABLED` or `TOKEN_REVOKED` the interceptor returns to /login
-    with the notice. The faculty "My classes" link is also highlighted on class pages (`also` prefixes in `NAV`).
+    `/change-password`. Signed out, `ProtectedRoute` sends `/student/...` to `/login/student` (etc.). Logout
+    (Account menu, and "Log out" on the forced change screen) and any 401 (expired, `ACCOUNT_DISABLED`,
+    `TOKEN_REVOKED`; the last two with the notice) return to the user's own portal sign-in (their stored
+    role, else the URL's portal, else `/`). The faculty "My classes" link is also highlighted on class pages (`also` prefixes in `NAV`).
     Notification clicks navigate to `notification.link`.
   - `components/assistant/AssistantPanel.jsx` — the "Ask SmartEdu" chat: right panel (full-screen
     sheet on phones), starter chips, bubbles, typing indicator, suggestion chips + link buttons,
@@ -466,7 +480,8 @@ npm 11 blocks install scripts: `bcrypt` (backend) and `esbuild` (frontend) are a
 - One commit per step, conventional message (e.g. `fix(ml): pin scikit-learn`).
   Commit only after that step's check passes.
 - Before each commit, smoke check: backend starts, ML `GET /health` responds, and
-  `POST /api/auth/login` works for one student, one faculty and one admin account.
+  `POST /api/auth/login` works for one student, one faculty and one admin account (each with its own
+  `portal`).
 - If a check fails and can't be fixed, stop and report. Never commit a broken state.
 - Never commit `.env` files or secrets.
 - Read a file before changing it. Keep changes minimal and match the existing style.

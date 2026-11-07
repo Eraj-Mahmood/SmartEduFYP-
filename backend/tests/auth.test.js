@@ -16,7 +16,7 @@ afterAll(async () => {
   await pool.end();
 });
 
-const signIn = (u) => request(app).post("/api/auth/login").send({ email: u.email, password: u.password });
+const signIn = (u) => request(app).post("/api/auth/login").send({ email: u.email, password: u.password, portal: u.role });
 
 describe("deactivated users", () => {
   test("an existing token is rejected with 401 ACCOUNT_DISABLED after deactivation", async () => {

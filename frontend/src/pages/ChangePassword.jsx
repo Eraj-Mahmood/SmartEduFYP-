@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import client from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { loginPathFor } from "../lib/portals";
 import { PortalShell } from "../components/Shell";
 import { Button, Icons, useToast } from "../components/ui";
 
@@ -137,8 +138,9 @@ function ChangePasswordForm({ forced }) {
           <button
             type="button"
             onClick={() => {
+              const target = loginPathFor(localStorage.getItem("smartedu_role"));
               logout();
-              navigate("/login", { replace: true });
+              navigate(target, { replace: true });
             }}
             className="text-sm text-muted hover:text-ink hover:underline"
           >
@@ -159,7 +161,7 @@ function ChangePasswordForm({ forced }) {
 
 export default function ChangePassword() {
   const { mustReset } = useAuth();
-  if (!localStorage.getItem("smartedu_token")) return <Navigate to="/login" replace />;
+  if (!localStorage.getItem("smartedu_token")) return <Navigate to="/" replace />;
 
   if (mustReset) {
     return (

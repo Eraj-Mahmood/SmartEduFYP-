@@ -16,6 +16,16 @@ Passwords are the defaults from the setup scripts: `createAdmin.js` (as run in t
 > department (`PINNED_STUDENTS`, the original random pick) and derives each course mark from the
 > student's CGPA, so all 40 enrolled students pass `database/find_consistent_demo_students.sql`.
 
+## Where to sign in (separate portals)
+
+Open http://localhost:5173/ and choose a portal: **Student** (`/login/student`), **Faculty**
+(`/login/faculty`) or **Admin** (`/login/admin`). Each account only signs in through its own portal.
+
+**Wrong-portal demo:** on the Faculty sign in, enter `student100040@smartedu.edu` / `Student@123`. The
+form says **"This is a student account - please use the Student sign in"** with a **Go to Student sign
+in** button (the email is kept); no session is created. A wrong password gives the same "Invalid email
+or password" on every portal, so the portals never reveal which accounts exist.
+
 ## Staff
 
 | Role | Name | Email | Password | Why |

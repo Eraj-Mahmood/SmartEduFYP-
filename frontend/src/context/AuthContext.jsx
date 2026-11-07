@@ -19,10 +19,10 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener("smartedu:must-reset", onFlag);
   }, []);
 
-  // Single login call for all 3 roles. The `role` the server returns is
-  // what decides which portal the app routes into next.
-  async function login(email, password) {
-    const { data } = await client.post("/auth/login", { email, password });
+  // One login call per portal (student | faculty | admin). The server refuses an account from
+  // another portal (403 WRONG_PORTAL, no token); the `role` it returns decides where to route next.
+  async function login(email, password, portal) {
+    const { data } = await client.post("/auth/login", { email, password, portal });
     localStorage.setItem("smartedu_token", data.token);
     localStorage.setItem("smartedu_role", data.role);
     if (data.mustResetPassword) localStorage.setItem("smartedu_must_reset", "1");

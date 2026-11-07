@@ -93,17 +93,20 @@ async function chatScreenshot(page, account, viewport, problems) {
 // assignment is closed again at the end.
 const P4 = { student: "115624", counselor: "zain.abbas@smartedu.edu" };
 
+/** The sign-in portal an account belongs to (POST /api/auth/login needs it). */
+const portalOf = (email) => (email.startsWith("admin@") ? "admin" : /^(student\d+|live\.)/.test(email) ? "student" : "faculty");
+
 async function apiAs(page, email, password) {
   return page.evaluate(
-    async ({ email, password }) => {
-      const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+    async ({ email, password, portal }) => {
+      const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, portal }) });
       const data = await res.json();
       localStorage.setItem("smartedu_token", data.token);
       localStorage.setItem("smartedu_role", data.role);
       localStorage.removeItem("smartedu_must_reset");
       return data.token;
     },
-    { email, password }
+    { email, password, portal: portalOf(email) }
   );
 }
 
@@ -122,7 +125,7 @@ const call = (page, method, path, body) =>
 
 /** Assigns the screenshot counselor (admin session on `page`); returns the assignment id. */
 async function phase4Setup(page) {
-  await page.goto(`${BASE}/login`);
+  await page.goto(`${BASE}/`);
   await apiAs(page, "admin@smartedu.edu", "Admin@123");
   const st = await call(page, "GET", `/api/admin/students?search=BU-${P4.student}`);
   const fac = await call(page, "GET", "/api/admin/faculty");
@@ -136,7 +139,7 @@ async function phase4Setup(page) {
 }
 
 async function phase4Teardown(page, assignmentId) {
-  await page.goto(`${BASE}/login`);
+  await page.goto(`${BASE}/`);
   await apiAs(page, "admin@smartedu.edu", "Admin@123");
   if (assignmentId) await call(page, "PUT", `/api/admin/counselors/${assignmentId}/close`);
 }
@@ -155,7 +158,7 @@ async function shot(page, name, viewport, problems, { fullPage = true } = {}) {
 async function phase4Screenshots(page, viewport, problems) {
   let n = 0;
   // admin: assign modal and the bulk intervention composer with its preview
-  await page.goto(`${BASE}/login`);
+  await page.goto(`${BASE}/`);
   await apiAs(page, "admin@smartedu.edu", "Admin@123");
   await page.goto(`${BASE}/admin/interventions`);
   await settle(page);
@@ -176,7 +179,7 @@ async function phase4Screenshots(page, viewport, problems) {
   await page.keyboard.press("Escape");
 
   // faculty: My counselees list and the drawer
-  await page.goto(`${BASE}/login`);
+  await page.goto(`${BASE}/`);
   await apiAs(page, P4.counselor, "Faculty@123");
   await page.goto(`${BASE}/faculty/counselees`);
   await settle(page);
@@ -189,7 +192,7 @@ async function phase4Screenshots(page, viewport, problems) {
   n++;
 
   // student: the "What to do next" card with counselor and tutorial
-  await page.goto(`${BASE}/login`);
+  await page.goto(`${BASE}/`);
   await apiAs(page, `student${P4.student}@smartedu.edu`, "Student@123");
   await page.goto(`${BASE}/student#what-next`);
   await settle(page);
@@ -221,7 +224,7 @@ const P5 = { uploadClass: 4, uploadFaculty: "bilal.raza@smartedu.edu", whatIfStu
 
 async function phase5Screenshots(page, viewport, problems) {
   let n = 0;
-  await page.goto(`${BASE}/login`);
+  await page.goto(`${BASE}/`);
   await apiAs(page, "admin@smartedu.edu", "Admin@123");
   await page.goto(`${BASE}/admin`);
   await settle(page);
@@ -238,7 +241,7 @@ async function phase5Screenshots(page, viewport, problems) {
   n++;
 
   // faculty what-if: BU-100040 (Safe) at 55% attendance
-  await page.goto(`${BASE}/login`);
+  await page.goto(`${BASE}/`);
   await apiAs(page, P5.whatIfFaculty, "Faculty@123");
   const classes = (await call(page, "GET", "/api/faculty/classes")).body;
   let classId = null;
@@ -258,7 +261,7 @@ async function phase5Screenshots(page, viewport, problems) {
   n++;
 
   // faculty upload: preview with 2 errors, then the result
-  await page.goto(`${BASE}/login`);
+  await page.goto(`${BASE}/`);
   await apiAs(page, P5.uploadFaculty, "Faculty@123");
   const roster = (await call(page, "GET", `/api/faculty/classes/${P5.uploadClass}/roster`)).body;
   const lines = ["roll_no,name,assignment_avg,quiz_avg,midterm_marks,final_marks"];
@@ -307,22 +310,25 @@ async function main() {
     const page = await ctx.newPage();
     page.on("pageerror", (e) => problems.push(`${page.url()}: ${e.message}`));
 
-    await page.goto(`${BASE}/login`);
-    await settle(page);
-    await page.screenshot({ path: join(OUT, `login-${viewport.width}.png`), fullPage: true });
-    count++;
+    // the portal chooser and the three sign-in pages
+    for (const [label, path] of [["portals", "/"], ["login-student", "/login/student"], ["login-faculty", "/login/faculty"], ["login-admin", "/login/admin"]]) {
+      await page.goto(`${BASE}${path}`);
+      await settle(page);
+      await page.screenshot({ path: join(OUT, `${label}-${viewport.width}.png`), fullPage: true });
+      count++;
+    }
 
     for (const account of ACCOUNTS) {
       // log in through the API and store the session the way the app does
-      await page.goto(`${BASE}/login`);
-      const ok = await page.evaluate(async ({ email, password }) => {
-        const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+      await page.goto(`${BASE}/`);
+      const ok = await page.evaluate(async ({ email, password, portal }) => {
+        const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, portal }) });
         if (!res.ok) return false;
         const data = await res.json();
         localStorage.setItem("smartedu_token", data.token);
         localStorage.setItem("smartedu_role", data.role);
         return true;
-      }, { email: account.email, password: account.password });
+      }, { email: account.email, password: account.password, portal: portalOf(account.email) });
       if (!ok) {
         problems.push(`login failed for ${account.email}`);
         continue;

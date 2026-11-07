@@ -2,6 +2,7 @@ import { useAuth } from "../context/AuthContext";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import client from "../api/client";
+import { loginPathFor } from "../lib/portals";
 import { Bell, Menu, Close, Logout, Lock, UserCheck, ChevronDown } from "./ui/icons";
 import RiskChip from "./ui/RiskChip";
 import UiCard from "./ui/Card";
@@ -219,7 +220,7 @@ export function PortalShell({ title, children }) {
 
   function handleLogout() {
     logout();
-    navigate("/login");
+    navigate(loginPathFor(role));
   }
 
   return (
