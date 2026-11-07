@@ -23,7 +23,8 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     files and the error handler. Tests import it. `server.js` only listens and on start marks
     unfinished `prediction_runs` as failed (runs are processed in memory).
   - `config/db.js` — single `pg` Pool from `DATABASE_URL`. DATE columns (OID 1082) are returned
-    as raw `'YYYY-MM-DD'` strings (no UTC day shift).
+    as raw `'YYYY-MM-DD'` strings (no UTC day shift). An idle client's error (database restarted, or `demo:reset` dropping the database) is
+    logged and the pool reconnects; the server no longer exits (it used to `process.exit(1)`).
   - `middleware/auth.js` — `authenticate` (JWT Bearer → `req.user = {userId, role, email, mustResetPw}`)
     and `authorize(...roles)`. Role is enforced server-side on every router. `authenticate` does one
     primary-key lookup per request: a deactivated or deleted user's token gets **401
@@ -125,7 +126,9 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       derived; anything else missing stays NULL for the ML imputers and is listed in `missing_features`.
       No prediction at import (run one for the class). Audit `IMPORT_LIVE_COHORT`. UI: `/admin/live-cohort`
       (`pages/admin/LiveCohort.jsx`, linked from the Data sources panel; preview → import → "Run predictions
-      for this class"). `removeCohort(uploadId)` / `scripts/removeLiveCohort.js [id]` undo an import.
+      for this class"). `removeCohort(uploadId, {audit?})` / `scripts/removeLiveCohort.js [id] [--actor <email>]`
+      undo an import; the script writes audit `REMOVE_LIVE_COHORT` (entity uploads, details filename,
+      students, class, class_removed, via; actor = `--actor`, else NULL).
       `GET /students/:id/full` → profile, performance history (no `target_label`), every prediction (staff
       reasons), course results, `nextSteps` (staff wording) and `counselor`; 400 bad id, 404 unknown. The
       Interventions page opens it in `AdminStudentDrawer` (click a student's name).
@@ -194,7 +197,16 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       (older prediction rows can predate wording fixes). Wording never sounds more severe than `finalLabel` ("high-risk
       range" and "severe-absence limit" only for Dropout-Likely).
     - `studentCourses.js` (`getCourseSummary`: this term's marks, grade, attendance, weakest course =
-      lowest mean, ties → lowest attendance), `studentOverview.js` (`getStudentOverview`: the dashboard payload).
+      lowest mean, ties → lowest attendance; each course has `marks_source` entered | imported | null and
+      the summary `termMarksImported`). Live-cohort students (Phase 6 fix): when the latest
+      `student_semester_performance` row is `data_source='live'` with all four marks, a course without
+      course_results shows those imported marks - the numbers featureBuilder gave the model - so the
+      dashboard, next steps, recommender, `GET /student/results` and the chat no longer say "no marks yet".
+      Entered marks always win; a partly missing record fills nothing. `studentOverview.js`
+      (`getStudentOverview`: the dashboard payload, incl. `termMarksImported`; the projected-CGPA note and the
+      attendance label say "imported"). Chat: standing / attendance / my_marks / course_detail / improve
+      say the marks come from the imported record (the marks-target next step is not produced for them:
+      an imported CGPA need not follow from its marks).
     - `tutorials.js` — `recommendFor(studentId, {summary?, label?})` → `{course, tutorial, reason}` or null:
       the weakest current course, recommended when its mean < 70, its attendance < 75% or the student is
       At-Risk/Dropout-Likely; `tutorial` = the course's first active tutorial (lowest id) or null;
@@ -360,9 +372,13 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     the demo accounts are untouched. Phase 5 screens: the admin Model page, the Data sources panel, the
     what-if tab (admin, and faculty with BU-100040 at 55% attendance), and the faculty Upload tab (empty,
     preview with 2 errors, result). The upload re-saves class 4 (CS401 A, bilal.raza; no demo students)
-    with its current marks plus 2 bad rows, so values and labels don't change but those 7 result rows end
-    up tagged `live` with an `upload_id` and get new `upload` predictions. Needs all three services running; it also reports horizontal
-    overflow and page errors.
+    with its current marks plus 2 bad rows. Since Phase 6 the script snapshots class 4 first (its
+    course_results rows incl. `updated_at` as text, its students' latest-prediction pointers, the uploads
+    max id; pg via `backend/node_modules`, `DATABASE_URL` from `backend/.env`) and restores it in a
+    `finally` - also when the run fails - deleting the run's uploads, their audit rows and its `upload`
+    predictions, then compares an md5 of the class with the snapshot ("Class 4 restored: identical").
+    The Phase 4 counselor teardown is in a `finally` too. Needs all three services running; it also
+    reports horizontal overflow and page errors.
 - **Database** (`database/`)
   - `schema.sql` — tables: users, departments (5 seeded), students, faculty, courses,
     faculty_courses, enrollments, course_results, attendance,
@@ -448,7 +464,8 @@ Tests and evaluations:
 ```powershell
 cd backend; npm test                              # Jest + Supertest against the local smartedu DB (ML not needed)
 cd backend; node ../evaluation/chat_eval.js       # chat router eval -> docs/chat_eval.md (exit 1 on any fail);
-                                                  # includes my_marks, improve-with-tutorial and who_can_help with a counselor
+                                                  # includes my_marks, improve-with-tutorial, who_can_help with a counselor
+                                                  # and 9 questions for one live-cohort student per label (imported marks)
 cd backend; node ../evaluation/next_steps_whatif.js  # suggested marks vs the real model (ML running)
 cd backend; node ../evaluation/demo_actions_check.js # performs + reverts every docs/DEMO_ACCOUNTS.md demo action (ML running;
                                                      # --write-demo-files regenerates docs/demo_files; reset again afterwards)

@@ -1,7 +1,8 @@
 const pool = require("../config/db");
 const { predictForStudent } = require("../services/predictionService");
 const { getStudentOverview } = require("../services/studentOverview");
-const { round2 } = require("../services/studentCourses");
+const { round2, importedTermMarks } = require("../services/studentCourses");
+const { deriveGrade } = require("../services/grading");
 const { getNextSteps } = require("../services/nextSteps");
 
 // What a student may see of a prediction: labels and plain-language reasons.
@@ -86,7 +87,22 @@ async function results(req, res) {
        ORDER BY fc.academic_year DESC, fc.semester DESC`,
       [studentId]
     );
-    res.json(rows);
+    // live-cohort students: a current course without entered marks shows the imported term marks
+    // (the same numbers the model used; see services/studentCourses.js)
+    const imported = await importedTermMarks(studentId, pool);
+    res.json(
+      rows.map((r) => {
+        if (r.assignment_avg != null) return { ...r, marks_source: "entered" };
+        if (!imported || r.status !== "enrolled") return { ...r, marks_source: null };
+        const m = {
+          assignment_avg: imported.assignment_avg,
+          quiz_avg: imported.quiz_avg,
+          midterm_marks: imported.midterm_marks,
+          final_marks: imported.final_marks,
+        };
+        return { ...r, ...m, grade: deriveGrade(m), marks_source: "imported" };
+      })
+    );
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

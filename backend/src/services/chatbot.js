@@ -284,7 +284,7 @@ function whyRisk(ctx, r, rng) {
 
 function standing(ctx, r, rng) {
   const st = ctx.standing;
-  const parts = [
+  const parts = st.term_marks_imported && !st.projected_is_estimate ? [] : [
     pick(rng, [
       `Your official CGPA is ${gpa(st.official_cgpa)} - that's from your record up to last term.`,
       `Officially, your CGPA is ${gpa(st.official_cgpa)} (your record up to last term).`,
@@ -294,6 +294,11 @@ function standing(ctx, r, rng) {
     parts.push(
       `Your projected CGPA is ${gpa(st.projected_cgpa)}: an estimate if this term ended with today's marks ` +
         `(provisional SGPA this term ${gpa(st.provisional_sgpa)}, last term's SGPA ${gpa(st.previous_sgpa)}).`
+    );
+  } else if (st.term_marks_imported) {
+    parts.push(
+      `Your CGPA is ${gpa(st.official_cgpa)}, from your imported record - it already includes this term's marks ` +
+        `(SGPA this term ${gpa(st.provisional_sgpa)}, last term's SGPA ${gpa(st.previous_sgpa)}).`
     );
   } else {
     parts.push("No marks are entered this term yet, so your projected CGPA equals your official one.");
@@ -314,9 +319,10 @@ function courseLine(c, ctx) {
       : `Attendance ${pct(c.attendance_pct)} (${c.present} of ${c.sessions} classes)${c.attendance_pct < ctx.thresholds.min_attendance_pct ? ` - below the ${ctx.thresholds.min_attendance_pct}% requirement` : ""}.`;
   if (c.mean == null) return `${c.code} (${c.title}): no marks entered yet. ${att}`;
   const m = c.marks;
+  const from = c.marks_source === "imported" ? " (this term's marks from your imported record)" : "";
   return (
     `${c.code} (${c.title}): assignment ${mark(m.assignment)}, quiz ${mark(m.quiz)}, midterm ${mark(m.midterm)}, ` +
-    `final ${mark(m.final)} - average ${mark(c.mean)} (${c.grade}). ${att}`
+    `final ${mark(m.final)} - average ${mark(c.mean)} (${c.grade})${from}. ${att}`
   );
 }
 
@@ -356,8 +362,9 @@ function myMarks(ctx, r, rng) {
   );
   const w = ctx.weakest_course;
   const tail = w && marked.length > 1 ? `Your lowest is ${w.code} (${mark(w.mean)}). Ask me about it for the details.` : null;
+  const source = marked.some((c) => c.marks_source === "imported") ? "These come from your imported record; marks your teachers enter in the app will replace them." : null;
   return {
-    answer: fit([intro, ...lines, tail, r.noPromise ? "I can't tell you your final result - that depends on the rest of the term." : null]),
+    answer: fit([intro, ...lines, source, tail, r.noPromise ? "I can't tell you your final result - that depends on the rest of the term." : null]),
     links: [LINKS.results],
     suggestions: w ? [`Tell me about ${w.code}`, "How can I improve?", "What is my CGPA?"] : undefined,
   };
@@ -383,6 +390,13 @@ function courseDetail(ctx, r, rng) {
 function attendance(ctx, r, rng) {
   const a = ctx.attendance;
   const T = ctx.thresholds;
+  if (a.source !== "live" && ctx.standing.term_marks_imported) {
+    const below = a.pct != null && a.pct < T.min_attendance_pct;
+    return {
+      answer: `Your attendance this term, from your imported record, is ${pct(a.pct)}.${below ? ` That's below the ${T.min_attendance_pct}% requirement.` : ""} No classes have been marked in the app yet; once your teacher starts marking, I'll show it per course. Aim for ${T.min_attendance_pct}% or more in every course.`,
+      links: [LINKS.attendance],
+    };
+  }
   if (a.source !== "live") {
     return { answer: `No classes have been marked this term yet. Your attendance on record is ${pct(a.pct)}. Aim for ${T.min_attendance_pct}% or more in every course.`, links: [LINKS.attendance] };
   }
@@ -409,7 +423,28 @@ function attendance(ctx, r, rng) {
 
 function improve(ctx, r, rng) {
   const steps = ctx.next_steps.slice(0, 3);
+  // live-cohort students: this term's marks and attendance come from the imported record, so there
+  // are no per-session attendance targets; say what the record shows instead
+  const imported = ctx.standing.term_marks_imported;
+  const T = ctx.thresholds;
+  const att = ctx.attendance;
+  const attLine =
+    imported && att.source !== "live" && att.pct != null && att.pct < T.min_attendance_pct
+      ? `Your attendance this term (imported record) is ${pct(att.pct)} - getting it to ${T.min_attendance_pct}% matters as much as marks.`
+      : null;
   if (!steps.length) {
+    if (imported) {
+      const marked = ctx.courses.filter((c) => c.mean != null);
+      const avg = marked.length ? marked.reduce((n, c) => n + c.mean, 0) / marked.length : null;
+      return {
+        answer: fit([
+          avg != null ? `This term's marks from your imported record average ${mark(avg)}${ctx.status && ctx.status.label === "Safe" ? " - you're on track" : ""}.` : null,
+          attLine,
+          "Keep attending every class and submitting work on time. Once your teachers enter marks in the app, I can give you exact targets per course.",
+        ]),
+        links: [LINKS.dashboard, LINKS.results],
+      };
+    }
     return { answer: "I don't have enough of this term's data to suggest steps yet. Keep attending every class and submitting work on time.", links: [LINKS.dashboard] };
   }
   const intro =
@@ -420,7 +455,7 @@ function improve(ctx, r, rng) {
   // the tutorial has its own line and link, so its step isn't repeated in the list
   const listed = steps.filter((s) => s.id !== "tutorial" || !tut.line);
   return {
-    answer: fit([intro, ...listed.map((s, i) => `${i + 1}. ${s.text}`), tut.line]),
+    answer: fit([intro, ...listed.map((s, i) => `${i + 1}. ${s.text}`), attLine, tut.line]),
     links: [tut.link, LINKS.dashboard, LINKS.results].filter(Boolean),
   };
 }

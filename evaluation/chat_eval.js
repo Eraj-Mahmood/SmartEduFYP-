@@ -167,37 +167,52 @@ const cell = (s) => String(s).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
     });
   });
 
-  // ---- live students (Phase 5): imported as a live cohort, attendance uploaded by faculty, no course
-  // marks yet, several model inputs missing. Skipped when no live cohort has been imported.
+  // ---- live students (Phase 5/6): imported as a live cohort. This term's marks come from the
+  // imported record (no course_results), attendance from the file unless faculty uploaded sessions,
+  // several model inputs missing. One student per label; skipped when no cohort has been imported.
+  // Phase 6 step 3: the chat must use the imported marks the model used, never "no marks yet".
   const { rows: live } = await pool.query(
-    `SELECT s.student_id FROM students s WHERE s.data_source = 'live' AND s.latest_prediction_id IS NOT NULL
-       AND EXISTS (SELECT 1 FROM enrollments e JOIN attendance a ON a.enrollment_id = e.enrollment_id
-                   WHERE e.student_id = s.student_id AND a.data_source = 'live')
-     ORDER BY s.roll_no LIMIT 2`
+    `SELECT DISTINCT ON (p.final_label) s.student_id, sp.assignment_avg, sp.quiz_avg, sp.midterm_marks, sp.final_marks
+     FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id
+     JOIN student_semester_performance sp ON sp.student_id = s.student_id AND sp.data_source = 'live'
+     WHERE s.data_source = 'live'
+     ORDER BY p.final_label, s.roll_no`
   );
-  const LIVE_QS = [
-    ["standing", "What is my CGPA?"],
-    ["attendance", "Is my attendance OK?"],
-    ["attendance", "How many classes have I missed?"],
-    ["my_marks", "What are my marks?"],
-    ["why_risk", "Why is my status this?"],
-  ];
-  for (const [i, { student_id }] of live.entries()) {
-    const me = await buildChatContext(student_id);
+  const NO_MARKS = /No marks (are )?entered|no marks yet|don't have enough of this term's data/i;
+  for (const [i, row] of live.entries()) {
+    const me = await buildChatContext(row.student_id);
+    const course = me.courses[0];
+    const importedMean = Math.round(((+row.assignment_avg) + (+row.quiz_avg) + (+row.midterm_marks) + (+row.final_marks)) / 4);
+    const LIVE_QS = [
+      ["standing", "What is my CGPA?"],
+      ["attendance", "Is my attendance OK?"],
+      ["attendance", "meri attendance kaisi hai?"],
+      ["my_marks", "What are my marks?"],
+      ["my_marks", "mere marks"],
+      ["weakest_course", "Which course should I focus on?"],
+      ["course_detail", `How am I doing in ${course.code}?`],
+      ["improve", "How can I improve?"],
+      ["why_risk", "Why is my status this?"],
+    ];
     LIVE_QS.forEach(([expected, q], k) => {
       const r = respond(q, me, { catalog: catalogRows, rng: seeded(60000 + i * 100 + k) });
       const problems = [];
       if (r.intent !== expected) problems.push(`intent ${r.intent}`);
       if (/\b(null|NaN|undefined)\b/.test(r.answer)) problems.push("missing value printed");
       if (FORBIDDEN.test(r.answer)) problems.push("probability/promise");
-      if (expected === "standing" && !r.answer.includes(Number(me.standing.official_cgpa).toFixed(2))) problems.push("official CGPA missing");
-      if (expected === "attendance" && me.attendance && me.attendance.source === "live" && !r.answer.includes(`${me.attendance.present} of ${me.attendance.sessions}`)) {
+      if (NO_MARKS.test(r.answer)) problems.push('says "no marks" although imported marks feed the model');
+      if (!me.standing.term_marks_imported) problems.push("context: imported term marks not detected");
+      if (course.marks_source !== "imported" || Math.round(course.mean) !== importedMean) problems.push(`context: ${course.code} mean ${course.mean} != imported ${importedMean}`);
+      if (expected === "standing" && !r.answer.includes(Number(me.standing.official_cgpa).toFixed(2))) problems.push("CGPA missing");
+      if (["my_marks", "weakest_course", "course_detail"].includes(expected) && !r.answer.includes(String(importedMean))) problems.push(`imported average ${importedMean} not quoted`);
+      if (["my_marks", "course_detail"].includes(expected) && !/imported record/.test(r.answer)) problems.push("doesn't say the marks are imported");
+      if (expected === "attendance" && me.attendance.source === "live" && !r.answer.includes(`${me.attendance.present} of ${me.attendance.sessions}`)) {
         problems.push("uploaded sessions not quoted");
       }
-      if (expected === "my_marks" && me.courses.every((c) => c.mean == null) && !/No marks/i.test(r.answer)) problems.push("should say no marks yet");
+      if (expected === "attendance" && me.attendance.source !== "live" && !/imported record/.test(r.answer)) problems.push("doesn't say attendance is imported");
       const words = r.answer.split(/\s+/).filter(Boolean).length;
       if (words > MAX_WORDS) problems.push(`${words} words`);
-      results.push({ roll: me.student.roll_no, label: me.status && me.status.label, expected, group: "live student (uploaded attendance)", q, r, words, pass: problems.length === 0, problems });
+      results.push({ roll: me.student.roll_no, label: me.status && me.status.label, expected, group: "live student (imported marks)", q, r, words, pass: problems.length === 0, problems });
     });
   }
 
@@ -210,7 +225,7 @@ const cell = (s) => String(s).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
     "",
     `Generated by \`evaluation/chat_eval.js\` on ${new Date().toISOString().slice(0, 10)}. ` +
       `${results.length} questions: ${results.filter((x) => !x.group).length / DEMO.length} phrasings x ${DEMO.length} demo students, ` +
-      `the counselor pass and ${results.filter((x) => x.group && x.group.startsWith("live")).length} questions for live-cohort students (attendance uploaded, no marks yet). ` +
+      `the counselor pass and ${results.filter((x) => x.group && x.group.startsWith("live")).length} questions for live-cohort students (this term's marks imported, one per label). ` +
       "A row passes when the intent is right, the answer is at most 120 words with no probabilities or promises, " +
       "data answers contain real numbers, and nothing from another student (roll no, email, name, GPA figures) appears.",
     "",

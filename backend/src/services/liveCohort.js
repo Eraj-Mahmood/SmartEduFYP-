@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const pool = require("../config/db");
+const { logAction } = require("../middleware/audit");
 const { parseCsv, toCsv, parseNumber, httpError } = require("./csv");
 
 // Live cohort import (admin, Phase 5 / Objective 7): real classroom students who are not in the
@@ -265,8 +266,9 @@ async function importCohort({ mode, file, body, userId }) {
  * students it created (their users; enrollments, marks, attendance, predictions and chat cascade)
  * and, if the import created the class section and it is now empty, the section and its uploads.
  * For tests and demo resets (backend/src/scripts/removeLiveCohort.js); the audit log is kept.
+ * audit {actorUserId (or null), via}: also writes a REMOVE_LIVE_COHORT audit entry (the script does).
  */
-async function removeCohort(uploadId) {
+async function removeCohort(uploadId, { audit } = {}) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -289,6 +291,16 @@ async function removeCohort(uploadId) {
     }
     await client.query("DELETE FROM uploads WHERE id = $1", [uploadId]);
     await client.query("COMMIT");
+    if (audit) {
+      await logAction(audit.actorUserId ?? null, "REMOVE_LIVE_COHORT", "uploads", Number(uploadId), {
+        filename: up.filename,
+        students: users.length,
+        faculty_course_id: up.faculty_course_id,
+        class: up.summary && up.summary.class,
+        class_removed: classRemoved,
+        via: audit.via || null,
+      });
+    }
     return { students: users.length, class_removed: classRemoved };
   } catch (e) {
     await client.query("ROLLBACK");

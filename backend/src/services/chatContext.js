@@ -40,6 +40,7 @@ async function buildChatContext(studentId, db = pool) {
       projected_is_estimate: !!o.projectedCgpa && o.projectedCgpa.source === "projected",
       provisional_sgpa: o.provisionalSgpa ? o.provisionalSgpa.value : null,
       previous_sgpa: o.previousSgpa ? o.previousSgpa.value : null,
+      term_marks_imported: !!o.termMarksImported,
     },
     status: p
       ? { label: p.final_label, reasons: p.reasons, updated_at: p.created_at, since: p.status_since }
@@ -56,6 +57,7 @@ async function buildChatContext(studentId, db = pool) {
       marks: { assignment: c.assignment_avg, quiz: c.quiz_avg, midterm: c.midterm_marks, final: c.final_marks },
       mean: c.mean,
       grade: c.grade,
+      marks_source: c.marks_source,
       attendance_pct: c.attendance_pct,
       present: c.present,
       sessions: c.sessions,

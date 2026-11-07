@@ -10,6 +10,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 const BASE = process.env.BASE_URL || "http://localhost:5173";
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "docs", "screenshots");
@@ -18,6 +19,71 @@ const WIDTHS = [
   { width: 390, height: 844 },
 ];
 const DEMO_STUDENTS = ["100040", "106864", "122785", "112907", "144766", "101986"];
+
+// ---- class 4 snapshot/restore ----------------------------------------------------------------
+// The upload screens re-save class 4's marks (CS401 A). Its course_results rows, its students'
+// latest-prediction pointers, the upload rows and the 'upload' predictions are snapshotted before
+// the run and restored at the end - also when the run fails - using backend/.env's DATABASE_URL.
+const BACKEND = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "backend");
+const backendRequire = createRequire(join(BACKEND, "package.json"));
+backendRequire("dotenv").config({ path: join(BACKEND, ".env") });
+const RESTORE_CLASS = 4;
+
+async function snapshotClass(pool, classId) {
+  const enr = (await pool.query("SELECT enrollment_id, student_id FROM enrollments WHERE faculty_course_id = $1", [classId])).rows;
+  const eids = enr.map((e) => e.enrollment_id);
+  const sids = enr.map((e) => e.student_id);
+  return {
+    classId, eids, sids,
+    at: (await pool.query("SELECT NOW() AS t")).rows[0].t,
+    // updated_at as text: a JS Date would drop the microseconds and the row would no longer be identical
+    results: (await pool.query("SELECT *, updated_at::text AS updated_at_text FROM course_results WHERE enrollment_id = ANY($1) ORDER BY result_id", [eids])).rows,
+    pointers: (await pool.query("SELECT student_id, latest_prediction_id FROM students WHERE student_id = ANY($1)", [sids])).rows,
+    maxUpload: (await pool.query("SELECT COALESCE(MAX(id), 0) AS m FROM uploads")).rows[0].m,
+    hash: await classHash(pool, classId),
+  };
+}
+
+/** md5 over class's course_results rows (every column), its uploads and its students' pointers. */
+async function classHash(pool, classId) {
+  const { rows: [h] } = await pool.query(
+    `SELECT md5(
+       COALESCE((SELECT string_agg(cr::text, '|' ORDER BY cr.result_id) FROM course_results cr
+                 JOIN enrollments e ON e.enrollment_id = cr.enrollment_id WHERE e.faculty_course_id = $1), '') || '#' ||
+       COALESCE((SELECT string_agg(u.id::text, ',' ORDER BY u.id) FROM uploads u WHERE u.faculty_course_id = $1), '') || '#' ||
+       COALESCE((SELECT string_agg(s.student_id || ':' || COALESCE(s.latest_prediction_id::text, ''), ',' ORDER BY s.student_id)
+                 FROM students s JOIN enrollments e ON e.student_id = s.student_id WHERE e.faculty_course_id = $1), '')
+     ) AS h`,
+    [classId]
+  );
+  return h.h;
+}
+
+async function restoreClass(pool, snap) {
+  const c = await pool.connect();
+  try {
+    await c.query("BEGIN");
+    for (const p of snap.pointers) await c.query("UPDATE students SET latest_prediction_id = $2 WHERE student_id = $1", [p.student_id, p.latest_prediction_id]);
+    await c.query("DELETE FROM predictions WHERE student_id = ANY($1) AND created_at >= $2 AND triggered_by = 'upload'", [snap.sids, snap.at]);
+    for (const r of snap.results) {
+      await c.query(
+        `UPDATE course_results SET assignment_avg = $2, quiz_avg = $3, midterm_marks = $4, final_marks = $5, grade = $6,
+           updated_by = $7, updated_at = $8::timestamptz, data_source = $9, upload_id = $10 WHERE result_id = $1`,
+        [r.result_id, r.assignment_avg, r.quiz_avg, r.midterm_marks, r.final_marks, r.grade, r.updated_by, r.updated_at_text, r.data_source, r.upload_id]
+      );
+    }
+    const up = await c.query("DELETE FROM uploads WHERE id > $1 AND faculty_course_id = $2 RETURNING id", [snap.maxUpload, snap.classId]);
+    await c.query("DELETE FROM audit_log WHERE entity = 'uploads' AND entity_id = ANY($1)", [up.rows.map((r) => r.id)]);
+    await c.query("COMMIT");
+  } catch (e) {
+    await c.query("ROLLBACK");
+    throw e;
+  } finally {
+    c.release();
+  }
+  const after = await classHash(pool, snap.classId);
+  return after === snap.hash;
+}
 
 const ACCOUNTS = [
   { name: "admin", email: "admin@smartedu.edu", password: "Admin@123", pages: async () => [
@@ -297,6 +363,29 @@ async function settle(page) {
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
+  const { Pool } = backendRequire("pg");
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const snap = await snapshotClass(pool, RESTORE_CLASS);
+  let restored = null;
+  const restore = () =>
+    (restored ||= restoreClass(pool, snap).then((same) => {
+      console.log(same ? `Class ${RESTORE_CLASS} restored: identical to before the run.` : `WARNING: class ${RESTORE_CLASS} differs from its snapshot after the restore.`);
+      if (!same) process.exitCode = 1;
+    }));
+  // Ctrl+C skips `finally`: restore first, then stop
+  process.once("SIGINT", () => {
+    console.log("Interrupted - restoring class 4 first...");
+    restore().finally(() => process.exit(130));
+  });
+  try {
+    await run();
+  } finally {
+    await restore();
+    await pool.end();
+  }
+}
+
+async function run() {
   const browser = await chromium.launch();
   let count = 0;
   const problems = [];
@@ -305,65 +394,68 @@ async function main() {
   const setupPage = await setupCtx.newPage();
   const assignmentId = await phase4Setup(setupPage);
 
-  for (const viewport of WIDTHS) {
-    const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 });
-    const page = await ctx.newPage();
-    page.on("pageerror", (e) => problems.push(`${page.url()}: ${e.message}`));
+  try {
+    for (const viewport of WIDTHS) {
+      const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 });
+      const page = await ctx.newPage();
+      page.on("pageerror", (e) => problems.push(`${page.url()}: ${e.message}`));
 
-    // the portal chooser and the three sign-in pages
-    for (const [label, path] of [["portals", "/"], ["login-student", "/login/student"], ["login-faculty", "/login/faculty"], ["login-admin", "/login/admin"]]) {
-      await page.goto(`${BASE}${path}`);
-      await settle(page);
-      await page.screenshot({ path: join(OUT, `${label}-${viewport.width}.png`), fullPage: true });
-      count++;
-    }
-
-    for (const account of ACCOUNTS) {
-      // log in through the API and store the session the way the app does
-      await page.goto(`${BASE}/`);
-      const ok = await page.evaluate(async ({ email, password, portal }) => {
-        const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, portal }) });
-        if (!res.ok) return false;
-        const data = await res.json();
-        localStorage.setItem("smartedu_token", data.token);
-        localStorage.setItem("smartedu_role", data.role);
-        return true;
-      }, { email: account.email, password: account.password, portal: portalOf(account.email) });
-      if (!ok) {
-        problems.push(`login failed for ${account.email}`);
-        continue;
-      }
-      const api = (path) =>
-        page.evaluate(async (p) => (await fetch(p, { headers: { Authorization: `Bearer ${localStorage.getItem("smartedu_token")}` } })).json(), path);
-
-      for (const [label, path] of await account.pages(api)) {
+      // the portal chooser and the three sign-in pages
+      for (const [label, path] of [["portals", "/"], ["login-student", "/login/student"], ["login-faculty", "/login/faculty"], ["login-admin", "/login/admin"]]) {
         await page.goto(`${BASE}${path}`);
         await settle(page);
-        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-        if (overflow > 0) problems.push(`${account.name}/${label} @${viewport.width}px overflows by ${overflow}px`);
-        await page.screenshot({ path: join(OUT, `${account.name}-${label}-${viewport.width}.png`), fullPage: true });
+        await page.screenshot({ path: join(OUT, `${label}-${viewport.width}.png`), fullPage: true });
         count++;
       }
-      if (CHAT_STUDENTS.some((id) => account.email === `student${id}@smartedu.edu`)) {
-        await chatScreenshot(page, account, viewport, problems);
-        count++;
+
+      for (const account of ACCOUNTS) {
+        // log in through the API and store the session the way the app does
+        await page.goto(`${BASE}/`);
+        const ok = await page.evaluate(async ({ email, password, portal }) => {
+          const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, portal }) });
+          if (!res.ok) return false;
+          const data = await res.json();
+          localStorage.setItem("smartedu_token", data.token);
+          localStorage.setItem("smartedu_role", data.role);
+          return true;
+        }, { email: account.email, password: account.password, portal: portalOf(account.email) });
+        if (!ok) {
+          problems.push(`login failed for ${account.email}`);
+          continue;
+        }
+        const api = (path) =>
+          page.evaluate(async (p) => (await fetch(p, { headers: { Authorization: `Bearer ${localStorage.getItem("smartedu_token")}` } })).json(), path);
+
+        for (const [label, path] of await account.pages(api)) {
+          await page.goto(`${BASE}${path}`);
+          await settle(page);
+          const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+          if (overflow > 0) problems.push(`${account.name}/${label} @${viewport.width}px overflows by ${overflow}px`);
+          await page.screenshot({ path: join(OUT, `${account.name}-${label}-${viewport.width}.png`), fullPage: true });
+          count++;
+        }
+        if (CHAT_STUDENTS.some((id) => account.email === `student${id}@smartedu.edu`)) {
+          await chatScreenshot(page, account, viewport, problems);
+          count++;
+        }
       }
+      try {
+        count += await phase4Screenshots(page, viewport, problems);
+      } catch (e) {
+        problems.push(`phase 4 screens @${viewport.width}px: ${e.message.split("\n")[0]}`);
+      }
+      try {
+        count += await phase5Screenshots(page, viewport, problems);
+      } catch (e) {
+        problems.push(`phase 5 screens @${viewport.width}px: ${e.message.split("\n")[0]}`);
+      }
+      await ctx.close();
     }
-    try {
-      count += await phase4Screenshots(page, viewport, problems);
-    } catch (e) {
-      problems.push(`phase 4 screens @${viewport.width}px: ${e.message.split("\n")[0]}`);
-    }
-    try {
-      count += await phase5Screenshots(page, viewport, problems);
-    } catch (e) {
-      problems.push(`phase 5 screens @${viewport.width}px: ${e.message.split("\n")[0]}`);
-    }
-    await ctx.close();
+  } finally {
+    await phase4Teardown(setupPage, assignmentId);
+    await setupCtx.close();
+    await browser.close();
   }
-  await phase4Teardown(setupPage, assignmentId);
-  await setupCtx.close();
-  await browser.close();
   console.log(`Saved ${count} screenshots to ${OUT}`);
   if (problems.length) {
     console.log("Problems:\n  " + problems.join("\n  "));

@@ -179,7 +179,7 @@ the class, on row 10). If a reset ever changes the marks, regenerate it with
 **To undo it:** upload [`docs/demo_files/demo_marks_undo_CS401_A.csv`](demo_files/demo_marks_undo_CS401_A.csv)
 (Danish's original marks) the same way: he goes back to **Safe** (2.51). The rows stay tagged live and both
 uploads stay in the history (that is the audit trail). `npm run screenshots` also uploads to this
-class, but only re-saves the current marks.
+class, but restores it exactly (rows, tags, uploads, predictions) when it finishes, even after a failure.
 
 ### Live cohort and evaluation (Objective 7)
 

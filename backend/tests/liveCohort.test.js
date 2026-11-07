@@ -31,7 +31,7 @@ beforeAll(async () => {
 afterAll(async () => {
   for (const id of created) await removeCohort(id).catch(() => {});
   await pool.query("DELETE FROM uploads WHERE kind = 'cohort' AND filename = 'jest_cohort.csv'");
-  await pool.query("DELETE FROM audit_log WHERE action = 'IMPORT_LIVE_COHORT' AND details->>'filename' = 'jest_cohort.csv'");
+  await pool.query("DELETE FROM audit_log WHERE action IN ('IMPORT_LIVE_COHORT', 'REMOVE_LIVE_COHORT') AND details->>'filename' = 'jest_cohort.csv'");
   await pool.end();
 });
 
@@ -126,4 +126,47 @@ test("removeCohort deletes the students and the class it created", async () => {
   expect(await liveCount()).toBe(0);
   const fc = await pool.query("SELECT 1 FROM faculty_courses WHERE section = $1", [SECTION]);
   expect(fc.rows).toHaveLength(0);
+});
+
+test("a live student's imported term marks show as their course marks (not 'no marks yet')", async () => {
+  const res = await send(admin, "commit", csv(GOOD));
+  expect(res.status).toBe(200);
+  created.push(res.body.upload.id);
+  const { getCourseSummary } = require("../src/services/studentCourses");
+  const sid = async (roll) => (await pool.query("SELECT student_id FROM students WHERE roll_no = $1", [roll])).rows[0].student_id;
+  // all four marks in the file: shown, flagged as imported, grade derived (85,80,82,84 -> mean 82.75, B)
+  const two = await getCourseSummary(await sid(`${TAG}-2`));
+  expect(two.termMarksImported).toBe(true);
+  expect(two.courses[0]).toMatchObject({ marks_source: "imported", assignment_avg: 85, final_marks: 84, mean: 82.75, grade: "B" });
+  expect(two.weakest.course_code).toBe(two.courses[0].course_code);
+  // a mark missing in the file: nothing is invented (a missing component would count as 0)
+  const three = await getCourseSummary(await sid(`${TAG}-3`));
+  expect(three.termMarksImported).toBe(false);
+  expect(three.courses[0]).toMatchObject({ mean: null, marks_source: null });
+  // a synthetic student with entered marks is unchanged
+  const demo = await getCourseSummary(await sid("BU-100040"));
+  expect(demo.termMarksImported).toBe(false);
+  expect(demo.courses.every((c) => c.marks_source === "entered")).toBe(true);
+});
+
+test("removeLiveCohort.js writes a REMOVE_LIVE_COHORT audit entry", () => {
+  const id = created.pop();
+  const { execFileSync } = require("child_process");
+  const out = execFileSync(process.execPath, ["src/scripts/removeLiveCohort.js", String(id), "--actor", "admin@smartedu.edu"], {
+    cwd: require("path").join(__dirname, ".."),
+    encoding: "utf8",
+  });
+  expect(out).toMatch(new RegExp(`Removed cohort #${id}: 3 students`));
+  return pool
+    .query(
+      `SELECT a.actor_user_id, a.details, u.email FROM audit_log a LEFT JOIN users u ON u.user_id = a.actor_user_id
+       WHERE a.action = 'REMOVE_LIVE_COHORT' AND a.entity = 'uploads' AND a.entity_id = $1`,
+      [id]
+    )
+    .then(async ({ rows }) => {
+      expect(rows).toHaveLength(1);
+      expect(rows[0].email).toBe("admin@smartedu.edu");
+      expect(rows[0].details).toMatchObject({ filename: "jest_cohort.csv", students: 3, class_removed: true, via: "removeLiveCohort.js" });
+      expect(await liveCount()).toBe(0);
+    });
 });

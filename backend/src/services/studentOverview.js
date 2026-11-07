@@ -51,7 +51,7 @@ async function getStudentOverview(studentId, db = pool) {
   const p = perf.rows[0] || {};
   const pred = latest.rows[0] || null;
   const src = (pred && pred.feature_sources) || {};
-  const { courses, weakest, present, sessions } = summary;
+  const { courses, weakest, present, sessions, termMarksImported } = summary;
   const [recommendation, c] = await Promise.all([
     recommendFor(studentId, { summary, label: pred ? pred.final_label : null, db }),
     getActiveCounselor(studentId, db),
@@ -72,7 +72,9 @@ async function getStudentOverview(studentId, db = pool) {
       note:
         src.CGPA === "projected"
           ? "What your CGPA would be if this term ended with today's marks."
-          : "No marks entered this term yet, so this equals your official CGPA.",
+          : termMarksImported
+            ? "This term's marks come from your imported record, so this equals your official CGPA."
+            : "No marks entered this term yet, so this equals your official CGPA.",
     },
     provisionalSgpa: pred && {
       value: round2(pred.provisional_sgpa),
@@ -83,7 +85,7 @@ async function getStudentOverview(studentId, db = pool) {
     liveAttendance:
       sessions > 0
         ? { value: round2((100 * present) / sessions), present, sessions, label: "Attendance this term", source: "live" }
-        : { value: round2(p.attendance_percentage), label: "Attendance (record)", source: "imported" },
+        : { value: round2(p.attendance_percentage), label: termMarksImported ? "Attendance this term (imported)" : "Attendance (record)", source: "imported" },
     latestPrediction: pred && {
       prediction_id: pred.prediction_id,
       final_label: pred.final_label,
@@ -103,6 +105,8 @@ async function getStudentOverview(studentId, db = pool) {
     // the student's academic counselor (Phase 4), or null
     counselor: c && { name: c.name, designation: c.designation, email: c.email, department: c.department, assigned_at: c.assigned_at },
     courses,
+    // this term's marks came from a live-cohort import, not from teachers (see studentCourses.js)
+    termMarksImported,
     coursesBelowPassMark: courses.filter((c) => c.below_pass_mark).length,
     thresholds: {
       pass_mark: PASS_MARK,
