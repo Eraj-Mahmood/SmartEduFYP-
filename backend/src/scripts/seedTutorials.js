@@ -1,4 +1,6 @@
 // Usage: cd backend; node src/scripts/seedTutorials.js [--no-check]
+// --no-check (used by npm run demo:reset, so the result never depends on the network) skips the
+// fetches and stores every link active except the ones in KNOWN_FAILING.
 // Seeds study material for every course (FR11). Every URL is fetched first (GET, redirects
 // followed, 20 s timeout); one that fails or can't be checked is stored with is_active = FALSE
 // and listed at the end so someone can fix it. Re-running is safe: (course_id, url) is unique,
@@ -124,6 +126,9 @@ const TUTORIALS = {
   ],
 };
 
+// Links that failed the HTTP check on the last checked run (2026-11-07). --no-check stores them inactive.
+const KNOWN_FAILING = new Set(["https://web.stanford.edu/class/cs224n/"]);
+
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
 /** GET the URL (redirects followed). -> {ok, status, error} */
@@ -168,7 +173,7 @@ async function main() {
       continue;
     }
     for (const t of list) {
-      const r = check ? await checkUrl(t.url) : { ok: true };
+      const r = check ? await checkUrl(t.url) : KNOWN_FAILING.has(t.url) ? { ok: false, error: "known to fail (not re-checked)" } : { ok: true };
       if (!r.ok) failed.push({ code, ...t, status: r.status, error: r.error });
       await pool.query(
         `INSERT INTO tutorials (course_id, title, url, provider, kind, description, is_active)

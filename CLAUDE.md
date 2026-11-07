@@ -157,7 +157,18 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
   - `scripts/createAdmin.js`, `scripts/hashPassword.js`, `scripts/migrate.js`,
     `scripts/seedTutorials.js` (study material for every course; fetches every URL first and stores
     any that fails as inactive, listing it; re-runs never re-activate an admin-deactivated row;
-    `--no-check` skips the fetches).
+    `--no-check` skips the fetches and stores only `KNOWN_FAILING` (CS224N) inactive).
+  - `scripts/demoReset.js` (`npm run demo:reset [-- --yes] [-- --as-of YYYY-MM-DD] [-- --seed N]`) —
+    rebuilds the demo database from the repo: asks for confirmation (unless `--yes`), checks the ML
+    service (`/health`, 20 features) and the Python packages BEFORE dropping anything, then
+    `DROP DATABASE ... WITH (FORCE)` + create → `schema.sql` → migrations → `import_dataset.py` →
+    `seed_demo_data.py --seed --as-of` → `generate_student_names.py --seed` → `createAdmin.js` →
+    `seedTutorials.js --no-check` → the SYNTHETIC live cohort (`importCohort`, CS301 LIVE, Dr. Amina
+    Sheikh, audit-logged) → one `prediction_runs` row for every student via `predictForMany(..., {strict:
+    true})` (an ML failure throws; nothing falls back) → summary (rows per table, latest labels, model vs
+    policy, grade/CGPA consistency) and a fingerprint (md5 per table over every column except timestamps
+    and `password_hash`, audit_log excluded). Python: system `python` or `PYTHON=<path>`, needs
+    `database/requirements.txt`. ~4.5 min on the Phase 6 machine.
   - `services/` — the prediction pipeline:
     - `featureBuilder.js` — `buildFeatures(id)` / `buildFeaturesMany(ids)` → `{features (20), sources, extra}`.
       Starts from the latest `student_semester_performance` row, then overrides from current-semester
@@ -195,7 +206,7 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       72 (B) average in every course to reach 2.30"); used by the counselee summary and the admin student view.
       `whatIfFeatures(features, mark)` is used by
       `evaluation/next_steps_whatif.js` (model agreed 12/12 on the 4 At-Risk/Dropout-Likely demo students).
-    - `predictionService.js` — `predictForStudent(id, {trigger})`, `predictForMany(ids, {runId, trigger})`:
+    - `predictionService.js` — `predictForStudent(id, {trigger})`, `predictForMany(ids, {runId, trigger, strict})`:
       build features → ML `/predict` or `/predict/batch` (on failure `ruleBasedFallback`, which uses
       the policy.json rules, `source='fallback'`, `drivers=null`) → policy → reasons → insert into
       `predictions`.
@@ -370,20 +381,36 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
   - `import_dataset.py` — loads the 50k-row CSV: one user+student per `Student_ID`
     (email `student<ID>@smartedu.edu`, roll `BU-<ID>`) and one
     `student_semester_performance` row each (incl. the dataset's `target_label`).
-  - `seed_demo_data.py` — 10 faculty, 20 courses, sections, and 8 random students per
-    department enrolled in their department's section-A classes, with results and
-    8 attendance sessions derived from their performance row.
+  - `seed_demo_data.py` — 10 faculty, 20 courses, 25 sections, and 8 students per department
+    (`PINNED_STUDENTS`, the original random pick, so the demo roll numbers survive a rebuild) enrolled in
+    their department's section-A classes. Deterministic (`random.Random(--seed)`, default 2026; class
+    dates count back weekly from `--as-of`, default today). Marks agree with the CGPA: the target course
+    mean makes provisional SGPA = 2 × CGPA − Previous_SGPA (so projected CGPA = imported CGPA, ±0.03), and
+    the per-course means (within 12 marks of it) are chosen so the letter-grade points average as close to
+    the CGPA as possible (97.9% of all 50k dataset rows land within 0.5; all 40 seeded students do).
+    Components keep the student's own profile; attendance = the imported percentage of 32 sessions, kept
+    on the same side of 60% / 75%.
   - `generate_student_names.py` — replaces "Student 12345" with random names (only `full_name`);
-    run on 2026-10-16, the demo names are in docs/DEMO_ACCOUNTS.md.
+    deterministic (seed 2026, student_id order). The demo names are in docs/DEMO_ACCOUNTS.md.
+  - `requirements.txt` — psycopg2-binary, pandas, bcrypt for these scripts (system Python).
   - `demo_login_lookup.sql` — pgAdmin queries to list demo logins.
 
 ## Running each service (Windows, PowerShell)
 
-PostgreSQL 17 runs as the Windows service `postgresql-x64-17`. `psql` is not on PATH:
-`& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -U postgres -h localhost -d smartedu`.
+Tested versions (2026-11-07, Phase 6 machine): Node 24.18 / npm 11.16 (no `engines` pin), Python
+3.13.7 (installs `requirements.txt` cleanly with scikit-learn 1.9.0), PostgreSQL 18.4. PostgreSQL 17
+also works (the previous machine).
+
+PostgreSQL runs as the Windows service `postgresql-x64-<major>` (e.g. `postgresql-x64-18`). `psql` is
+not on PATH by default:
+`& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h localhost -d smartedu` (use your
+installed major version in the path).
+
+Only `backend/.env.example` exists (the frontend and ML service need no `.env`).
 
 ```powershell
-# ML service (port 8001) — one-time: python -m venv .venv; .venv\Scripts\python -m pip install -r requirements.txt
+# ML service (port 8001) — one-time: python -m venv .venv; .venv\Scripts\python -m pip install -r requirements.txt -r requirements-dev.txt
+# (the venv needs ~400 MB; add --no-cache-dir if the drive is nearly full)
 cd ml_service; .venv\Scripts\python -m uvicorn app:app --port 8001
 
 # Backend (port 5000) — needs backend\.env (copy .env.example; never commit it)
@@ -393,11 +420,10 @@ cd backend; npm run dev
 cd frontend; npm run dev
 ```
 
-Fresh database setup: `createdb smartedu` → `psql -f database/schema.sql` →
-`node backend/src/scripts/createAdmin.js "admin@smartedu.edu" "Admin@123"` →
-`python database/import_dataset.py --csv SmartEdu_Synthetic_Dataset_V2_50000_Sheet_.csv --dsn <DSN>` →
-`python database/seed_demo_data.py --dsn <DSN>` → `cd backend; npm run migrate` →
-`node src/scripts/seedTutorials.js`.
+Fresh database setup: start the ML service, `python -m pip install -r database/requirements.txt` (once),
+then `cd backend; npm run demo:reset` (creates the database itself; see `scripts/demoReset.js` above).
+By hand the order must be schema → `npm run migrate` → import → seed → names → `createAdmin.js` (it sets
+`password_changed_at`, a migration-010 column, so it fails before the migrations) → tutorials.
 
 Schema changes go in a new numbered file in `database/migrations/` (e.g. `001_add_x.sql`),
 applied with `cd backend; npm run migrate` (`src/scripts/migrate.js`: filename order, one
@@ -410,6 +436,8 @@ cd backend; npm test                              # Jest + Supertest against the
 cd backend; node ../evaluation/chat_eval.js       # chat router eval -> docs/chat_eval.md (exit 1 on any fail);
                                                   # includes my_marks, improve-with-tutorial and who_can_help with a counselor
 cd backend; node ../evaluation/next_steps_whatif.js  # suggested marks vs the real model (ML running)
+cd backend; node ../evaluation/demo_actions_check.js # performs + reverts every docs/DEMO_ACCOUNTS.md demo action (ML running;
+                                                     # --write-demo-files regenerates docs/demo_files; reset again afterwards)
 python -m pip install -r evaluation/requirements.txt  # once: psycopg2, pandas, matplotlib 3.11.2 (system Python)
 python evaluation/make_sample_live_cohort.py          # -> evaluation/sample_live_cohort.csv (30 SYNTHETIC rows, SYN-*)
 python evaluation/live_eval.py                        # live students' latest predictions -> docs/live_eval.md + docs/live_eval_confusion.png
@@ -452,13 +480,13 @@ npm 11 blocks install scripts: `bcrypt` (backend) and `esbuild` (frontend) are a
 | Students (all 50k) | `student<ID>@smartedu.edu` | `Student@123` (`import_dataset.py` default) |
 
 The six curated demo students (2 per label, grades consistent with CGPA, label = model) and the
-faculty login that shows them are in [docs/DEMO_ACCOUNTS.md](docs/DEMO_ACCOUNTS.md); they were
-found with `database/find_consistent_demo_students.sql`. The same file has a repeatable
+faculty login that shows them are in [docs/DEMO_ACCOUNTS.md](docs/DEMO_ACCOUNTS.md); they pass
+`database/find_consistent_demo_students.sql` after every `npm run demo:reset`. The same file has a repeatable
 live re-prediction demo (one faculty save that moves BU-112907 from At-Risk to Safe), the chat demo,
 and the Phase 4 interventions demo (demo script step 6) with how to undo it. Phase 5 demos are there
 too: the Model page, the what-if demo (BU-100040 at 55% attendance → Dropout-Likely, nothing saved),
 the upload demo (`docs/demo_files/demo_marks_upload_CS401_A.csv` as bilal.raza: 7 saved, 2 deliberate
-errors, Anum Cheema Safe → At-Risk; `demo_marks_undo_CS401_A.csv` undoes it) and the live cohort +
+errors, BU-145871 Danish Farooq Safe → At-Risk; `demo_marks_undo_CS401_A.csv` undoes it) and the live cohort +
 `live_eval.py` run.
 
 ## Known facts
@@ -476,6 +504,12 @@ errors, Anum Cheema Safe → At-Risk; `demo_marks_undo_CS401_A.csv` undoes it) a
 - Latest full 50k run (run 10, 2026-10-16, after the Phase 3 changes) took 1 min 37 s, all from the
   model (no fallback): Safe 23,320 · At-Risk 7,557 · Dropout-Likely 19,123. It refreshed every
   student's stored reasons (none of the latest rows still use pre-fix wording).
+- **Demo reset (2026-11-07, Phase 6 step 1):** `npm run demo:reset` took 268-269 s; two runs gave the
+  same fingerprint for every table. Result: 50,030 students (50,000 + 30 SYN-*), 50,041 users, 190
+  enrollments, 160 course results, 1,280 attendance rows, 35 tutorials (34 active), run #1 = 50,030
+  model predictions (0 fallback): Safe 23,331 · At-Risk 7,566 · Dropout-Likely 19,133; model = policy
+  49,987 / 50,030; policy raised 0. All 40 seeded students: grades within 0.5 of CGPA and model label =
+  dataset label. Live cohort = class 26, upload #1.
 - The model file's metadata holds the official metrics: CV macro F1 **0.9992**,
   test macro F1 **0.9994**, test accuracy **0.9996**.
 - Tutorials (seeded 2026-11-07): 35 for all 20 courses, every course has an active one. Stanford CS224N
@@ -501,7 +535,8 @@ errors, Anum Cheema Safe → At-Risk; `demo_marks_undo_CS401_A.csv` undoes it) a
   (8 sessions each, upload #34) → `live_eval.py`: accuracy 1.000 and macro F1 1.000 against the
   (synthetic) outcome; model vs policy agree 27/30 - three students at exactly 75% attendance (6/8): the
   rule (< 75%) says Safe, the model says At-Risk, matching their outcome. These numbers test the pipeline,
-  not real-world accuracy.
+  not real-world accuracy. After `demo:reset` (no attendance upload) `live_eval.py` gives accuracy 1.000,
+  model vs policy 30/30.
 - Labels are **policy-derived from a synthetic dataset** (`dataset_type`:
   "Synthetic policy-labelled student dataset"), not observed real-world outcomes.
 - The dataset has one row per student (50,000 rows → 50,000 students), so each student's

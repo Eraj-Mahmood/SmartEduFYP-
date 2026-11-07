@@ -10,8 +10,8 @@ afterAll(() => pool.end());
 
 describe("recommendFor on demo students", () => {
   test.each([
-    ["BU-144766", "AI401"], // Dropout-Likely, weakest AI401 (57, 50% attendance)
-    ["BU-122785", "AI402"], // At-Risk, weakest AI402 (66)
+    ["BU-144766", "AI302"], // Dropout-Likely, weakest AI302 (53)
+    ["BU-122785", "AI301"], // At-Risk, weakest AI301 (65)
   ])("%s gets an active tutorial for %s, the course its next steps name", async (roll, code) => {
     const id = await studentId(roll);
     const rec = await recommendFor(id);
@@ -35,7 +35,7 @@ describe("recommendFor on demo students", () => {
   test("the dashboard carries the recommendation", async () => {
     const token = await login(app, "student144766@smartedu.edu", "student");
     const res = await request(app).get("/api/student/dashboard").set("Authorization", `Bearer ${token}`);
-    expect(res.body.recommendation.course.course_code).toBe("AI401");
+    expect(res.body.recommendation.course.course_code).toBe("AI302");
     expect(res.body.recommendation.tutorial.title).toBeTruthy();
   });
 });

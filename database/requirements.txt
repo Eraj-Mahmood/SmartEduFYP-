@@ -1,0 +1,6 @@
+# database/*.py (import_dataset.py, seed_demo_data.py, generate_student_names.py), run by
+# `cd backend; npm run demo:reset` with the system Python (or PYTHON=<path>):
+#   python -m pip install -r database/requirements.txt
+psycopg2-binary==2.9.12
+pandas==2.2.3
+bcrypt==5.0.0

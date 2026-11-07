@@ -3,13 +3,13 @@ Replaces the placeholder "Student 12345" names (created by import_dataset.py,
 since the CSV has no real names) with realistic randomly-generated full names,
 matched to each student's stored gender where possible.
 
-Safe to run once after import_dataset.py. Re-running it will just re-randomize
-the names again (harmless, but pointless) - it doesn't check if a name was
-already "real", it just overwrites every row.
+DETERMINISTIC: names come from random.Random(--seed) (default 2026) in student_id order, so the
+same database gets the same names on every run. It overwrites every student's full_name (live
+cohort students too, so run it before importing a cohort, as `npm run demo:reset` does).
 
 Usage:
-    pip install psycopg2-binary --break-system-packages
-    python3 generate_student_names.py --dsn "postgresql://postgres:PASSWORD@localhost:5432/smartedu"
+    python -m pip install -r database/requirements.txt
+    python generate_student_names.py --dsn "postgresql://postgres:PASSWORD@localhost:5432/smartedu" [--seed 2026]
 """
 import argparse
 import random
@@ -34,24 +34,29 @@ LAST_NAMES = [
 ]
 
 
-def random_name(gender):
+DEFAULT_SEED = 2026
+
+
+def random_name(rng, gender):
     first_pool = MALE_FIRST if gender == "Male" else FEMALE_FIRST if gender == "Female" else MALE_FIRST + FEMALE_FIRST
-    return f"{random.choice(first_pool)} {random.choice(LAST_NAMES)}"
+    return f"{rng.choice(first_pool)} {rng.choice(LAST_NAMES)}"
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dsn", required=True)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     args = parser.parse_args()
+    rng = random.Random(args.seed)
 
     conn = psycopg2.connect(args.dsn)
     cur = conn.cursor()
 
-    cur.execute("SELECT student_id, gender FROM students")
+    cur.execute("SELECT student_id, gender FROM students ORDER BY student_id")
     students = cur.fetchall()
     print(f"Generating names for {len(students)} students...")
 
-    updates = [(sid, random_name(gender)) for sid, gender in students]
+    updates = [(sid, random_name(rng, gender)) for sid, gender in students]
 
     extras.execute_values(
         cur,

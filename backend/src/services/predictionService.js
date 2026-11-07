@@ -37,8 +37,9 @@ async function postJson(url, body, timeoutMs) {
   return res.json();
 }
 
-/** Model output for each feature set, falling back to rules when the ML service fails. */
-async function scoreMany(builtList) {
+/** Model output for each feature set, falling back to rules when the ML service fails
+ *  (strict: throw instead - the demo reset must never store fallback predictions). */
+async function scoreMany(builtList, { strict = false } = {}) {
   const scored = [];
   for (let i = 0; i < builtList.length; i += ML_BATCH_MAX) {
     const chunk = builtList.slice(i, i + ML_BATCH_MAX);
@@ -46,6 +47,7 @@ async function scoreMany(builtList) {
       const { results } = await postJson(ML_BATCH_URL(), { rows: chunk.map((b) => b.features) }, 120000);
       results.forEach((r) => scored.push({ ...r, source: "model" }));
     } catch (err) {
+      if (strict) throw new Error(`ML batch call failed (strict mode, no fallback): ${err.message}`);
       console.warn("ML batch call failed, using rule-based fallback:", err.message);
       chunk.forEach((b) => scored.push({ ...ruleBasedFallback(b.features), source: "fallback" }));
     }
@@ -140,17 +142,17 @@ async function predictForStudent(studentId, { trigger } = {}) {
 }
 
 /**
- * predictForMany(studentIds, {runId, trigger}) -> {done, failed}
+ * predictForMany(studentIds, {runId, trigger, strict}) -> {done, failed}
  * Batched end to end: 3 feature queries, one ML call per 2000 students, multi-row inserts.
- * Students without a performance row count as failed.
+ * Students without a performance row count as failed. strict: an ML failure throws (nothing saved).
  */
-async function predictForMany(studentIds, { runId, trigger } = {}) {
+async function predictForMany(studentIds, { runId, trigger, strict = false } = {}) {
   const ids = [...new Set(studentIds.map(Number))];
   if (ids.length === 0) return { done: 0, failed: 0 };
   const builtMap = await buildFeaturesMany(ids);
   const withData = ids.filter((id) => builtMap.has(id));
   const builtList = withData.map((id) => builtMap.get(id));
-  const scored = await scoreMany(builtList);
+  const scored = await scoreMany(builtList, { strict });
   const rows = withData.map((id, i) => toRow(id, builtList[i], scored[i], { trigger, runId }));
   await insertRows(rows);
   return { done: rows.length, failed: ids.length - rows.length };

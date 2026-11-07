@@ -1,6 +1,6 @@
 # Live-data evaluation
 
-Generated 2026-11-07 18:31 by `evaluation/live_eval.py`.
+Generated 2026-11-07 23:03 by `evaluation/live_eval.py`.
 
 > **Data source: SYNTHETIC sample (evaluation/sample_live_cohort.csv) - NOT real student data.** Cohort file(s): `sample_live_cohort.csv`.
 > These 30 students were drawn from the synthetic training dataset (stratified 10 per label), because no real
@@ -13,8 +13,8 @@ Generated 2026-11-07 18:31 by `evaluation/live_eval.py`.
 - Sample size: **30** live students with a prediction (30 live students in total).
 - Prediction source: model 30, rule fallback 0.
 - Final labels: Safe 10, At-Risk 10, Dropout-Likely 10.
-- Model vs policy agreement: **27/30 (90.0%)**; the policy raised 0 label(s).
-- Inputs taken from live data (per student): Attendance_Percentage 30.
+- Model vs policy agreement: **30/30 (100.0%)**; the policy raised 0 label(s).
+- Inputs taken from live data (per student): none.
 - Inputs missing in the cohort file (imputed by the pipeline - median / most frequent of the training data): Age 30, Assignment_Submission_Rate 30, Gender 30, Hostel 30, LMS_Login_Count 30, Scholarship 30, Study_Hours_Per_Week 30.
 
 ## Confusion matrix and per-class scores
@@ -43,13 +43,7 @@ None: every final label matches. (On a synthetic sample drawn from the training 
 
 ### Model vs policy
 
-Students where the model and the institution's rules disagree (the final label is the more severe of the two):
-
-| roll no | model | policy | final | truth | top drivers (SHAP) |
-|---|---|---|---|---|---|
-| SYN-104868 | At-Risk | Safe | At-Risk | At-Risk | Attendance_Percentage=75 (↑); Previous_SGPA=2.37 (↑); CGPA=2.34 (↓) |
-| SYN-109265 | At-Risk | Safe | At-Risk | At-Risk | Attendance_Percentage=75 (↑); Previous_SGPA=2.62 (↑); CGPA=2.56 (↓) |
-| SYN-126604 | At-Risk | Safe | At-Risk | At-Risk | Attendance_Percentage=75 (↑); Previous_SGPA=2.57 (↑); CGPA=2.31 (↓) |
+The model and the policy rules agree for every live student.
 
 ## Limits
 

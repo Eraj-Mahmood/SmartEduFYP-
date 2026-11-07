@@ -75,7 +75,7 @@ describe("flagged students CSV", () => {
     const lines = res.text.replace(/^﻿/, "").trim().split("\r\n");
     expect(lines[0]).toBe("roll_no,name,department,label,top_reason,weakest_course,counselor,last_intervention");
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toMatch(/^"BU-144766","[^"]+","Artificial Intelligence","Dropout-Likely","[^"]+","AI401 \(avg \d+\)",/);
+    expect(lines[1]).toMatch(/^"BU-144766","[^"]+","Artificial Intelligence","Dropout-Likely","[^"]+","AI302 \(avg \d+\)",/);
   });
 
   test("is admin-only", async () => {
