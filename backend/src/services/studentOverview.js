@@ -2,6 +2,7 @@ const pool = require("../config/db");
 const { thresholds: POLICY } = require("./policy");
 const { getCourseSummary, PASS_MARK, round2 } = require("./studentCourses");
 const { toReasons } = require("./reasons");
+const { recommendFor } = require("./tutorials");
 
 // One student's overview: official (imported) and this term's live/projected figures side by
 // side, each with a label and source, plus the latest prediction and this term's courses.
@@ -50,6 +51,7 @@ async function getStudentOverview(studentId, db = pool) {
   const pred = latest.rows[0] || null;
   const src = (pred && pred.feature_sources) || {};
   const { courses, weakest, present, sessions } = summary;
+  const recommendation = await recommendFor(studentId, { summary, label: pred ? pred.final_label : null, db });
 
   return {
     profile: student.rows[0],
@@ -92,6 +94,8 @@ async function getStudentOverview(studentId, db = pool) {
       label_ever_changed: pred.label_ever_changed,
     },
     weakestCourse: weakest && { course_code: weakest.course_code, title: weakest.title, mean: weakest.mean },
+    // "What to do next": the study material for the course that needs it most (or null)
+    recommendation,
     courses,
     coursesBelowPassMark: courses.filter((c) => c.below_pass_mark).length,
     thresholds: {

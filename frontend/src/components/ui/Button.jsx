@@ -6,6 +6,11 @@ const VARIANT = {
 };
 const SIZE = { sm: "text-sm px-3 py-1.5", md: "text-sm px-4 py-2", lg: "text-base px-5 py-2.5" };
 
+/** The same look for elements that are not <button>s (e.g. an <a> to another site or a mailto: link). */
+export function buttonClass(variant = "primary", size = "md", className = "") {
+  return `inline-flex items-center justify-center gap-2 rounded-lg font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${VARIANT[variant]} ${SIZE[size]} ${className}`;
+}
+
 /** Button variant="primary|secondary|ghost|danger" loading icon */
 export default function Button({ variant = "primary", size = "md", loading = false, icon, children, className = "", disabled, ...rest }) {
   return (

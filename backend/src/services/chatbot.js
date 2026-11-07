@@ -241,6 +241,16 @@ function supportLine() {
   return `${o.name} (${o.location}, ${o.phone}, ${o.email}; ${o.hours})`;
 }
 
+/** The recommended tutorial as a sentence + an external link (or nulls). */
+function tutorialBits(ctx, courseCode) {
+  const t = ctx.tutorial;
+  if (!t || (courseCode && t.course_code !== courseCode)) return { line: null, link: null };
+  return {
+    line: `Study material for ${t.course_code}: "${t.title}"${t.provider ? ` (${t.provider})` : ""}.`,
+    link: { label: "Open the tutorial", href: t.url },
+  };
+}
+
 function counselorLine(ctx) {
   const c = ctx.counselor;
   if (!c) return null;
@@ -325,9 +335,10 @@ function weakestCourse(ctx, r, rng) {
       : c.mean < 70
         ? "Ask your teacher which upcoming assessments carry the most marks."
         : "It's still a decent mark - a little extra time there keeps you steady.";
+  const tut = tutorialBits(ctx, c.code);
   return {
-    answer: fit([`${intro} ${courseLine(c, ctx)}`, tip]),
-    links: [LINKS.results],
+    answer: fit([`${intro} ${courseLine(c, ctx)}`, tip, tut.line]),
+    links: [tut.link, LINKS.results].filter(Boolean),
     suggestions: [`Tell me about ${c.code}`, "How can I improve?", "Is my attendance OK?"],
   };
 }
@@ -403,9 +414,12 @@ function improve(ctx, r, rng) {
     ctx.status && ctx.status.label === "Safe"
       ? pick(rng, ["You're on track. To stay there:", "You're doing well - here's how to keep it that way:"])
       : pick(rng, ["Here are your most useful next steps:", "Here's where to start, most important first:", "These steps will help most:"]);
+  const tut = tutorialBits(ctx);
+  // the tutorial has its own line and link, so its step isn't repeated in the list
+  const listed = steps.filter((s) => s.id !== "tutorial" || !tut.line);
   return {
-    answer: fit([intro, ...steps.map((s, i) => `${i + 1}. ${s.text}`)]),
-    links: [LINKS.dashboard, LINKS.results],
+    answer: fit([intro, ...listed.map((s, i) => `${i + 1}. ${s.text}`), tut.line]),
+    links: [tut.link, LINKS.dashboard, LINKS.results].filter(Boolean),
   };
 }
 

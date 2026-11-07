@@ -12,11 +12,12 @@ const round2 = (x) => (x == null ? null : Math.round(Number(x) * 100) / 100);
  * getCourseSummary(studentId) -> {courses, weakest, present, sessions}
  * courses: [{course_code, title, credit_hours, assignment_avg, quiz_avg, midterm_marks, final_marks,
  *            mean, grade, below_pass_mark, present, sessions, attendance_pct}] in course-code order.
- * weakest: the course with the lowest mean mark (null when no marks are entered).
+ * weakest: the course with the lowest mean mark, ties broken by the lowest attendance (null when no
+ *          marks are entered). The tutorial recommender and the next steps use the same course.
  */
 async function getCourseSummary(studentId, db = pool) {
   const { rows } = await db.query(
-    `SELECT c.course_code, c.title, c.credit_hours, e.enrollment_id,
+    `SELECT c.course_id, c.course_code, c.title, c.credit_hours, e.enrollment_id,
             cr.assignment_avg, cr.quiz_avg, cr.midterm_marks, cr.final_marks,
             COUNT(a.attendance_id) FILTER (WHERE a.status = 'present') AS present,
             COUNT(a.attendance_id) AS sessions
@@ -26,7 +27,7 @@ async function getCourseSummary(studentId, db = pool) {
      LEFT JOIN course_results cr ON cr.enrollment_id = e.enrollment_id
      LEFT JOIN attendance a ON a.enrollment_id = e.enrollment_id
      WHERE e.student_id = $1 AND e.status = 'enrolled'
-     GROUP BY c.course_code, c.title, c.credit_hours, e.enrollment_id, cr.result_id
+     GROUP BY c.course_id, c.course_code, c.title, c.credit_hours, e.enrollment_id, cr.result_id
      ORDER BY c.course_code`,
     [studentId]
   );
@@ -42,6 +43,7 @@ async function getCourseSummary(studentId, db = pool) {
     const mean = hasMarks ? round2(overallMark(marks)) : null;
     const sessions = Number(c.sessions);
     return {
+      course_id: c.course_id,
       course_code: c.course_code,
       title: c.title,
       credit_hours: c.credit_hours,
@@ -55,7 +57,9 @@ async function getCourseSummary(studentId, db = pool) {
     };
   });
   const withMarks = courses.filter((c) => c.mean != null);
-  const weakest = withMarks.length ? withMarks.reduce((w, c) => (c.mean < w.mean ? c : w)) : null;
+  const att = (c) => (c.attendance_pct == null ? Infinity : c.attendance_pct);
+  const weaker = (c, w) => c.mean < w.mean || (c.mean === w.mean && att(c) < att(w));
+  const weakest = withMarks.length ? withMarks.reduce((w, c) => (weaker(c, w) ? c : w)) : null;
   return {
     courses,
     weakest,

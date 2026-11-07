@@ -64,7 +64,18 @@ async function buildChatContext(studentId, db = pool) {
       ? { code: w.course_code, title: w.title, mean: w.mean, grade: w.grade, attendance_pct: w.attendance_pct }
       : null,
     next_steps: nextSteps.map((s) => ({ id: s.id, text: s.text })),
-    tutorial: null, // Phase 4
+    tutorial:
+      o.recommendation && o.recommendation.tutorial
+        ? {
+            course_code: o.recommendation.course.course_code,
+            course_title: o.recommendation.course.title,
+            title: o.recommendation.tutorial.title,
+            url: o.recommendation.tutorial.url,
+            provider: o.recommendation.tutorial.provider,
+            kind: o.recommendation.tutorial.kind,
+            reason: o.recommendation.reason,
+          }
+        : null,
     counselor: null, // Phase 4
     interventions: interventions.rows.map((n) => ({ subject: n.subject, message: n.message, sent_at: n.sent_at })),
     thresholds: o.thresholds,

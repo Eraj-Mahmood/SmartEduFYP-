@@ -7,7 +7,7 @@ export { default as Skeleton, SkeletonText, SkeletonCard } from "./Skeleton";
 export { ToastProvider, useToast } from "./Toast";
 export { default as Drawer } from "./Drawer";
 export { default as DataTable, Pagination } from "./DataTable";
-export { default as Button } from "./Button";
+export { default as Button, buttonClass } from "./Button";
 export { default as Tooltip } from "./Tooltip";
 export { RISK, RISK_LABELS, RISK_SEVERITY, riskMeta } from "./risk";
 export { colors, chart, riskColor } from "./tokens";

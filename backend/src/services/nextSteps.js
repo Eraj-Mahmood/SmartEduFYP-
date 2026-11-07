@@ -2,6 +2,7 @@ const { buildFeatures, SGPA_SLOPE, SGPA_INTERCEPT } = require("./featureBuilder"
 const { getCourseSummary } = require("./studentCourses");
 const { GRADE_THRESHOLDS } = require("./grading");
 const { thresholds: T } = require("./policy");
+const { recommendFor } = require("./tutorials");
 
 // "What to do next": ranked, concrete actions from the student's own numbers.
 //   (a) attendance - sessions needed to reach 75% (and 60% when below it), this term's rows
@@ -10,7 +11,8 @@ const { thresholds: T } = require("./policy");
 //                    provisional SGPA = clamp(0.0640 x mean - 2.453, 0, 4)
 //                    projected CGPA   = (Previous_SGPA + SGPA) / 2
 //   (c) weakest course, when its mean is below 70
-//   (d) assignment submission, when below 90%
+//   (d) the recommended tutorial for that course (services/tutorials.js), when there is one
+//   (e) assignment submission, when below 90%
 // Lower priority = shown first. Student wording; never probabilities.
 
 const WEAK_COURSE_MEAN = 70;
@@ -188,6 +190,17 @@ function weakestStep(weakest) {
   };
 }
 
+function tutorialStep(rec) {
+  if (!rec || !rec.tutorial) return null;
+  const t = rec.tutorial;
+  return {
+    id: "tutorial",
+    priority: 41,
+    text: `Work through "${t.title}"${t.provider ? ` (${t.provider})` : ""} for ${rec.course.course_code}. ${rec.reason}.`,
+    detail: { course_code: rec.course.course_code, tutorial_id: t.tutorial_id, title: t.title, url: t.url, provider: t.provider, kind: t.kind },
+  };
+}
+
 function submissionStep(features) {
   const rate = Number(features.Assignment_Submission_Rate);
   if (!(rate < MIN_SUBMISSION_PCT)) return null;
@@ -199,12 +212,13 @@ function submissionStep(features) {
   };
 }
 
-/** computeNextSteps({features, sources}, {courses, weakest, present, sessions}) -> ranked steps. Pure. */
-function computeNextSteps(built, summary) {
+/** computeNextSteps({features, sources}, {courses, weakest, present, sessions}, recommendation?) -> ranked steps. Pure. */
+function computeNextSteps(built, summary, recommendation = null) {
   const steps = [
     attendanceStep(summary.present, summary.sessions),
     marksStep(built.features, built.sources || {}, summary.courses),
     weakestStep(summary.weakest),
+    tutorialStep(recommendation),
     submissionStep(built.features),
   ].filter(Boolean);
   return steps.sort((a, b) => a.priority - b.priority);
@@ -214,7 +228,7 @@ function computeNextSteps(built, summary) {
 async function getNextSteps(studentId) {
   const [built, summary] = await Promise.all([buildFeatures(studentId), getCourseSummary(studentId)]);
   if (!built) return [];
-  return computeNextSteps(built, summary);
+  return computeNextSteps(built, summary, await recommendFor(studentId, { summary }));
 }
 
 module.exports = { getNextSteps, computeNextSteps, whatIfFeatures, markNeededFor, projectedCgpaFor, sessionsNeeded, gradeFor };

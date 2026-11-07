@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import client from "../../api/client";
-import { Button, Icons } from "../ui";
+import { Button, Icons, buttonClass } from "../ui";
 
 // "Ask SmartEdu": the student's chat panel. Right-side panel on desktop, full-screen sheet on
 // phones. Loads history on open, sends with Enter (Shift+Enter = new line), shows a typing
@@ -60,11 +60,20 @@ function Bubble({ message, isLatest, busy, onAsk, onLink, onRetry, here }) {
         </div>
         {!mine && links.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {links.map((l) => (
-              <Button key={l.href} size="sm" variant="secondary" onClick={() => onLink(l.href)} icon={<Icons.ChevronRight size={14} />}>
-                {l.label}
-              </Button>
-            ))}
+            {links.map((l) =>
+              /^https?:\/\//.test(l.href) ? (
+                // study material on another site: a real link that opens a new tab
+                <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary", "sm")}>
+                  <Icons.External size={14} />
+                  {l.label}
+                  <span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              ) : (
+                <Button key={l.href} size="sm" variant="secondary" onClick={() => onLink(l.href)} icon={<Icons.ChevronRight size={14} />}>
+                  {l.label}
+                </Button>
+              )
+            )}
           </div>
         )}
         {!mine && isLatest && message.suggestions?.length > 0 && (
