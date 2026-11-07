@@ -278,6 +278,15 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     student drawer. `pages/admin/ModelPage.jsx` (`/admin/model`, nav "Model"): usage stat tiles, model
     card, global-importance bar chart (top 10, share of total), "How a prediction is made" (5 stages),
     model-vs-policy matrix, current labels + last run, limitations box.
+  - Uploads (Phase 5): the class page has "Students | Upload" tabs (`?tab=upload`); `pages/faculty/ClassUpload.jsx`:
+    1 kind (Marks | Attendance), 2 template download, 3 drag-and-drop / choose file (auto-preview), 4 preview
+    (summary pills, error list, first 20 rows with bad rows and cells highlighted, the typed value shown),
+    "Save N valid rows", result (saved / rejected / re-predicted / labels changed with old → new chips),
+    upload history. Roster rows whose marks are live show a small "live" tag (tooltip: upload # or entered in
+    the app). Admin: `pages/admin/DataSourcesCard.jsx` on the dashboard (synthetic / live / from uploads per
+    table, students with live data, uploads saved) and a "Data source" filter on Interventions
+    (`dataSource=live|synthetic` on `/at-risk-students` and its export; live = `students.data_source='live'`
+    or any live course result / attendance row, `HAS_LIVE_DATA` in adminController).
   - `components/charts/theme.jsx` — shared recharts axis/grid styles, `TooltipBox`, HTML `Legend`.
   - `lib/useApi.js` (`{data, error, loading, reload, setData}`), `lib/format.js` (timeAgo, gpa, pct,
     shortDate - parses `YYYY-MM-DD` as a local date).
@@ -307,7 +316,11 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     after), and the Phase 4 screens (assign modal, bulk intervention composer, Tutorials, Audit log,
     My counselees + drawer, the student "What to do next" card, Change Password forced and voluntary).
     Those use BU-115624 with Mr. Zain Abbas as counselor (assigned for the run, closed at the end), so
-    the demo accounts are untouched. Needs all three services running; it also reports horizontal
+    the demo accounts are untouched. Phase 5 screens: the admin Model page, the Data sources panel, the
+    what-if tab (admin, and faculty with BU-100040 at 55% attendance), and the faculty Upload tab (empty,
+    preview with 2 errors, result). The upload re-saves class 4 (CS401 A, bilal.raza; no demo students)
+    with its current marks plus 2 bad rows, so values and labels don't change but those 7 result rows end
+    up tagged `live` with an `upload_id` and get new `upload` predictions. Needs all three services running; it also reports horizontal
     overflow and page errors.
 - **Database** (`database/`)
   - `schema.sql` — tables: users, departments (5 seeded), students, faculty, courses,

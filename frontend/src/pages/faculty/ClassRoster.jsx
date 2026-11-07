@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
 import {
   Card, ChartCard, DataTable, Drawer, EmptyState, RiskChip, Button, Skeleton, useToast, Icons, RISK_SEVERITY, PredictionSource, Tabs,
 } from "../../components/ui";
 import WhatIfPanel from "../../components/WhatIfPanel";
+import ClassUpload from "./ClassUpload";
 import useApi from "../../lib/useApi";
 import { gpa, pct, num, timeAgo } from "../../lib/format";
 import { GradeDistributionChart, SessionAttendanceChart } from "./ClassCharts";
@@ -138,6 +139,8 @@ export default function ClassRoster() {
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState(null);
   const [justSaved, setJustSaved] = useState(null); // highlights the row after a save (it may re-sort)
+  const [params, setParams] = useSearchParams();
+  const view = params.get("tab") === "upload" ? "upload" : "students"; // ?tab=upload opens the Upload tab
 
   const cls = classes.data?.find((c) => String(c.faculty_course_id) === String(facultyCourseId));
   const rows = roster.data || [];
@@ -205,7 +208,17 @@ export default function ClassRoster() {
       render: (r) => (
         <span>
           <span className="block font-medium">{r.full_name}</span>
-          <span className="block font-mono text-xs text-muted">{r.roll_no}</span>
+          <span className="block font-mono text-xs text-muted">
+            {r.roll_no}
+            {r.result_source === "live" && (
+              <span
+                className="ml-1.5 rounded bg-brand-50 px-1 py-px font-sans text-[10px] font-medium uppercase tracking-wide text-brand-dark ring-1 ring-inset ring-brand/20"
+                title={r.result_upload_id ? `Marks saved from upload #${r.result_upload_id}` : "Marks entered in the app"}
+              >
+                live
+              </span>
+            )}
+          </span>
         </span>
       ),
     },
@@ -280,7 +293,24 @@ export default function ClassRoster() {
         </Link>
       </div>
 
-      {roster.error ? (
+      <Tabs
+        tabs={[{ key: "students", label: "Students" }, { key: "upload", label: "Upload" }]}
+        value={view}
+        onChange={(k) => setParams(k === "upload" ? { tab: "upload" } : {}, { replace: true })}
+        label="Class sections"
+        className="mb-4"
+      />
+
+      {view === "upload" ? (
+        <ClassUpload
+          classId={facultyCourseId}
+          onSaved={() => {
+            roster.reload({ quiet: true });
+            summary.reload({ quiet: true });
+            classes.reload({ quiet: true });
+          }}
+        />
+      ) : roster.error ? (
         <Card>
           <EmptyState icon={<Icons.AlertOctagon size={22} />} message="We couldn't load this class" detail={roster.error} />
         </Card>

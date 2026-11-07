@@ -6,6 +6,7 @@ import useApi from "../../lib/useApi";
 import { timeAgo } from "../../lib/format";
 import { RiskDonut, DepartmentRiskChart, stackLegend } from "./AdminCharts";
 import RunPredictionsCard from "./RunPredictionsCard";
+import DataSourcesCard from "./DataSourcesCard";
 import RiskBar from "../faculty/RiskBar";
 
 const STATUS_STYLE = {
@@ -91,6 +92,12 @@ export default function AdminDashboard() {
           {d && <DepartmentRiskChart rows={d.riskByDepartment} />}
         </ChartCard>
       </div>
+
+      {d?.dataSources && (
+        <div className="mb-4">
+          <DataSourcesCard sources={d.dataSources} />
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-5">
         <div className="lg:col-span-2">

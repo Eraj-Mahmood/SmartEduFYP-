@@ -6,7 +6,8 @@
 // Chromium for Playwright (one-time: npx playwright install chromium).
 // BASE_URL defaults to http://localhost:5173.
 import { chromium } from "playwright";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +23,7 @@ const ACCOUNTS = [
   { name: "admin", email: "admin@smartedu.edu", password: "Admin@123", pages: async () => [
     ["overview", "/admin"],
     ["interventions", "/admin/interventions"],
+    ["model", "/admin/model"],
     ["users", "/admin/users"],
     ["assignments", "/admin/assignments"],
     ["tutorials", "/admin/tutorials"],
@@ -204,6 +206,81 @@ async function phase4Screenshots(page, viewport, problems) {
   return n;
 }
 
+// Phase 5 screens: the data sources panel, the what-if tab (BU-100040 at 55% attendance flips the
+// label; nothing is saved) for faculty and admin, and the faculty Upload tab (preview with errors,
+// then the result). The upload re-saves class 4 (CS401 A, bilal.raza, no demo students) with its
+// CURRENT marks plus 2 deliberate bad rows, so values and labels don't change - those rows are
+// only tagged live / uploaded.
+const P5 = { uploadClass: 4, uploadFaculty: "bilal.raza@smartedu.edu", whatIfStudent: "BU-100040", whatIfFaculty: "ayesha.khan@smartedu.edu" };
+
+async function phase5Screenshots(page, viewport, problems) {
+  let n = 0;
+  await page.goto(`${BASE}/login`);
+  await apiAs(page, "admin@smartedu.edu", "Admin@123");
+  await page.goto(`${BASE}/admin`);
+  await settle(page);
+  await page.getByRole("heading", { name: "Data sources" }).locator("xpath=ancestor::section[1]").screenshot({ path: join(OUT, `admin-data-sources-${viewport.width}.png`) });
+  n++;
+  await page.goto(`${BASE}/admin/interventions`);
+  await settle(page);
+  await page.locator('button[title="Open student details"]').first().click();
+  await page.getByRole("tab", { name: "What if?" }).click();
+  await page.getByLabel("Attendance").waitFor();
+  await page.getByLabel("Attendance").fill("90");
+  await page.waitForTimeout(1500);
+  await shot(page, "admin-whatif", viewport, problems, { fullPage: false });
+  n++;
+
+  // faculty what-if: BU-100040 (Safe) at 55% attendance
+  await page.goto(`${BASE}/login`);
+  await apiAs(page, P5.whatIfFaculty, "Faculty@123");
+  const classes = (await call(page, "GET", "/api/faculty/classes")).body;
+  let classId = null;
+  for (const c of classes) {
+    const r = (await call(page, "GET", `/api/faculty/classes/${c.faculty_course_id}/roster`)).body;
+    if (r.some((x) => x.roll_no === P5.whatIfStudent)) classId = c.faculty_course_id;
+  }
+  await page.goto(`${BASE}/faculty/class/${classId}/roster`);
+  await settle(page);
+  await page.getByText(P5.whatIfStudent).first().click();
+  await page.getByRole("tab", { name: "What if?" }).click();
+  await page.getByLabel("Attendance").waitFor();
+  await page.getByLabel("Attendance").fill("55");
+  await page.getByText("The label would change.").waitFor({ timeout: 10000 });
+  await page.waitForTimeout(500);
+  await shot(page, "faculty-whatif", viewport, problems, { fullPage: false });
+  n++;
+
+  // faculty upload: preview with 2 errors, then the result
+  await page.goto(`${BASE}/login`);
+  await apiAs(page, P5.uploadFaculty, "Faculty@123");
+  const roster = (await call(page, "GET", `/api/faculty/classes/${P5.uploadClass}/roster`)).body;
+  const lines = ["roll_no,name,assignment_avg,quiz_avg,midterm_marks,final_marks"];
+  roster.forEach((r, i) => {
+    const m = [r.assignment_avg, r.quiz_avg, r.midterm_marks, r.final_marks].map((v) => (v == null ? "" : Number(v)));
+    if (i === 1) m[1] = "7O"; // a typo: letter O
+    lines.push([r.roll_no, r.full_name, ...m].join(","));
+  });
+  lines.push("BU-100099,Wrong Student,80,80,80,80"); // not in this class
+  const file = join(tmpdir(), `smartedu_marks_${viewport.width}.csv`);
+  writeFileSync(file, lines.join("\r\n"));
+  await page.goto(`${BASE}/faculty/class/${P5.uploadClass}/roster?tab=upload`);
+  await settle(page);
+  await shot(page, "faculty-upload", viewport, problems);
+  n++;
+  await page.locator('input[type="file"]').setInputFiles(file);
+  await page.getByText("4. Check before saving").waitFor();
+  await page.waitForTimeout(800);
+  await shot(page, "faculty-upload-preview", viewport, problems);
+  n++;
+  await page.getByRole("button", { name: /^Save \d+ valid rows?$/ }).click();
+  await page.getByText("Rows saved").waitFor({ timeout: 30000 });
+  await page.waitForTimeout(800);
+  await shot(page, "faculty-upload-result", viewport, problems);
+  n++;
+  return n;
+}
+
 async function settle(page) {
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(800); // let charts finish layout
@@ -264,6 +341,11 @@ async function main() {
       count += await phase4Screenshots(page, viewport, problems);
     } catch (e) {
       problems.push(`phase 4 screens @${viewport.width}px: ${e.message.split("\n")[0]}`);
+    }
+    try {
+      count += await phase5Screenshots(page, viewport, problems);
+    } catch (e) {
+      problems.push(`phase 5 screens @${viewport.width}px: ${e.message.split("\n")[0]}`);
     }
     await ctx.close();
   }

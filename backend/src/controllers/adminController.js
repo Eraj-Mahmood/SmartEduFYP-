@@ -12,6 +12,14 @@ const { getActiveCounselor } = require("../services/counselors");
 const LATEST_PREDICTIONS = `SELECT p.* FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id`;
 
 const LABELS = ["Safe", "At-Risk", "Dropout-Likely"];
+
+// A student "has live data" when they came from a live cohort import or any of their current
+// marks/attendance rows were entered in the app or uploaded (data_source = 'live').
+const HAS_LIVE_DATA = `(s.data_source = 'live'
+  OR EXISTS (SELECT 1 FROM enrollments le JOIN course_results lcr ON lcr.enrollment_id = le.enrollment_id
+             WHERE le.student_id = s.student_id AND lcr.data_source = 'live')
+  OR EXISTS (SELECT 1 FROM enrollments le JOIN attendance la ON la.enrollment_id = le.enrollment_id
+             WHERE le.student_id = s.student_id AND la.data_source = 'live'))`;
 const SEVERITY_ORDER = "CASE p.final_label WHEN 'Dropout-Likely' THEN 0 WHEN 'At-Risk' THEN 1 ELSE 2 END";
 const SORTS = {
   severity: `${SEVERITY_ORDER}, p.prob_dropout DESC NULLS LAST, p.roll_no`,
@@ -28,7 +36,8 @@ const SORTS = {
  */
 /**
  * WHERE conditions for the latest-prediction lists (aliases: p = latest prediction, s = students,
- * u = users). q: label, department (id), semester, search, noCounselor, notContacted.
+ * u = users). q: label, department (id), semester, search, noCounselor, notContacted,
+ * dataSource (live = has live data, see HAS_LIVE_DATA; synthetic = none).
  * noCounselor: no active counselor. notContacted: no intervention message sent yet and no
  * contact recorded by a counselor.
  */
@@ -46,6 +55,8 @@ function latestFilters(q, { riskOnly = false } = {}) {
   if (parseInt(q.semester)) add("s.current_semester = ?", parseInt(q.semester));
   const search = String(q.search || "").trim();
   if (search) add("(s.roll_no ILIKE ? OR s.full_name ILIKE ? OR u.email ILIKE ?)", `%${search}%`);
+  if (q.dataSource === "live") where.push(HAS_LIVE_DATA);
+  if (q.dataSource === "synthetic") where.push(`NOT ${HAS_LIVE_DATA}`);
   if (yes(q.noCounselor)) {
     where.push("NOT EXISTS (SELECT 1 FROM counselor_assignments ca WHERE ca.student_id = s.student_id AND ca.status = 'active')");
   }
@@ -159,7 +170,7 @@ async function listDepartments(req, res) {
  *  Every count uses each student's LATEST final_label. */
 async function dashboard(req, res) {
   try {
-    const [students, faculty, courses, risk, byDept, lastRun, runs] = await Promise.all([
+    const [students, faculty, courses, risk, byDept, lastRun, runs, sources] = await Promise.all([
       pool.query("SELECT COUNT(*)::int AS n FROM students"),
       pool.query("SELECT COUNT(*)::int AS n FROM faculty"),
       pool.query("SELECT COUNT(*)::int AS n FROM courses"),
@@ -190,6 +201,7 @@ async function dashboard(req, res) {
          GROUP BY r.id, r.scope, r.scope_id, r.status, r.started_at, r.finished_at, r.total, r.done, r.failed
          ORDER BY r.started_at`
       ),
+      dataSources(),
     ]);
     const counts = Object.fromEntries(LABELS.map((l) => [l, 0]));
     risk.rows.forEach((r) => (counts[r.final_label] = r.count));
@@ -205,6 +217,7 @@ async function dashboard(req, res) {
       riskCounts: LABELS.map((label) => ({ label, count: counts[label] })),
       riskByDepartment: byDept.rows,
       runsTrend: runs.rows,
+      dataSources: sources,
       // kept for older clients
       totalStudents: students.rows[0].n,
       totalFaculty: faculty.rows[0].n,
@@ -214,6 +227,38 @@ async function dashboard(req, res) {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+}
+
+/** Synthetic vs live row counts (dashboard "Data sources" panel). */
+async function dataSources() {
+  const count = (table) =>
+    pool.query(
+      `SELECT COUNT(*) FILTER (WHERE data_source = 'synthetic')::int AS synthetic,
+              COUNT(*) FILTER (WHERE data_source = 'live')::int AS live
+              ${table === "students" ? "" : ", COUNT(*) FILTER (WHERE upload_id IS NOT NULL)::int AS from_uploads"}
+       FROM ${table}`
+    );
+  const [students, results, attendance, performance, uploads, withLive] = await Promise.all([
+    count("students"),
+    count("course_results"),
+    count("attendance"),
+    count("student_semester_performance"),
+    pool.query(
+      `SELECT COUNT(*) FILTER (WHERE status = 'committed')::int AS committed,
+              COUNT(*) FILTER (WHERE status = 'committed' AND kind = 'cohort')::int AS cohorts,
+              MAX(committed_at) AS last_committed_at
+       FROM uploads`
+    ),
+    pool.query(`SELECT COUNT(*)::int AS n FROM students s WHERE ${HAS_LIVE_DATA}`),
+  ]);
+  return {
+    students: students.rows[0],
+    students_with_live_data: withLive.rows[0].n,
+    course_results: results.rows[0],
+    attendance: attendance.rows[0],
+    performance: performance.rows[0],
+    uploads: uploads.rows[0],
+  };
 }
 
 // ---------------- USER PROVISIONING (admin issues email + password) ----------------

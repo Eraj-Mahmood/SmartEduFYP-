@@ -31,7 +31,7 @@ function Toggle({ checked, onChange, children }) {
 
 export default function Interventions() {
   const departments = useApi("/admin/departments");
-  const [filters, setFilters] = useState({ department: "", label: "", search: "", noCounselor: false, notContacted: false });
+  const [filters, setFilters] = useState({ department: "", label: "", dataSource: "", search: "", noCounselor: false, notContacted: false });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState("final_label");
@@ -233,7 +233,7 @@ export default function Interventions() {
       </div>
 
       <Card>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
           <label className="relative">
             <span className="sr-only">Search</span>
             <Icons.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
@@ -256,6 +256,14 @@ export default function Interventions() {
               <option value="">At-Risk and Dropout-Likely</option>
               <option value="Dropout-Likely">Dropout-Likely only</option>
               <option value="At-Risk">At-Risk only</option>
+            </select>
+          </label>
+          <label>
+            <span className="sr-only">Data source</span>
+            <select className="field" value={filters.dataSource} onChange={setFilter("dataSource")}>
+              <option value="">Synthetic and live data</option>
+              <option value="live">With live data</option>
+              <option value="synthetic">Synthetic data only</option>
             </select>
           </label>
         </div>

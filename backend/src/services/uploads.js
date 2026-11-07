@@ -69,7 +69,7 @@ function validateResults(records, byRoll) {
     }
     // a template row left empty (no marks at all) is skipped, not an error - unless the roll no is bad
     const skipped = blank && !!enr;
-    return { row: rec.row, roll_no: roll, name: enr ? enr.full_name : rec.data.name || null, values, enrollment: enr, errors: skipped ? [] : errors, skipped };
+    return { row: rec.row, roll_no: roll, name: enr ? enr.full_name : rec.data.name || null, values, enrollment: enr, raw: rec.data, errors: skipped ? [] : errors, skipped };
   });
 }
 
@@ -93,7 +93,7 @@ function validateAttendance(records, byRoll, today = todayLocal()) {
     }
     // a template row with no status is skipped (nothing to save) when its roll number is fine
     const skipped = blank && !!enr;
-    return { row: rec.row, roll_no: roll, name: enr ? enr.full_name : rec.data.name || null, values: { class_date: date, status }, enrollment: enr, errors: skipped ? [] : errors, skipped };
+    return { row: rec.row, roll_no: roll, name: enr ? enr.full_name : rec.data.name || null, values: { class_date: date, status }, enrollment: enr, raw: rec.data, errors: skipped ? [] : errors, skipped };
   });
 }
 
@@ -108,6 +108,7 @@ const previewRow = (r) => ({
   ok: !r.errors.length && !r.skipped,
   skipped: r.skipped,
   errors: r.errors,
+  raw: r.errors.length ? r.raw : undefined, // what was typed, so a bad cell can be shown as is
 });
 
 /** Latest final_label per student id. */
