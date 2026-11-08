@@ -51,6 +51,7 @@ const ROUTES = {
     ["get", () => `/api/faculty/classes/${ids.class_id}/risk-summary`, "read"],
     ["get", () => `/api/faculty/classes/${ids.class_id}/templates/results.csv`, "read"],
     ["get", "/api/faculty/uploads", "read"],
+    ["get", "/api/faculty/summary", "read"],
     ["get", "/api/faculty/counselees", "read"],
     ["get", "/api/faculty/counselees/1", "write"], // 403 for someone else's assignment, so not "read"
     ["put", () => `/api/faculty/results/${ids.enrollment_id}`, "write"],

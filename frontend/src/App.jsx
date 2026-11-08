@@ -1,35 +1,48 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import { ToastProvider } from "./components/ui/Toast";
 
+// The sign-in pages load with the app; every portal page is its own chunk, fetched on first visit
+// (route-level code splitting keeps the first download small; recharts only loads with a chart page).
 import Login from "./pages/Login";
 import PortalChooser from "./pages/PortalChooser";
-import ChangePassword from "./pages/ChangePassword";
+const ChangePassword = lazy(() => import("./pages/ChangePassword"));
 
-import StudentDashboard from "./pages/student/StudentDashboard";
-import StudentResults from "./pages/student/StudentResults";
-import StudentAttendance from "./pages/student/StudentAttendance";
+const StudentDashboard = lazy(() => import("./pages/student/StudentDashboard"));
+const StudentResults = lazy(() => import("./pages/student/StudentResults"));
+const StudentAttendance = lazy(() => import("./pages/student/StudentAttendance"));
 
-import FacultyDashboard from "./pages/faculty/FacultyDashboard";
-import ClassRoster from "./pages/faculty/ClassRoster";
-import MarkAttendance from "./pages/faculty/MarkAttendance";
-import MyCounselees from "./pages/faculty/MyCounselees";
+const FacultyDashboard = lazy(() => import("./pages/faculty/FacultyDashboard"));
+const ClassRoster = lazy(() => import("./pages/faculty/ClassRoster"));
+const MarkAttendance = lazy(() => import("./pages/faculty/MarkAttendance"));
+const MyCounselees = lazy(() => import("./pages/faculty/MyCounselees"));
 
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import ManageUsers from "./pages/admin/ManageUsers";
-import Assignments from "./pages/admin/Assignments";
-import Interventions from "./pages/admin/Interventions";
-import Tutorials from "./pages/admin/Tutorials";
-import AuditLog from "./pages/admin/AuditLog";
-import ModelPage from "./pages/admin/ModelPage";
-import LiveCohort from "./pages/admin/LiveCohort";
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const ManageUsers = lazy(() => import("./pages/admin/ManageUsers"));
+const Assignments = lazy(() => import("./pages/admin/Assignments"));
+const Interventions = lazy(() => import("./pages/admin/Interventions"));
+const Tutorials = lazy(() => import("./pages/admin/Tutorials"));
+const AuditLog = lazy(() => import("./pages/admin/AuditLog"));
+const ModelPage = lazy(() => import("./pages/admin/ModelPage"));
+const LiveCohort = lazy(() => import("./pages/admin/LiveCohort"));
+
+function PageLoading() {
+  return (
+    <div className="min-h-screen bg-paper flex items-center justify-center" role="status" aria-live="polite">
+      <span className="h-8 w-8 rounded-full border-2 border-brand/20 border-t-brand animate-spin" aria-hidden="true" />
+      <span className="sr-only">Loading...</span>
+    </div>
+  );
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
+        <Suspense fallback={<PageLoading />}>
         <Routes>
           {/* "/" chooses a portal; each portal has its own sign-in page */}
           <Route path="/" element={<PortalChooser />} />
@@ -62,6 +75,7 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

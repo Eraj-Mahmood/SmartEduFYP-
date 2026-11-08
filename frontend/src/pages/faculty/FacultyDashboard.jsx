@@ -1,31 +1,14 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
 import { Card, StatCard, EmptyState, Skeleton, Button, Icons } from "../../components/ui";
 import useApi from "../../lib/useApi";
 import RiskBar from "./RiskBar";
 
-/** Unique students across all classes (a student can be in several of this teacher's classes). */
-function useUniqueStudents(classes) {
-  const [summary, setSummary] = useState(null);
-  useEffect(() => {
-    if (!classes) return;
-    const withStudents = classes.filter((c) => c.enrolled_count > 0);
-    Promise.all(withStudents.map((c) => client.get(`/faculty/classes/${c.faculty_course_id}/roster`).then((r) => r.data)))
-      .then((rosters) => {
-        const byStudent = new Map();
-        rosters.flat().forEach((r) => r.status === "enrolled" && byStudent.set(r.student_id, r.final_label));
-        const labels = [...byStudent.values()];
-        setSummary({
-          total: labels.length,
-          atRisk: labels.filter((l) => l === "At-Risk").length,
-          dropout: labels.filter((l) => l === "Dropout-Likely").length,
-        });
-      })
-      .catch(() => setSummary({ error: true }));
-  }, [classes]);
-  return summary;
+/** Unique students across all my classes (a student in two of them counts once): one request. */
+function useUniqueStudents() {
+  const { data, error } = useApi("/faculty/summary");
+  if (error) return { error: true };
+  return data && { total: data.total, atRisk: data.at_risk, dropout: data.dropout_likely };
 }
 
 function ClassCard({ c }) {
@@ -73,7 +56,7 @@ function ClassCard({ c }) {
 
 export default function FacultyDashboard() {
   const { data: classes, error, loading, reload } = useApi("/faculty/classes");
-  const summary = useUniqueStudents(classes);
+  const summary = useUniqueStudents();
 
   return (
     <PortalShell>

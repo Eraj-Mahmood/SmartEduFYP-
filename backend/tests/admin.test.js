@@ -88,6 +88,33 @@ describe("courses, classes and enrollments", () => {
   });
 });
 
+describe("enrollments list (paginated, searchable)", () => {
+  const get = (q = "") => request(app).get(`/api/admin/enrollments?${q}`).set(as(admin));
+  test("pages through every enrollment (no 300-row cap); limit capped at 100", async () => {
+    const { rows: [db] } = await pool.query("SELECT COUNT(*)::int AS n FROM enrollments");
+    const p1 = await get("limit=100");
+    expect(p1.body).toMatchObject({ total: db.n, page: 1, limit: 100, totalPages: Math.ceil(db.n / 100) });
+    expect(p1.body.rows).toHaveLength(Math.min(100, db.n));
+    const big = await get("limit=1000");
+    expect(big.body.limit).toBe(100);
+    const last = await get(`limit=100&page=${p1.body.totalPages}`);
+    expect(last.body.rows.length).toBe(db.n - 100 * (p1.body.totalPages - 1));
+    const ids = new Set([...p1.body.rows, ...last.body.rows].map((r) => r.enrollment_id));
+    expect(ids.size).toBe(p1.body.rows.length + last.body.rows.length); // pages don't overlap
+  });
+
+  test("search by roll no, name or course code; status filter; bad status 400", async () => {
+    const roll = await get("search=BU-144766");
+    expect(roll.body.total).toBe(4);
+    expect(roll.body.rows.every((r) => r.roll_no === "BU-144766")).toBe(true);
+    const course = await get("search=cs401&limit=100");
+    expect(course.body.rows.every((r) => r.course_code === "CS401")).toBe(true);
+    const enrolled = await get("status=enrolled&limit=100");
+    expect(enrolled.body.rows.every((r) => r.status === "enrolled")).toBe(true);
+    expect((await get("status=maybe")).status).toBe(400);
+  });
+});
+
 describe("directory and drill-down", () => {
   test("students: search and paging (limit capped at 100)", async () => {
     const s = await request(app).get("/api/admin/students?search=BU-144766").set(as(admin));

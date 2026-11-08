@@ -384,7 +384,7 @@ export default function AssistantPanel({ open, onClose, firstName, initialQuesti
               onKeyDown={onInputKeyDown}
               placeholder="Ask a question..."
               aria-describedby="assistant-hint"
-              className="flex-1 resize-none min-h-[42px] rounded-lg border border-line bg-paper px-3 py-2.5 text-[15px] leading-snug text-ink placeholder:text-muted/80 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="flex-1 resize-none min-h-[42px] rounded-lg border border-line bg-paper px-3 py-2.5 text-[15px] leading-snug text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
             />
             <Button type="submit" aria-label="Send" disabled={!input.trim() || sending} className="h-[42px] w-[42px] !px-0 shrink-0" icon={<Icons.Send size={18} />} />
           </div>

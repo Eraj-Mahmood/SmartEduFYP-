@@ -30,3 +30,31 @@ export default function RiskBar({ counts, showText = true }) {
     </div>
   );
 }
+
+const NAMES = { safe: "On track", at_risk: "Needs attention", dropout_likely: "High risk" };
+
+/** Fuller version for the class page's "Risk in this class" card: the bar, then one row per label
+ *  with count and share, so the card fills the height of the charts beside it. */
+export function RiskBreakdown({ counts }) {
+  const total = SEGMENTS.reduce((n, s) => n + (counts[s.key] || 0), 0);
+  if (!total) return <p className="text-sm text-muted">No predictions yet</p>;
+  return (
+    <div>
+      <RiskBar counts={counts} showText={false} />
+      <ul className="mt-4 divide-y divide-line">
+        {SEGMENTS.map((s) => {
+          const n = counts[s.key] || 0;
+          return (
+            <li key={s.key} className="flex items-center gap-2.5 py-2 text-sm">
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} aria-hidden="true" />
+              <span className="flex-1 text-ink">{NAMES[s.key]}</span>
+              <span className="font-semibold tabular-nums text-ink">{n}</span>
+              <span className="w-11 text-right tabular-nums text-muted">{Math.round((100 * n) / total)}%</span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-1 text-xs text-muted">{total} students with a prediction</p>
+    </div>
+  );
+}

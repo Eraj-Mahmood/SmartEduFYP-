@@ -495,20 +495,45 @@ async function listClasses(req, res) {
   }
 }
 
-/** GET /api/admin/enrollments - every enrollment that exists, for dropdowns and reference */
+/**
+ * GET /api/admin/enrollments?page&limit&search&status -> {rows, total, page, limit, totalPages}
+ * Newest first, server-paginated (limit <= 100, default 25; it used to return only the latest 300).
+ * search: roll no, student name or course code (case-insensitive); status: enrolled | dropped | completed.
+ */
 async function listEnrollments(req, res) {
   try {
-    const { rows } = await pool.query(
-      `SELECT e.enrollment_id, e.status, s.roll_no, s.full_name AS student_name,
-              c.course_code, fc.section
-       FROM enrollments e
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
+    const where = [];
+    const params = [];
+    const search = String(req.query.search || "").trim();
+    if (search) {
+      params.push(`%${search}%`);
+      const n = params.length;
+      where.push(`(s.roll_no ILIKE $${n} OR s.full_name ILIKE $${n} OR c.course_code ILIKE $${n})`);
+    }
+    if (req.query.status) {
+      if (!["enrolled", "dropped", "completed"].includes(req.query.status)) {
+        return res.status(400).json({ error: "status must be enrolled, dropped or completed" });
+      }
+      params.push(req.query.status);
+      where.push(`e.status = $${params.length}`);
+    }
+    const from = `FROM enrollments e
        JOIN students s ON s.student_id = e.student_id
        JOIN faculty_courses fc ON fc.faculty_course_id = e.faculty_course_id
        JOIN courses c ON c.course_id = fc.course_id
-       ORDER BY e.enrollment_id DESC
-       LIMIT 300`
-    );
-    res.json(rows);
+       ${where.length ? "WHERE " + where.join(" AND ") : ""}`;
+    const [count, rows] = await Promise.all([
+      pool.query(`SELECT COUNT(*)::int AS total ${from}`, params),
+      pool.query(
+        `SELECT e.enrollment_id, e.status, s.roll_no, s.full_name AS student_name, c.course_code, fc.section
+         ${from} ORDER BY e.enrollment_id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, (page - 1) * limit]
+      ),
+    ]);
+    const total = count.rows[0].total;
+    res.json({ rows: rows.rows, total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

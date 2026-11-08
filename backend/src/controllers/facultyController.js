@@ -68,6 +68,32 @@ async function myClasses(req, res) {
   }
 }
 
+/**
+ * GET /api/faculty/summary -> {total, safe, at_risk, dropout_likely}: UNIQUE students across all my
+ * classes (a student in two of my classes counts once) by latest label. One query for the dashboard's
+ * "Students" tile (it used to download every class roster).
+ */
+async function mySummary(req, res) {
+  try {
+    const facultyId = await getMyFacultyId(req.user.userId);
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE lp.final_label = 'Safe')::int AS safe,
+              COUNT(*) FILTER (WHERE lp.final_label = 'At-Risk')::int AS at_risk,
+              COUNT(*) FILTER (WHERE lp.final_label = 'Dropout-Likely')::int AS dropout_likely
+       FROM (SELECT DISTINCT e.student_id FROM enrollments e
+             JOIN faculty_courses fc ON fc.faculty_course_id = e.faculty_course_id
+             WHERE fc.faculty_id = $1 AND e.status = 'enrolled') mine
+       JOIN students s ON s.student_id = mine.student_id
+       ${LATEST_PREDICTION_JOIN}`,
+      [facultyId]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
 /** GET /api/faculty/classes/:facultyCourseId/roster */
 async function classRoster(req, res) {
   try {
@@ -311,4 +337,4 @@ async function classAttendance(req, res) {
   }
 }
 
-module.exports = { myClasses, classRoster, classRiskSummary, upsertResult, markAttendance, classAttendance };
+module.exports = { myClasses, mySummary, classRoster, classRiskSummary, upsertResult, markAttendance, classAttendance };

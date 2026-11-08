@@ -54,6 +54,18 @@ describe("reading my classes", () => {
     expect(Number(c.safe) + Number(c.at_risk) + Number(c.dropout_likely)).toBe(own.n);
   });
 
+  test("GET /summary: unique students across my classes by label, in one request", async () => {
+    const res = await request(app).get("/api/faculty/summary").set(as(ayesha));
+    expect(res.status).toBe(200);
+    const { rows: [db] } = await pool.query(
+      `SELECT COUNT(DISTINCT e.student_id)::int AS n FROM enrollments e JOIN faculty_courses fc USING (faculty_course_id)
+       JOIN faculty f USING (faculty_id) JOIN users u ON u.user_id = f.user_id
+       WHERE u.email = 'ayesha.khan@smartedu.edu' AND e.status = 'enrolled'`
+    );
+    expect(res.body.total).toBe(db.n); // 8: the same students sit in AI301 and AI302, counted once
+    expect(res.body.safe + res.body.at_risk + res.body.dropout_likely).toBe(db.n);
+  });
+
   test("roster: my class has labels and reasons, no probabilities; another teacher's class is 403", async () => {
     const res = await request(app).get(`/api/faculty/classes/${own.id}/roster`).set(as(ayesha));
     expect(res.status).toBe(200);

@@ -34,6 +34,7 @@ const attendanceRules = [
 ];
 
 router.get("/classes", ctrl.myClasses);
+router.get("/summary", ctrl.mySummary);
 router.get("/classes/:facultyCourseId/roster", classIdRule, validate, ctrl.classRoster);
 router.get("/classes/:facultyCourseId/attendance", classIdRule, validate, ctrl.classAttendance);
 router.get("/classes/:facultyCourseId/risk-summary", classIdRule, validate, ctrl.classRiskSummary);

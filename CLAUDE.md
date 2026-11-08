@@ -64,7 +64,9 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       `{intent, suggestions, links}` so a reloaded chat keeps its chips and links), `DELETE /chat/history`
       (own only). Student responses never include probabilities, `drivers` (SHAP numbers) or `features`.
     - `faculty` — own classes only (`assertOwnsClass`, 403 otherwise): `GET /classes` (with latest-label
-      counts `safe` / `at_risk` / `dropout_likely`), `GET /classes/:id/roster` (adds final_label, reasons,
+      counts `safe` / `at_risk` / `dropout_likely`), `GET /summary` (Phase 6: `{total, safe, at_risk,
+      dropout_likely}` over UNIQUE students in my classes - the dashboard's Students tile in one query instead of
+      one roster per class), `GET /classes/:id/roster` (adds final_label, reasons,
       policy_reason, projected_cgpa, attendance % in the class, last_predicted_at),
       `GET /classes/:id/risk-summary` (counts, A-F grade distribution, attendance % per session date),
       `GET /classes/:id/attendance`, `PUT /results/:enrollmentId` (returns the saved row with the
@@ -107,7 +109,9 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       derives the grade (`services/grading.js`); a client-sent grade is ignored. Saves set
       `data_source='live'` and re-predict (see below).
     - `admin` — dashboard, user provisioning (temp passwords), directory, courses,
-      faculty↔course assignment, enrollments, read-only class records, interventions/notifications,
+      faculty↔course assignment, enrollments (`GET /enrollments?page&limit&search&status` → `{rows, total, page,
+      limit, totalPages}`, newest first, limit ≤ 100, search roll/name/course code; Phase 6 - it used to return the
+      latest 300 only), read-only class records, interventions/notifications,
       batch runs: `POST /predictions/run {scope: "all"|"department"|"class", scopeId}` → `202` with the
       `prediction_runs` row (one run at a time, else `409`); `GET /predictions/runs/:id` for progress;
       `GET /predictions/runs?limit=20` lists recent runs (scope name, who, duration).
@@ -345,7 +349,10 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     shortDate - parses `YYYY-MM-DD` as a local date).
   - Pages: student (`StudentDashboard` + `StudentCharts` + `WhatToDoNext` (counselor card, tutorial card,
     next steps; `#what-next`), Results, Attendance), faculty (`FacultyDashboard`, `ClassRoster` with
-    filters/search/drawer/inline marks + label-change toast, `MarkAttendance`, `MyCounselees` (list +
+    filters/search/drawer/inline marks + label-change toast; below 768 px (`useWide`) the table has two columns
+    (student with CGPA + grade, risk) and marks are edited in the drawer's "Marks in this class" form, which
+    shares the row edit state and save; "Risk in this class" uses `RiskBreakdown` (bar + per-label count and
+    share), `MarkAttendance`, `MyCounselees` (list +
     drawer with autosaving notes, Mark contacted today, Close assignment; `?open=<id>`)), admin
     (`AdminDashboard` + `AdminCharts` + `RunPredictionsCard`, `Interventions` (workflow table, filters,
     multi-select; `InterventionModals.jsx`: assign-counselor picker with workloads + close, compose with
@@ -515,6 +522,17 @@ Gemini (free tier: synthetic data only, see above).
 
 npm 11 blocks install scripts: `bcrypt` (backend) and `esbuild` (frontend) are allowed via
 `allowScripts` in their `package.json`.
+
+Frontend bundle (Phase 6): every page except `PortalChooser` and `Login` is `React.lazy` in `App.jsx` (Suspense
+spinner), so the main chunk is ~238 kB (was one 845 kB file) and recharts (~377 kB) loads only with a chart page.
+Form placeholders use `text-muted` (5.97:1 on white; the old `/70` was 3.11:1).
+
+`npm audit` (2026-11-08, after the non-breaking fixes: `npm audit fix` in both, axios 1.19.0 → 1.20.0,
+express 4.22.3, morgan 1.12.1, react-router-dom 6.30.6; none younger than 14 days). Remaining, each needing a major
+upgrade or only affecting dev tools: backend `tar` (critical, install-time only, via bcrypt 5's node-pre-gyp; fix =
+bcrypt 6), `jest` chain / `deepmerge` (low, dev; fix = jest 25), `nodemon` / `minimatch` (moderate, dev);
+frontend `vite` / `esbuild` (dev server only; fix = vite 8), `react-router` (moderate; fix = v7), `playwright`
+(screenshot script only; not upgraded: a new version re-downloads ~150 MB of browsers).
 
 ## Working rules
 

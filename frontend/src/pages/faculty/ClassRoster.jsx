@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
@@ -8,9 +8,22 @@ import {
 import WhatIfPanel from "../../components/WhatIfPanel";
 import ClassUpload from "./ClassUpload";
 import useApi from "../../lib/useApi";
-import { gpa, pct, num, timeAgo } from "../../lib/format";
+import { gpa, pct, timeAgo } from "../../lib/format";
 import { GradeDistributionChart, SessionAttendanceChart } from "./ClassCharts";
-import RiskBar from "./RiskBar";
+import { RiskBreakdown } from "./RiskBar";
+
+/** True when the viewport is at least `px` wide (follows resizes and rotation). */
+function useWide(px = 768) {
+  const query = `(min-width: ${px}px)`;
+  const [wide, setWide] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return wide;
+}
 
 const MARKS = [
   { key: "assignment_avg", label: "Assign." , full: "Assignment" },
@@ -26,7 +39,7 @@ const TABS = [
 
 const validMark = (v) => v === "" || v == null || (!Number.isNaN(Number(v)) && Number(v) >= 0 && Number(v) <= 100);
 
-function MarkInput({ value, onChange, onEnter, label, invalid }) {
+function MarkInput({ value, onChange, onEnter, label, invalid, wide = false }) {
   return (
     <input
       type="number"
@@ -43,7 +56,7 @@ function MarkInput({ value, onChange, onEnter, label, invalid }) {
         if (e.key === "Enter") onEnter();
       }}
       onChange={(e) => onChange(e.target.value)}
-      className={`w-[72px] rounded-md border bg-surface px-2 py-1.5 text-right text-sm tabular-nums focus:outline-none focus:ring-2 ${
+      className={`${wide ? "w-full py-2 text-base" : "w-[72px] py-1.5 text-sm"} rounded-md border bg-surface px-2 text-right tabular-nums focus:outline-none focus:ring-2 ${
         invalid ? "border-danger ring-danger/30 focus:ring-danger/40" : "border-line focus:ring-brand/30 focus:border-brand"
       }`}
     />
@@ -55,7 +68,8 @@ const DRAWER_TABS = [
   { key: "whatif", label: "What if?" },
 ];
 
-function StudentDrawer({ row, onClose, classId }) {
+/** edit: {values, onMark(key, v), onSave(), saving, dirty, valid} - the same edit state as the table rows. */
+function StudentDrawer({ row, onClose, classId, edit }) {
   const [tab, setTab] = useState("overview");
   if (!row) return <Drawer open={false} onClose={onClose} />;
   return (
@@ -108,19 +122,40 @@ function StudentDrawer({ row, onClose, classId }) {
           </div>
         </div>
 
-        <div className="bg-surface rounded-card border border-line p-4">
-          <h3 className="text-sm font-semibold mb-2">Marks in this class</h3>
-          <dl className="grid grid-cols-2 gap-y-2 text-sm">
+        <form
+          className="bg-surface rounded-card border border-line p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            edit.onSave();
+          }}
+        >
+          <div className="flex items-baseline justify-between gap-3 mb-3">
+            <h3 className="text-sm font-semibold">Marks in this class</h3>
+            <span className="text-sm">
+              <span className="text-muted">Grade </span>
+              <span className="font-semibold">{row.grade || "—"}</span>
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             {MARKS.map((m) => (
-              <div key={m.key} className="contents">
-                <dt className="text-muted">{m.full}</dt>
-                <dd className="text-right tabular-nums">{num(row[m.key])}</dd>
-              </div>
+              <label key={m.key} className="text-sm">
+                <span className="block text-muted mb-1">{m.full}</span>
+                <MarkInput
+                  label={`${m.full} for ${row.roll_no}`}
+                  value={edit.values[m.key]}
+                  invalid={!validMark(edit.values[m.key])}
+                  onChange={(v) => edit.onMark(m.key, v)}
+                  onEnter={edit.onSave}
+                  wide
+                />
+              </label>
             ))}
-            <dt className="text-muted">Grade</dt>
-            <dd className="text-right font-semibold">{row.grade || "—"}</dd>
-          </dl>
-        </div>
+          </div>
+          <p className="mt-2 text-xs text-muted">0-100. The grade is worked out by the server; saving re-predicts the label.</p>
+          <Button type="submit" className="mt-3 w-full" disabled={!edit.dirty || !edit.valid} loading={edit.saving}>
+            Save marks
+          </Button>
+        </form>
       </div>
       )}
     </Drawer>
@@ -264,8 +299,48 @@ export default function ClassRoster() {
     },
   ];
 
+  // Phones and small tablets: no inline mark inputs (they forced sideways scrolling); tap a student and
+  // edit the marks in the drawer instead.
+  const wide = useWide(768);
+  // two columns fit a 360-390 px phone: the student (with projected CGPA and grade underneath) and risk
+  const compactColumns = [
+    {
+      key: "full_name",
+      header: "Student",
+      render: (r) => (
+        <span className="block min-w-0">
+          <span className="block font-medium">{r.full_name}</span>
+          <span className="block font-mono text-xs text-muted">{r.roll_no}</span>
+          <span className="block text-xs text-muted mt-0.5 tabular-nums">
+            CGPA {gpa(r.projected_cgpa)} · Grade <span className="font-semibold text-ink">{r.grade || "—"}</span>
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: "final_label",
+      header: "Risk",
+      align: "right",
+      sortValue: (r) => (r.final_label ? RISK_SEVERITY[r.final_label] : -1),
+      render: (r) => (
+        <span className="inline-flex items-center gap-1">
+          <RiskChip label={r.final_label} size="sm" short />
+          <Icons.ChevronRight size={14} className="text-muted" />
+        </span>
+      ),
+    },
+  ];
+
   const s = summary.data;
   const openRow = rows.find((r) => r.enrollment_id === openId);
+  const openEdit = openRow && {
+    values: current(openRow),
+    onMark: (key, v) => setMark(openRow.enrollment_id, key, v),
+    onSave: () => save(openRow),
+    saving: savingId === openRow.enrollment_id,
+    dirty: Boolean(edits[openRow.enrollment_id]),
+    valid: MARKS.every((m) => validMark(current(openRow)[m.key])),
+  };
 
   return (
     <PortalShell>
@@ -317,10 +392,10 @@ export default function ClassRoster() {
       ) : (
         <div className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-3">
-            <Card title="Risk in this class" subtitle="Latest prediction per student">
-              {s ? <RiskBar counts={s.counts} /> : <Skeleton className="h-10" />}
+            <Card title="Risk in this class" subtitle="Latest prediction per student" className="flex flex-col" bodyClassName="flex flex-col flex-1">
+              {s ? <RiskBreakdown counts={s.counts} /> : <Skeleton className="h-24" />}
               {s && s.counts.at_risk + s.counts.dropout_likely > 0 && (
-                <button type="button" onClick={() => setTab("Dropout-Likely")} className="mt-4 text-sm font-medium text-brand hover:underline">
+                <button type="button" onClick={() => setTab("Dropout-Likely")} className="mt-auto pt-3 self-start text-sm font-medium text-brand hover:underline">
                   Show high-risk students →
                 </button>
               )}
@@ -360,23 +435,27 @@ export default function ClassRoster() {
                 />
               </label>
             </div>
-            <p className="text-xs text-muted mb-2">Edit marks in the row and press Save (or Enter). Click a student for details.</p>
+            <p className="text-xs text-muted mb-2">
+              {wide
+                ? "Edit marks in the row and press Save (or Enter). Click a student for details."
+                : "Tap a student to see the details and edit their marks (CGPA = projected)."}
+            </p>
             <DataTable
               loading={roster.loading}
               rows={visible}
               rowKey={(r) => r.enrollment_id}
-              columns={columns}
+              columns={wide ? columns : compactColumns}
               initialSort={{ key: "final_label", dir: "desc" }}
               onRowClick={(r) => setOpenId(r.enrollment_id)}
               rowClassName={(r) => (r.enrollment_id === justSaved ? "bg-brand-50" : "")}
-              minWidth={940}
+              minWidth={wide ? 940 : 0}
               emptyMessage={rows.length ? "No students match this filter" : "No students enrolled in this class"}
             />
           </Card>
         </div>
       )}
 
-      <StudentDrawer key={openRow?.student_id || "none"} row={openRow} onClose={() => setOpenId(null)} classId={facultyCourseId} />
+      <StudentDrawer key={openRow?.student_id || "none"} row={openRow} onClose={() => setOpenId(null)} classId={facultyCourseId} edit={openEdit} />
     </PortalShell>
   );
 }
