@@ -210,15 +210,27 @@ async function phase4Teardown(page, assignmentId) {
   if (assignmentId) await call(page, "PUT", `/api/admin/counselors/${assignmentId}/close`);
 }
 
+/**
+ * Full-page screenshot that keeps the charts. Playwright's fullPage mode resizes the page for the capture;
+ * recharts' ResponsiveContainer re-renders on that resize and the charts come out blank. So the viewport is
+ * made as tall as the page first, the charts get time to redraw, and a normal screenshot is taken.
+ */
+async function fullPageShot(page, file, viewport) {
+  // a capture taken while scrolled down draws the sticky header mid-page
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const height = await page.evaluate(() => Math.ceil(document.documentElement.scrollHeight));
+  await page.setViewportSize({ width: viewport.width, height: Math.max(viewport.height, height) });
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: file });
+  await page.setViewportSize(viewport);
+}
+
 async function shot(page, name, viewport, problems, { fullPage = true } = {}) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   if (overflow > 0) problems.push(`${name} @${viewport.width}px overflows by ${overflow}px`);
-  if (fullPage) {
-    // a full-page capture taken while scrolled down draws the sticky header mid-page
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(400);
-  }
-  await page.screenshot({ path: join(OUT, `${name}-${viewport.width}.png`), fullPage });
+  const file = join(OUT, `${name}-${viewport.width}.png`);
+  if (fullPage) await fullPageShot(page, file, viewport);
+  else await page.screenshot({ path: file });
 }
 
 async function phase4Screenshots(page, viewport, problems) {
@@ -404,7 +416,7 @@ async function run() {
       for (const [label, path] of [["portals", "/"], ["login-student", "/login/student"], ["login-faculty", "/login/faculty"], ["login-admin", "/login/admin"]]) {
         await page.goto(`${BASE}${path}`);
         await settle(page);
-        await page.screenshot({ path: join(OUT, `${label}-${viewport.width}.png`), fullPage: true });
+        await fullPageShot(page, join(OUT, `${label}-${viewport.width}.png`), viewport);
         count++;
       }
 
@@ -431,7 +443,7 @@ async function run() {
           await settle(page);
           const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
           if (overflow > 0) problems.push(`${account.name}/${label} @${viewport.width}px overflows by ${overflow}px`);
-          await page.screenshot({ path: join(OUT, `${account.name}-${label}-${viewport.width}.png`), fullPage: true });
+          await fullPageShot(page, join(OUT, `${account.name}-${label}-${viewport.width}.png`), viewport);
           count++;
         }
         if (CHAT_STUDENTS.some((id) => account.email === `student${id}@smartedu.edu`)) {

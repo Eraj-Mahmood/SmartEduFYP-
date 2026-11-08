@@ -153,7 +153,7 @@ export default function RunPredictionsCard({ activeRun, onFinished }) {
             </select>
           </label>
         )}
-        {scope === "all" && <p className="text-xs text-muted">All 50,000 students - takes about 3 minutes.</p>}
+        {scope === "all" && <p className="text-xs text-muted">All 50,000 students - takes about 2 minutes.</p>}
         <Button onClick={start} loading={starting} disabled={running || (scope !== "all" && !scopeId)} icon={<Icons.Play size={14} />} className="self-start">
           {running ? "Run in progress" : "Start run"}
         </Button>

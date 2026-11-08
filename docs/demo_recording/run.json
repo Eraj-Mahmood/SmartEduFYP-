@@ -1,0 +1,217 @@
+{
+  "date": "Sun Nov 08 2026 06:04:16 GMT+0500 (Pakistan Standard Time)",
+  "total": "6:38",
+  "talkScale": 2.5,
+  "steps": [
+    {
+      "id": "1.1",
+      "at": "0:01",
+      "ok": true,
+      "what": "portal chooser with three portals"
+    },
+    {
+      "id": "1.2",
+      "at": "0:16",
+      "ok": true,
+      "what": "admin signs in"
+    },
+    {
+      "id": "1.2",
+      "at": "0:17",
+      "ok": true,
+      "what": "overview shows 50,030 students"
+    },
+    {
+      "id": "1.3",
+      "at": "0:55",
+      "ok": true,
+      "what": "AI department run completes; charts refresh"
+    },
+    {
+      "id": "1.4",
+      "at": "1:12",
+      "ok": true,
+      "what": "Model page: RandomForestClassifier card"
+    },
+    {
+      "id": "1.4",
+      "at": "1:12",
+      "ok": true,
+      "what": "global importance chart"
+    },
+    {
+      "id": "1.5",
+      "at": "1:37",
+      "ok": true,
+      "what": "logout returns to the Admin sign-in"
+    },
+    {
+      "id": "2.1",
+      "at": "1:37",
+      "ok": true,
+      "what": "Sobia Butt signs in"
+    },
+    {
+      "id": "2.1",
+      "at": "1:38",
+      "ok": true,
+      "what": "status: High risk - let's act now"
+    },
+    {
+      "id": "2.2",
+      "at": "1:48",
+      "ok": true,
+      "what": "reasons with CGPA 1.62 and the Random Forest badge"
+    },
+    {
+      "id": "2.3",
+      "at": "2:13",
+      "ok": true,
+      "what": "CGPA tiles, What to do next, charts"
+    },
+    {
+      "id": "2.4",
+      "at": "2:24",
+      "ok": true,
+      "what": "'Why am I at risk?' -> reasons + 'a warning, not a final result'"
+    },
+    {
+      "id": "2.5",
+      "at": "2:40",
+      "ok": true,
+      "what": "Roman Urdu attendance answer: 62.5% (20 of 32)"
+    },
+    {
+      "id": "2.6",
+      "at": "2:55",
+      "ok": true,
+      "what": "another student's CGPA is refused"
+    },
+    {
+      "id": "2.7",
+      "at": "3:06",
+      "ok": true,
+      "what": "logout returns to the Student sign-in"
+    },
+    {
+      "id": "3.1",
+      "at": "3:06",
+      "ok": true,
+      "what": "Dr. Ayesha Khan signs in"
+    },
+    {
+      "id": "3.2",
+      "at": "3:14",
+      "ok": true,
+      "what": "AI301 A: risk in this class, charts"
+    },
+    {
+      "id": "3.3",
+      "at": "3:32",
+      "ok": true,
+      "what": "toast 'BU-112907: At-Risk → Safe', grade C -> B"
+    },
+    {
+      "id": "3.4",
+      "at": "3:49",
+      "ok": true,
+      "what": "what-if: attendance 55% -> Dropout-Likely, nothing saved"
+    },
+    {
+      "id": "3.4",
+      "at": "3:49",
+      "ok": true,
+      "what": "scenario label Dropout-Likely"
+    },
+    {
+      "id": "3.5",
+      "at": "4:10",
+      "ok": true,
+      "what": "Mr. Bilal Raza signs in"
+    },
+    {
+      "id": "3.6",
+      "at": "4:10",
+      "ok": true,
+      "what": "preview: 9 rows, 7 valid, 2 errors highlighted"
+    },
+    {
+      "id": "3.7",
+      "at": "4:29",
+      "ok": true,
+      "what": "saved 7, rejected 2, BU-145871 Safe -> At-Risk"
+    },
+    {
+      "id": "4.1",
+      "at": "4:44",
+      "ok": true,
+      "what": "admin signs in again"
+    },
+    {
+      "id": "4.1",
+      "at": "4:46",
+      "ok": true,
+      "what": "row: weakest course AI302 with its tutorial, counselor Assign"
+    },
+    {
+      "id": "4.2",
+      "at": "5:00",
+      "ok": true,
+      "what": "counselor assigned: 'Dr. Ayesha Khan · not contacted yet'"
+    },
+    {
+      "id": "4.3",
+      "at": "5:10",
+      "ok": true,
+      "what": "preview ends with 'Recommended for AI302 ...'"
+    },
+    {
+      "id": "4.3",
+      "at": "5:21",
+      "ok": true,
+      "what": "Last intervention: just now"
+    },
+    {
+      "id": "4.4",
+      "at": "5:30",
+      "ok": true,
+      "what": "Sobia signs in again"
+    },
+    {
+      "id": "4.4",
+      "at": "5:30",
+      "ok": true,
+      "what": "bell shows 2 unread"
+    },
+    {
+      "id": "4.4",
+      "at": "5:30",
+      "ok": true,
+      "what": "counselor card and Open tutorial"
+    },
+    {
+      "id": "5.1",
+      "at": "5:51",
+      "ok": true,
+      "what": "wrong-portal message, no session"
+    },
+    {
+      "id": "5.2",
+      "at": "6:04",
+      "ok": true,
+      "what": "wrong password: generic message"
+    },
+    {
+      "id": "5.3",
+      "at": "6:15",
+      "ok": true,
+      "what": "back to the chooser - wrap up"
+    },
+    {
+      "id": "-",
+      "at": "6:35",
+      "ok": true,
+      "what": "no page errors"
+    }
+  ]
+}

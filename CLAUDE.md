@@ -279,6 +279,11 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
         student records (live cohort imports included); use a paid key or turn Layer 2 off for real data.
         Free-tier daily quota is small (the 2026-11-07 live test hit 429 after ~20 requests) and
         `gemini-3.8-flash` often answered 503 "high demand" or exceeded 8 s; the app degrades to Layer 1.
+        Live check 2026-11-08 (Phase 6 step 8, owner's key with the new `AQ.` prefix - Google accepts it, and
+        the app never checks the prefix): 5 free-form questions, all fell back (1x HTTP 503, 4x 8 s timeout);
+        the key lists 15 Flash / Flash-Lite models, newest stable lite one `gemini-3.5-flash-lite`
+        (recommended to try via `CHAT_LLM_MODEL`; not changed without the owner's go-ahead). `.env` has
+        `CHAT_LLM_ENABLED=true`, provider gemini.
       - Tests: `chat.llm.test.js` (Anthropic, provider pinned) and `chat.gemini.test.js` (mocked client:
         success, post-check, blocked, 429; the real SDK against a local 429 / never-answering server, run
         in a child process via `tests/fixtures/gemini_real_sdk.js` because Jest's sandbox breaks Node's
@@ -380,7 +385,10 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     document-level focus trap/Escape, aria-live answers. Opened from the dashboard header button or
     "Ask about this" in the status hero (pre-sends "Why is my status this?").
   - Screenshots: `cd frontend; npm run screenshots` (Playwright; one-time `npx playwright install
-    chromium`) logs in as admin, ayesha.khan and the 6 demo students and saves full-page screenshots of
+    chromium`) captures the portal chooser and the three sign-in pages, then logs in as admin, ayesha.khan and
+    the 6 demo students and saves full-page screenshots (`fullPageShot`: the viewport is made as tall as the
+    page and the charts get 900 ms to redraw - Playwright's own fullPage mode resized the page mid-capture and
+    left recharts blank) of
     every main screen at 1280px and 390px to `docs/screenshots/`, plus the chat panel after 3 questions
     for BU-100040 / BU-112907 / BU-144766 (one per label; their chat history is cleared before and
     after), and the Phase 4 screens (assign modal, bulk intervention composer, Tutorials, Audit log,
@@ -537,7 +545,9 @@ frontend `vite` / `esbuild` (dev server only; fix = vite 8), `react-router` (mod
 ## Working rules
 
 - **FEATURE FREEZE since tag `v5-freeze` (2026-11-07): bug fixes only.** No new features, screens or
-  endpoints without the owner's explicit say-so.
+  endpoints without the owner's explicit say-so. Phase 6 (tag `v6-demo`, 2026-11-08: setup on a new machine,
+  `demo:reset`, tests and evidence, README + start scripts, UI polish, demo script) had exactly two approved
+  exceptions: the separate login portals and the admin password reset. The freeze still applies.
 - Single developer, work directly on `main`. Do not create branches.
 - One commit per step, conventional message (e.g. `fix(ml): pin scikit-learn`).
   Commit only after that step's check passes.
@@ -555,6 +565,13 @@ frontend `vite` / `esbuild` (dev server only; fix = vite 8), `react-router` (mod
 | Admin | `admin@smartedu.edu` | `Admin@123` (set via `createAdmin.js`) |
 | Faculty (all 10) | e.g. `amina.sheikh@smartedu.edu` | `Faculty@123` (`seed_demo_data.py`) |
 | Students (all 50k) | `student<ID>@smartedu.edu` | `Student@123` (`import_dataset.py` default) |
+
+**Demo:** [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) is the timed 10-minute script (portal chooser + admin run +
+Model page; student status, badge, charts, 3 Layer 1 chat questions; faculty mark change, what-if, upload with 2 bad
+rows; counselor + intervention seen by the student; wrong-portal attempt), with "reset between rehearsals" and a
+fallback plan. `cd backend; node ../evaluation/demo_run.js` performs it in a real browser (35 checks, `TALK_SCALE`
+scales the talking pauses) and records `docs/demo_recording/smartedu_demo_run.webm` (2026-11-08: 35/35, 6:38 at
+TALK_SCALE 2.5, 18.9 MB, committed); reset before and after.
 
 The six curated demo students (2 per label, grades consistent with CGPA, label = model) and the
 faculty login that shows them are in [docs/DEMO_ACCOUNTS.md](docs/DEMO_ACCOUNTS.md); they pass
