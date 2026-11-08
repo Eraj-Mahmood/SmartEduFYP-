@@ -700,35 +700,32 @@ async function classRecords(req, res) {
 // ---------------- INTERVENTION NOTIFICATIONS ----------------
 
 /**
- * POST /api/admin/notifications {recipient_user_id, subject, message, related_prediction_id?, includeTutorial?}
- * To a student: {name}/{course}/{counselor} are filled in and, with includeTutorial (default: true
- * when the student is At-Risk or Dropout-Likely), one line with their recommended tutorial is added.
- * To a faculty member: sent as written. Returns the row plus unknownPlaceholders.
+ * POST /api/admin/notifications {recipient_user_id, subject, message, includeTutorial?}
+ * Interventions go to STUDENTS only: {name}/{course}/{counselor} are filled in and, with
+ * includeTutorial (default: true when the student is At-Risk or Dropout-Likely), one line with their
+ * recommended tutorial is added. Any other account -> 400; unknown user -> 404. (Counselor-assignment
+ * notices to faculty are sent by services/counselors.js, not here.) Returns the row plus unknownPlaceholders.
  */
 async function sendNotification(req, res) {
   try {
-    const { recipient_user_id, subject, message, related_prediction_id, includeTutorial } = req.body;
-    const st = await pool.query("SELECT student_id FROM students WHERE user_id = $1", [recipient_user_id]);
-    if (st.rows.length) {
-      const out = await interventions.sendInterventions([st.rows[0].student_id], { subject, message, includeTutorial, sender: req.user.userId });
-      const n = out.notifications[0];
-      await logAction(req.user.userId, "SEND_NOTIFICATION", "notifications", n.notification_id, {
-        roll_no: n.roll_no,
-        related_tutorial_id: n.related_tutorial_id,
-      });
-      const { rows } = await pool.query("SELECT * FROM notifications WHERE notification_id = $1", [n.notification_id]);
-      return res.status(201).json({ ...rows[0], unknownPlaceholders: out.unknownPlaceholders });
-    }
-    const { rows } = await pool.query(
-      `INSERT INTO notifications (sender_admin_id, recipient_user_id, subject, message, related_prediction_id, kind)
-       VALUES ($1,$2,$3,$4,$5,'intervention') RETURNING *`,
-      [req.user.userId, recipient_user_id, subject, message, related_prediction_id || null]
+    const { recipient_user_id, subject, message, includeTutorial } = req.body;
+    const { rows: [user] } = await pool.query(
+      "SELECT u.role, s.student_id FROM users u LEFT JOIN students s ON s.user_id = u.user_id WHERE u.user_id = $1",
+      [recipient_user_id]
     );
-    await logAction(req.user.userId, "SEND_NOTIFICATION", "notifications", rows[0].notification_id, {});
-    res.status(201).json({ ...rows[0], unknownPlaceholders: [] });
+    if (!user) return res.status(404).json({ error: "Recipient not found" });
+    if (!user.student_id) return res.status(400).json({ error: "Interventions can only be sent to students" });
+    const out = await interventions.sendInterventions([user.student_id], { subject, message, includeTutorial, sender: req.user.userId });
+    const n = out.notifications[0];
+    await logAction(req.user.userId, "SEND_NOTIFICATION", "notifications", n.notification_id, {
+      roll_no: n.roll_no,
+      related_tutorial_id: n.related_tutorial_id,
+    });
+    const { rows } = await pool.query("SELECT * FROM notifications WHERE notification_id = $1", [n.notification_id]);
+    res.status(201).json({ ...rows[0], unknownPlaceholders: out.unknownPlaceholders });
   } catch (err) {
-    if (err.code === "23503") return res.status(400).json({ error: "Unknown recipient" });
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Could not send the message" });
   }
 }
 

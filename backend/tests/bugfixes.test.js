@@ -273,3 +273,23 @@ describe("bug 8: create endpoints validate against the column sizes", () => {
     made.courses.push(c.body.course_id);
   });
 });
+
+// ------------------------------------------------------------------------------- bug 9
+describe("bug 9: interventions go to students only", () => {
+  test("to a faculty account -> 400; to an unknown user -> 404; nothing stored", async () => {
+    const body = { subject: "Jest bugfix", message: "Hello" };
+    const toFac = await request(app).post("/api/admin/notifications").set(as(admin)).send({ recipient_user_id: facUserId, ...body });
+    expect(toFac.status).toBe(400);
+    expect(toFac.body.error).toMatch(/students/);
+    const unknown = await request(app).post("/api/admin/notifications").set(as(admin)).send({ recipient_user_id: 99999999, ...body });
+    expect(unknown.status).toBe(404);
+    expect((await pool.query("SELECT COUNT(*)::int AS n FROM notifications WHERE sent_at >= $1 AND subject = 'Jest bugfix'", [since])).rows[0].n).toBe(0);
+  });
+
+  test("counselor assignment still notifies the faculty member", async () => {
+    const res = await request(app).post("/api/admin/counselors").set(as(admin)).send({ studentId: students[1].student_id, facultyId });
+    expect(res.status).toBe(201);
+    const { rows } = await pool.query("SELECT kind FROM notifications WHERE recipient_user_id = $1 AND sent_at >= $2", [facUserId, since]);
+    expect(rows.some((r) => r.kind === "counselor")).toBe(true);
+  });
+});

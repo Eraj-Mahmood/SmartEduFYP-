@@ -159,7 +159,7 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
         `GET /faculty/workload?department=` (active counselees per faculty, that department first).
         Assigning notifies the student ("<Name> is now your academic counselor") and the faculty member
         ("You've been assigned as counselor to <Name> (<label>)").
-      - Interventions: `POST /notifications` (to a student: placeholders + `includeTutorial`, default on
+      - Interventions: `POST /notifications` (students only - any other account → 400, unknown user → 404: placeholders + `includeTutorial`, default on
         for flagged students), `POST /notifications/bulk {studentIds | filter, subject, message,
         includeTutorial}` (≤ 500 ids else 400; a filter sends to the 500 most severe and reports
         `matched`/`capped`), `POST /notifications/preview {studentId, ...}` (one filled-in copy, not sent).
