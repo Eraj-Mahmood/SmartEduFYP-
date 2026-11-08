@@ -131,7 +131,9 @@ describe.each(Object.keys(ROUTES))("%s routes", (owner) => {
     const res = await call(m.toLowerCase(), p, tokens[owner]);
     expect(res.status).toBeGreaterThanOrEqual(200);
     expect(res.status).toBeLessThan(300);
-  });
+    // includes GET /admin/at-risk-students/export, which streams all ~26,700 flagged students (5-6 s on the demo
+    // machine, more under coverage), so Jest's 5 s default is too tight for it
+  }, 30000);
 });
 
 describe("notifications (any signed-in role, own rows only)", () => {
