@@ -293,3 +293,18 @@ describe("bug 9: interventions go to students only", () => {
     expect(rows.some((r) => r.kind === "counselor")).toBe(true);
   });
 });
+
+// ------------------------------------------------------------------------------- bug 10
+describe("bug 10: one attendance submission can't list a student twice", () => {
+  test("the same enrollment twice -> 400, nothing written", async () => {
+    await setStatus("enrolled");
+    const date = todayLocal(new Date(Date.now() - 7 * 86400000));
+    const res = await request(app)
+      .post("/api/faculty/attendance")
+      .set(as(fac))
+      .send({ facultyCourseId: classId, classDate: date, entries: [{ enrollmentId, status: "present" }, { enrollmentId, status: "absent" }] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/more than once/);
+    expect((await pool.query("SELECT COUNT(*)::int AS n FROM attendance WHERE enrollment_id = $1 AND class_date = $2", [enrollmentId, date])).rows[0].n).toBe(0);
+  });
+});

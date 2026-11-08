@@ -35,7 +35,19 @@ const attendanceRules = [
     // same rule as the CSV upload (services/uploads.js): no attendance for a day that hasn't happened yet
     .custom((v) => v <= todayLocal())
     .withMessage((v) => `classDate ${v} is in the future`),
-  body("entries").isArray({ min: 1 }).withMessage("entries must be a non-empty array"),
+  body("entries").isArray({ min: 1 }).withMessage("entries must be a non-empty array").bail()
+    // one status per student per submission: a repeated enrollmentId (possibly with a different status) is refused
+    .custom((entries) => {
+      const seen = new Set();
+      const repeated = new Set();
+      for (const e of entries) {
+        const id = Number(e && e.enrollmentId);
+        if (seen.has(id)) repeated.add(id);
+        seen.add(id);
+      }
+      if (repeated.size) throw new Error(`Enrollment(s) ${[...repeated].join(", ")} appear more than once in this submission`);
+      return true;
+    }),
   body("entries.*.enrollmentId").isInt({ min: 1 }).withMessage("each entry needs a positive integer enrollmentId").toInt(),
   body("entries.*.status").isIn(["present", "absent", "leave"]).withMessage("each entry status must be present, absent or leave"),
 ];
