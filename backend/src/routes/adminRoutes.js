@@ -13,12 +13,17 @@ const { singleCsv } = require("../middleware/upload");
 
 router.use(authenticate, authorize("admin"));
 
+// Ids in the URL or the body: positive integers, else 400 (a non-number used to reach the database
+// and come back as a raw 500 "invalid input syntax for type integer").
+const idParam = (name = "id") => param(name).isInt({ min: 1 }).withMessage(`${name} must be a positive integer`).toInt();
+const idField = (name) => body(name).isInt({ min: 1 }).withMessage(`${name} must be a positive integer`).toInt();
+
 router.get("/dashboard", ctrl.dashboard);
 router.get("/departments", ctrl.listDepartments);
 
 // User provisioning
-router.post("/users/student", ctrl.createStudentUser);
-router.post("/users/faculty", ctrl.createFacultyUser);
+router.post("/users/student", [idField("department_id")], validate, ctrl.createStudentUser);
+router.post("/users/faculty", [idField("department_id")], validate, ctrl.createFacultyUser);
 const userIdRule = [param("userId").isInt({ min: 1 }).withMessage("userId must be a positive integer").toInt()];
 router.put("/users/:userId/deactivate", userIdRule, validate, governance.deactivateUser);
 router.put("/users/:userId/reactivate", userIdRule, validate, governance.reactivateUser);
@@ -34,13 +39,13 @@ router.get("/students/:studentId/full", ctrl.studentFullProfile);
 
 // Courses / faculty assignment / enrollment (drop & assign)
 router.get("/courses", ctrl.listCourses);
-router.post("/courses", ctrl.createCourse);
+router.post("/courses", [idField("department_id")], validate, ctrl.createCourse);
 router.get("/faculty-courses", ctrl.listClasses);
-router.post("/faculty-courses", ctrl.assignFacultyToCourse);
-router.delete("/faculty-courses/:id", ctrl.unassignFacultyFromCourse);
+router.post("/faculty-courses", [idField("faculty_id"), idField("course_id")], validate, ctrl.assignFacultyToCourse);
+router.delete("/faculty-courses/:id", [idParam()], validate, ctrl.unassignFacultyFromCourse);
 router.get("/enrollments", ctrl.listEnrollments);
-router.post("/enrollments", ctrl.enrollStudent);
-router.put("/enrollments/:id/drop", ctrl.dropEnrollment);
+router.post("/enrollments", [idField("student_id"), idField("faculty_course_id")], validate, ctrl.enrollStudent);
+router.put("/enrollments/:id/drop", [idParam()], validate, ctrl.dropEnrollment);
 
 // Class records - READ ONLY (no PUT/POST for results or attendance here on purpose)
 router.get("/class-records/:facultyCourseId", ctrl.classRecords);
@@ -80,7 +85,6 @@ router.post(
 );
 
 // Tutorials (study material per course)
-const idParam = (name = "id") => param(name).isInt({ min: 1 }).withMessage(`${name} must be a positive integer`).toInt();
 const tutorialRules = (optional) => {
   const o = (chain) => (optional ? chain.optional() : chain);
   return [

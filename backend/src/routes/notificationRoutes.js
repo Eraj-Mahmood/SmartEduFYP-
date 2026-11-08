@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const { authenticate } = require("../middleware/auth");
+const { param } = require("express-validator");
+const { validate } = require("../middleware/validate");
 const ctrl = require("../controllers/notificationController");
 
 // No role restriction here on purpose - students AND faculty can both
@@ -9,7 +11,12 @@ const ctrl = require("../controllers/notificationController");
 router.use(authenticate);
 
 router.get("/mine", ctrl.mine);
-router.put("/:id/read", ctrl.markRead);
+router.put(
+  "/:id/read",
+  [param("id").isInt({ min: 1 }).withMessage("notification id must be a positive integer").toInt()],
+  validate,
+  ctrl.markRead
+);
 router.put("/read-all", ctrl.markAllRead);
 
 module.exports = router;

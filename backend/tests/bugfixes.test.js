@@ -181,3 +181,24 @@ describe("bug 6: logout revokes the token", () => {
     expect((await request(app).get("/api/auth/me").set(as(fresh))).status).toBe(200);
   });
 });
+
+// ------------------------------------------------------------------------------- bug 7
+describe("bug 7: non-numeric ids -> 400, never a raw database error", () => {
+  test.each([
+    ["put", "/api/notifications/abc/read", "student", null],
+    ["delete", "/api/admin/faculty-courses/abc", "admin", null],
+    ["put", "/api/admin/enrollments/abc/drop", "admin", null],
+    ["post", "/api/admin/courses", "admin", { course_code: `${TAG}Q`, title: "x", department_id: "abc" }],
+    ["post", "/api/admin/enrollments", "admin", { student_id: "abc", faculty_course_id: 1 }],
+    ["post", "/api/admin/enrollments", "admin", { student_id: 1, faculty_course_id: "abc" }],
+    ["post", "/api/admin/faculty-courses", "admin", { faculty_id: "abc", course_id: 1, semester: 5, academic_year: "2025-2026" }],
+    ["post", "/api/admin/users/student", "admin", { email: `${TAG}.x@smartedu.test`, full_name: "x", roll_no: `${TAG}-X`, department_id: "abc" }],
+    ["post", "/api/admin/users/faculty", "admin", { email: `${TAG}.y@smartedu.test`, full_name: "x", employee_no: `${TAG}-Y`, department_id: "abc" }],
+  ])("%s %s -> 400", async (method, url, role, body) => {
+    const token = role === "student" ? await login(app, "student100040@smartedu.edu", "student") : admin;
+    const r = request(app)[method](url).set(as(token));
+    const res = body ? await r.send(body) : await r;
+    expect(res.status).toBe(400);
+    expect(leaksDb(res)).toBe(false);
+  });
+});
