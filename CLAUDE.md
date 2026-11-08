@@ -115,7 +115,9 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       limit, totalPages}`, newest first, limit ≤ 100, search roll/name/course code; Phase 6 - it used to return the
       latest 300 only), read-only class records, interventions/notifications,
       batch runs: `POST /predictions/run {scope: "all"|"department"|"class", scopeId}` → `202` with the
-      `prediction_runs` row (one run at a time, else `409`); `GET /predictions/runs/:id` for progress;
+      `prediction_runs` row (one run at a time, else `409`); `GET /predictions/runs/:id` for progress (plus `fallback`: its predictions with
+      `model_version = 'rule_fallback'`; the Run predictions card then shows a warning toast and a line telling the admin to
+      start the ML service and run again);
       `GET /predictions/runs?limit=20` lists recent runs (scope name, who, duration).
       Model transparency (`controllers/modelController.js`): `GET /model` → `{ml_online, model (the ML
       /model-info, or null when offline), stats, limitations}`; stats over each student's latest prediction:

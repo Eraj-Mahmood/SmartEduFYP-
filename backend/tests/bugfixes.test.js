@@ -349,3 +349,36 @@ describe("bug 12: dropping an already-dropped enrollment", () => {
     await setStatus("enrolled");
   });
 });
+
+// ------------------------------------------------------------------------------- bug 13
+describe("bug 13: a run that fell back to the rules says so", () => {
+  const realFetch = global.fetch;
+  let warn, err;
+  beforeAll(() => {
+    warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    err = jest.spyOn(console, "error").mockImplementation(() => {});
+    global.fetch = jest.fn(async () => {
+      throw new Error("connect ECONNREFUSED (ML service down, mocked)");
+    });
+  });
+  afterAll(() => {
+    global.fetch = realFetch;
+    warn.mockRestore();
+    err.mockRestore();
+  });
+
+  test("GET /predictions/runs/:id reports the fallback count", async () => {
+    await setStatus("enrolled");
+    const start = await request(app).post("/api/admin/predictions/run").set(as(admin)).send({ scope: "class", scopeId: classId });
+    expect(start.status).toBe(202);
+    let run;
+    for (let i = 0; i < 100; i++) {
+      run = (await request(app).get(`/api/admin/predictions/runs/${start.body.id}`).set(as(admin))).body;
+      if (run.status === "completed" || run.status === "failed") break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(run.status).toBe("completed");
+    expect(run.total).toBe(1);
+    expect(run.fallback).toBe(1);
+  });
+});

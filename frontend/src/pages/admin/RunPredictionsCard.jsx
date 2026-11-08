@@ -50,6 +50,15 @@ function Progress({ run }) {
           <span className={`font-semibold ${run.failed ? "text-danger-700" : "text-ink"}`}>{run.failed.toLocaleString()}</span> failed
         </span>
       </div>
+      {run.fallback > 0 && (
+        <p className="mt-2 flex items-start gap-1.5 text-xs text-risk-700" role="status">
+          <Icons.Warning size={14} className="mt-px shrink-0" />
+          <span>
+            {run.fallback.toLocaleString()} of these used the rule estimate because the ML service didn't answer, so they are not
+            model predictions. Start the ML service and run again.
+          </span>
+        </p>
+      )}
       {run.error && <p className="mt-2 text-xs text-danger-700">{run.error}</p>}
     </div>
   );
@@ -77,10 +86,17 @@ export default function RunPredictionsCard({ activeRun, onFinished }) {
         if (data.status === "completed" || data.status === "failed") {
           clearInterval(timer.current);
           finished.current = id;
-          toast(`${data.done.toLocaleString()} predicted, ${data.failed.toLocaleString()} failed`, {
-            type: data.status === "completed" ? "success" : "error",
-            title: `Run #${data.id} ${data.status}`,
-          });
+          const fellBack = data.fallback > 0; // the ML service was down: rule estimates, not the model
+          toast(
+            fellBack
+              ? `${data.fallback.toLocaleString()} of ${data.done.toLocaleString()} used the rule estimate (ML service offline). Start the ML service and run again.`
+              : `${data.done.toLocaleString()} predicted, ${data.failed.toLocaleString()} failed`,
+            {
+              type: data.status !== "completed" ? "error" : fellBack ? "warning" : "success",
+              title: `Run #${data.id} ${data.status}${fellBack ? " without the model" : ""}`,
+              duration: fellBack ? 12000 : 5000,
+            }
+          );
           onFinished?.();
         }
       } catch {

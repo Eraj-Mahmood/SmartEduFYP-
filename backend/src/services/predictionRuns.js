@@ -80,8 +80,15 @@ async function startRun({ scope, scopeId, startedBy }) {
   return run;
 }
 
+/** A run plus `fallback`: how many of its predictions came from the rule fallback (ML service unreachable),
+ *  so the admin is told when a run did NOT use the model (idx_predictions_run keeps this cheap while polling). */
 async function getRun(id) {
-  const { rows } = await pool.query("SELECT * FROM prediction_runs WHERE id = $1", [id]);
+  const { rows } = await pool.query(
+    `SELECT r.*,
+            (SELECT COUNT(*)::int FROM predictions p WHERE p.run_id = r.id AND p.model_version = 'rule_fallback') AS fallback
+     FROM prediction_runs r WHERE r.id = $1`,
+    [id]
+  );
   return rows[0] || null;
 }
 
