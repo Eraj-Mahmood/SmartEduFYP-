@@ -142,7 +142,7 @@ are in [docs/DEMO_ACCOUNTS.md](docs/DEMO_ACCOUNTS.md).
 
 | Suite | Command | Needs |
 |---|---|---|
-| Backend API + unit (Jest, 504 tests) | `cd backend; npm test` (`npm run test:coverage` for coverage) | database |
+| Backend API + unit (Jest, 505 tests) | `cd backend; npm test` (`npm run test:coverage` for coverage) | database |
 | ML service (pytest, 29 tests) | `cd ml_service; .venv\Scripts\python -m pytest tests` | - |
 | Chat assistant evaluation (363 questions) | `cd backend; node ../evaluation/chat_eval.js` | database |
 | Demo actions (perform + undo each one) | `cd backend; node ../evaluation/demo_actions_check.js` | all services; reset afterwards |
