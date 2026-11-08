@@ -114,3 +114,18 @@ describe("bug 2: deleting a class never wipes marks or attendance", () => {
     expect(await auditCount("UNASSIGN_FACULTY", tmp.body.faculty_course_id)).toBe(1);
   });
 });
+
+// ------------------------------------------------------------------------------- bug 3
+describe("bug 3: manual attendance refuses future dates", () => {
+  test("tomorrow or 2030 -> 400 and nothing written; today is fine", async () => {
+    await setStatus("enrolled");
+    const mark = (classDate) => request(app).post("/api/faculty/attendance").set(as(fac)).send({ facultyCourseId: classId, classDate, entries: [{ enrollmentId, status: "present" }] });
+    const tomorrow = todayLocal(new Date(Date.now() + 86400000));
+    const bad = await mark(tomorrow);
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toMatch(new RegExp(`classDate ${tomorrow} is in the future`));
+    expect((await mark("2030-01-01")).status).toBe(400);
+    expect((await pool.query("SELECT COUNT(*)::int AS n FROM attendance WHERE enrollment_id = $1 AND class_date > $2", [enrollmentId, todayLocal()])).rows[0].n).toBe(0);
+    expect((await mark(todayLocal())).status).toBe(200);
+  });
+});

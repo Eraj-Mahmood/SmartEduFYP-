@@ -4,6 +4,7 @@ const { authenticate, authorize } = require("../middleware/auth");
 const { body, param } = require("express-validator");
 const { validate } = require("../middleware/validate");
 const { MARK_FIELDS } = require("../services/grading");
+const { todayLocal } = require("../services/csv");
 const ctrl = require("../controllers/facultyController");
 const counselors = require("../controllers/counselorController");
 const model = require("../controllers/modelController");
@@ -27,7 +28,13 @@ const resultRules = [
 
 const attendanceRules = [
   body("facultyCourseId").isInt({ min: 1 }).withMessage("facultyCourseId must be a positive integer").toInt(),
-  body("classDate").isDate({ format: "YYYY-MM-DD", strictMode: true }).withMessage("classDate must be a valid date (YYYY-MM-DD)"),
+  body("classDate")
+    .isDate({ format: "YYYY-MM-DD", strictMode: true })
+    .withMessage("classDate must be a valid date (YYYY-MM-DD)")
+    .bail()
+    // same rule as the CSV upload (services/uploads.js): no attendance for a day that hasn't happened yet
+    .custom((v) => v <= todayLocal())
+    .withMessage((v) => `classDate ${v} is in the future`),
   body("entries").isArray({ min: 1 }).withMessage("entries must be a non-empty array"),
   body("entries.*.enrollmentId").isInt({ min: 1 }).withMessage("each entry needs a positive integer enrollmentId").toInt(),
   body("entries.*.status").isIn(["present", "absent", "leave"]).withMessage("each entry status must be present, absent or leave"),
