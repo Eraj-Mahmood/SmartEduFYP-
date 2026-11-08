@@ -42,23 +42,31 @@ AI301 and AI302 are Dr. Khan's courses.
 
 | Label | Name | Roll no | Email | Dept | CGPA | Grades | Why it's a good demo case |
 |---|---|---|---|---|---|---|---|
-| Safe | Zainab Shah | BU-100040 | `student100040@smartedu.edu` | AI | 2.91 | B, B, B, B | Mid-range CGPA but 100% attendance, 100% submission and no failed courses. Shows Safe isn't just "high CGPA". |
-| Safe | Ayesha Naqvi | BU-106864 | `student106864@smartedu.edu` | Business | 3.90 | A, A, A, A | Clear top performer on a scholarship. Straight A's, 91% attendance, all credits passed. |
-| At-Risk | Ayesha Raza | BU-122785 | `student122785@smartedu.edu` | AI | 1.97 | C, C, C, C | Borderline CGPA with 2 failed courses and 2 warnings (12 of 18 credits passed), although attendance is 81%. Exactly the student an advisor should catch early. |
-| At-Risk | Nabeel Dar | BU-112907 | `student112907@smartedu.edu` | AI | 2.24 | C, B, C, C | No failed courses, but CGPA is falling (2.47 → 2.24) and study time is low (9.7 h/week). An early-warning case; the live re-prediction demo moves him to Safe. |
-| Dropout-Likely | Sobia Butt | BU-144766 | `student144766@smartedu.edu` | AI | 1.62 | C, D, C, C | 3 warnings, consecutive low CGPA, 62.5% attendance and 55% submission. Grades close to BU-122785's but a worse label: shows the model weighs behaviour, not only grades. |
-| Dropout-Likely | Danish Tariq | BU-101986 | `student101986@smartedu.edu` | Business | 1.02 | D, D, D, D | Severe case: 3 failed courses, only 9 of 18 credits passed, 62.5% attendance. |
+| Safe | Sana Raza | BU-100040 | `student100040@smartedu.edu` | AI | 2.91 | B, B, B, B | Mid-range CGPA but 100% attendance, 100% submission and no failed courses. Shows Safe isn't just "high CGPA". |
+| Safe | Aiman Gill | BU-106864 | `student106864@smartedu.edu` | Business | 3.90 | A, A, A, A | Clear top performer on a scholarship. Straight A's, 91% attendance, all credits passed. |
+| At-Risk | Ayesha Akhtar | BU-122785 | `student122785@smartedu.edu` | AI | 1.97 | C, C, C, C | Borderline CGPA with 2 failed courses and 2 warnings (12 of 18 credits passed), although attendance is 81%. Exactly the student an advisor should catch early. |
+| At-Risk | Zain Khan | BU-112907 | `student112907@smartedu.edu` | AI | 2.24 | C, B, C, C | No failed courses, but CGPA is falling (2.47 → 2.24) and study time is low (9.7 h/week). An early-warning case; the live re-prediction demo moves him to Safe. |
+| Dropout-Likely | Farah Javed | BU-144766 | `student144766@smartedu.edu` | AI | 1.62 | C, D, C, C | 3 warnings, consecutive low CGPA, 62.5% attendance and 55% submission. Grades close to BU-122785's but a worse label: shows the model weighs behaviour, not only grades. |
+| Dropout-Likely | Omar Akhtar | BU-101986 | `student101986@smartedu.edu` | Business | 1.02 | D, D, D, D | Severe case: 3 failed courses, only 9 of 18 credits passed, 62.5% attendance. |
 
 Names come from `database/generate_student_names.py` (fixed seed 2026, run by `npm run demo:reset`).
 It only rewrites `students.full_name`, never emails, roll numbers or IDs. The names changed on
 2026-11-07 when the seed was fixed (e.g. BU-144766 was "Nida Shah"); a different `--seed` changes them again.
+
+**Why the names changed again (2026-11-08):** `import_dataset.py` used to sort the CSV with
+`sort_values("Semester")`, an unstable sort, so the order in which students were inserted - and therefore
+`students.student_id` and the name each student got - depended on the NumPy version (BU-112907 was "Nabeel Dar"
+in these docs but "Talha Riaz" or "Hassan Aziz" on other machines). It now sorts on `["Semester", "Student_ID"]`
+with `kind="stable"`, which fixes the order completely, so every machine gets the names in this file. Old
+names: BU-100040 Zainab Shah, BU-106864 Ayesha Naqvi, BU-122785 Ayesha Raza, BU-112907 Nabeel Dar, BU-144766
+Sobia Butt, BU-101986 Danish Tariq, BU-145871 Danish Farooq. Roll numbers, emails, marks and labels did not change.
 
 ## Live re-prediction demo
 
 Faculty saves re-predict the student straight away. A realistic change that moves a label:
 
 1. Log in as `ayesha.khan@smartedu.edu` → **My classes** → **View class** on **AI301 · Section A**.
-2. In the **BU-112907** (Nabeel Dar) row change **Quiz 54.99 → 75** and **Midterm 70.50 → 88** (keep
+2. In the **BU-112907** (Zain Khan) row change **Quiz 54.99 → 75** and **Midterm 70.50 → 88** (keep
    Assignment 70.98 and Final 79.31) and press **Save** (or Enter). Without a page reload:
    - the grade cell changes **C → B** (derived on the server),
    - the risk chip changes **Needs attention → Safe**,
@@ -74,7 +82,7 @@ The progress bar fills in about 15 seconds and the charts refresh when it finish
 
 ## Chat demo ("Ask SmartEdu")
 
-Log in as **Sobia Butt** (`student144766@smartedu.edu`, Dropout-Likely) and open **Ask SmartEdu**
+Log in as **Farah Javed** (`student144766@smartedu.edu`, Dropout-Likely) and open **Ask SmartEdu**
 on the dashboard (or press **Ask about this** under "Why", which sends question 1 for you).
 These four questions show the assistant best. Every answer comes from the templates (Layer 1):
 no LLM or API key is needed, and the ML service can be stopped.
@@ -96,14 +104,14 @@ Shows the Phase 4 workflow: a flagged student ends up with a named counselor, a 
 their weakest course and an intervention message. Checked through the API on 2026-11-07
 (`demo_actions_check.js`). Use three browser windows (or one private window per account).
 
-1. **Admin** (`admin@smartedu.edu`) → **Interventions** → search `BU-144766` (Sobia Butt, Dropout-Likely).
+1. **Admin** (`admin@smartedu.edu`) → **Interventions** → search `BU-144766` (Farah Javed, Dropout-Likely).
    The row shows the weakest course **AI302 (avg 53)**, its tutorial **MIT Introduction to Deep
    Learning (6.S191)**, Counselor **Assign** and Last intervention **never**.
    - Press **Assign** → the picker lists Artificial Intelligence faculty first with their current
      counselee counts → choose **Dr. Ayesha Khan** → **Assign**. A toast confirms; the row now
      shows "Dr. Ayesha Khan · not contacted yet".
    - Press **Send** → keep the template (it uses `{name}`, `{course}` and `{counselor}`) and
-     "Add each student's recommended tutorial". The preview shows Sobia's own copy ending with
+     "Add each student's recommended tutorial". The preview shows Farah's own copy ending with
      `Recommended for AI302: "MIT Introduction to Deep Learning (6.S191)" - https://introtodeeplearning.com/`.
      Press **Send**; Last intervention becomes "just now".
 2. **Student** (`student144766@smartedu.edu`): the bell shows **2 unread** (the counselor notice
@@ -111,10 +119,10 @@ their weakest course and an intervention message. Checked through the API on 202
    Professor, a mailto link, "Assigned just now"), the tutorial card with **Open tutorial**, and
    the ranked next steps. Clicking the intervention in the bell scrolls to that card. Asking
    SmartEdu "Who can help me?" now names Dr. Khan and her email.
-3. **Faculty** (`ayesha.khan@smartedu.edu`) → **My counselees**: Sobia Butt with her label, main
+3. **Faculty** (`ayesha.khan@smartedu.edu`) → **My counselees**: Farah Javed with her label, main
    reason and "Not contacted yet". Opening her shows the next steps, the tutorial and a notes box
    that saves itself ("Saved"); **Mark contacted today** and **Close assignment** are at the bottom.
-   The bell has "You've been assigned as counselor to Sobia Butt (Dropout-Likely)"; clicking it
+   The bell has "You've been assigned as counselor to Farah Javed (Dropout-Likely)"; clicking it
    opens her drawer.
 
 Other things to show: select several rows and **Send to N** (each student gets their own name,
@@ -152,7 +160,7 @@ stop it and refresh a student to show the fallback).
 
 ### What-if (nothing is saved)
 
-As `ayesha.khan@smartedu.edu`: **My classes** → the AI class with **Zainab Shah (BU-100040)** →
+As `ayesha.khan@smartedu.edu`: **My classes** → the AI class with **Sana Raza (BU-100040)** →
 click her row → **What if?** tab. She is **Safe** (100% attendance). Drag **Attendance** to **55%**:
 the result turns **Dropout-Likely**, the badge still says **Random Forest model** (it is the model's
 own label, not a rule), and **Attendance 55% ↑ raises risk** jumps to the top of the drivers. Drag
@@ -163,7 +171,7 @@ prediction history is unchanged afterwards.
 ### Upload with errors (CS401 A, `bilal.raza@smartedu.edu`)
 
 File: [`docs/demo_files/demo_marks_upload_CS401_A.csv`](demo_files/demo_marks_upload_CS401_A.csv)
-(the class's real marks after a reset, weak marks for Danish Farooq (BU-145871), and **2 deliberate
+(the class's real marks after a reset, weak marks for Talha Tariq (BU-145871), and **2 deliberate
 errors**: the quiz mark `8O` (letter O) for BU-127235 on row 4 and roll number `BU-100099`, who isn't in
 the class, on row 10). If a reset ever changes the marks, regenerate it with
 `node ../evaluation/demo_actions_check.js --write-demo-files`.
@@ -173,11 +181,11 @@ the class, on row 10). If a reset ever changes the marks, regenerate it with
 3. Drop the demo file on the box. The preview shows **9 rows · 7 valid · 2 with errors**, both
    errors listed and highlighted in the table (the bad cell shows `8O`). Nothing is saved yet.
 4. **Save 7 valid rows** → **Rows saved 7 · Rows rejected 2 · Students re-predicted 7 · Labels
-   changed 1**: **BU-145871 Danish Farooq: Safe → At-Risk** (projected CGPA 2.51 → 2.26).
+   changed 1**: **BU-145871 Talha Tariq: Safe → At-Risk** (projected CGPA 2.51 → 2.26).
 5. **Students** tab: the saved rows carry a small **live** tag; the upload is in the history.
 
 **To undo it:** upload [`docs/demo_files/demo_marks_undo_CS401_A.csv`](demo_files/demo_marks_undo_CS401_A.csv)
-(Danish's original marks) the same way: he goes back to **Safe** (2.51). The rows stay tagged live and both
+(Talha's original marks) the same way: he goes back to **Safe** (2.51). The rows stay tagged live and both
 uploads stay in the history (that is the audit trail). `npm run screenshots` also uploads to this
 class, but restores it exactly (rows, tags, uploads, predictions) when it finishes, even after a failure.
 

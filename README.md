@@ -106,7 +106,8 @@ npm run demo:reset
 Type `yes` when asked. In 2-5 minutes it creates the `smartedu` database (or replaces it), applies the schema
 and migrations, imports the 50k CSV, seeds faculty, courses, classes, marks and attendance, names the students,
 creates the admin, seeds tutorials, imports the synthetic live cohort and predicts every student. It ends with a
-summary and a fingerprint; the result is identical every time. Run it again whenever you want the demo data back as
+summary and a fingerprint; the result is identical every time, on any machine, for the same day (class dates count
+back from today unless you pass `--as-of YYYY-MM-DD`). Run it again whenever you want the demo data back as
 new (`npm run demo:reset -- --yes` skips the question). It runs the database scripts with `python` on Windows and
 `python3` on Mac/Linux; set `PYTHON=<path>` to use another interpreter.
 

@@ -41,7 +41,11 @@ def main():
     placeholder_hash = hash_pw(args.default_password)
 
     # one student can appear across multiple semesters -> take first-seen row for profile fields
-    first_seen = df.sort_values("Semester").drop_duplicates("Student_ID", keep="first")
+    # Sort on (Semester, Student_ID) with a stable sort: the order is then fully determined, so
+    # students.student_id (and the seeded names, assigned in student_id order) are the same on every
+    # machine. A plain sort_values("Semester") used NumPy's unstable quicksort, whose tie order differs
+    # between NumPy versions (BU-112907 was "Nabeel Dar" on one machine and "Talha Riaz" on another).
+    first_seen = df.sort_values(["Semester", "Student_ID"], kind="stable").drop_duplicates("Student_ID", keep="first")
 
     student_id_map = {}  # CSV Student_ID -> DB students.student_id
 

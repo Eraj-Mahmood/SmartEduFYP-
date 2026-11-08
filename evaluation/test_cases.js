@@ -46,7 +46,7 @@ const ACCOUNTS = {
   ayesha: { email: "ayesha.khan@smartedu.edu", password: "Faculty@123", portal: "faculty" },
   bilal: { email: "bilal.raza@smartedu.edu", password: "Faculty@123", portal: "faculty" },
   zainab: { email: "student100040@smartedu.edu", password: "Student@123", portal: "student" }, // BU-100040 Safe
-  nabeel: { email: "student112907@smartedu.edu", password: "Student@123", portal: "student" }, // BU-112907 At-Risk
+  bu112907: { email: "student112907@smartedu.edu", password: "Student@123", portal: "student" }, // BU-112907 At-Risk
   sobia: { email: "student144766@smartedu.edu", password: "Student@123", portal: "student" }, // BU-144766 Dropout-Likely
 };
 const tokens = {};
@@ -58,7 +58,7 @@ async function tok(name) {
   }
   return tokens[name];
 }
-const sid = async (roll) => (await one("SELECT student_id, user_id FROM students WHERE roll_no = $1", [roll]));
+const sid = async (roll) => (await one("SELECT student_id, user_id, full_name FROM students WHERE roll_no = $1", [roll]));
 const latest = async (roll) =>
   one("SELECT p.* FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id WHERE s.roll_no = $1", [roll]);
 async function tempUser(role, { mustReset = false } = {}) {
@@ -272,7 +272,7 @@ const CASES = [
     const r = await call("PUT", `/faculty/results/${e.enrollment_id}`, { token: await tok("ayesha"), body: { assignment_avg: +e.assignment_avg, quiz_avg: 75, midterm_marks: 88, final_marks: +e.final_marks, grade: "F" } });
     expect(r.status === 200 && r.json.grade === "B", `grade ${r.json && r.json.grade}`);
     expect(r.json.prediction.old_label === "At-Risk" && r.json.prediction.new_label === "Safe", JSON.stringify(r.json.prediction));
-    const d = await call("GET", "/student/dashboard", { token: await tok("nabeel") });
+    const d = await call("GET", "/student/dashboard", { token: await tok("bu112907") });
     expect(d.json.latestPrediction.final_label === "Safe", "dashboard not Safe");
   }],
   ["TC-FR5-02", "FR5", "Faculty can't edit another teacher's class", "As ayesha.khan, PUT marks for an enrollment in bilal.raza's CS401 A", "403; marks unchanged", async () => {
@@ -422,7 +422,7 @@ const CASES = [
     const n = (await call("GET", "/notifications/mine", { token: await tok("ayesha") })).json;
     expect(n.notifications.some((x) => /counselor/i.test(`${x.subject} ${x.message}`)), "counselor not notified");
   }],
-  ["TC-FR12-02", "FR12", "Counselor follows up; others can't", "ayesha.khan -> My counselees -> Sobia Butt -> notes, Mark contacted today; bilal.raza opens the same counselee", "Notes and contact date saved; bilal.raza gets 403", async () => {
+  ["TC-FR12-02", "FR12", "Counselor follows up; others can't", "ayesha.khan -> My counselees -> Farah Javed -> notes, Mark contacted today; bilal.raza opens the same counselee", "Notes and contact date saved; bilal.raza gets 403", async () => {
     const list = (await call("GET", "/faculty/counselees", { token: await tok("ayesha") })).json;
     const c = list.find((x) => x.roll_no === "BU-144766");
     expect(c, "counselee not listed");
@@ -487,8 +487,8 @@ const CASES = [
     const s = await sid("BU-112907");
     const r = await call("POST", "/admin/notifications", { token: await tok("admin"), body: { recipient_user_id: s.user_id, subject: "Let's plan your next steps, {name}", message: "Hi {name}, {course} needs attention.", includeTutorial: true } });
     expect([200, 201].includes(r.status), `send ${r.status}`);
-    const n = (await call("GET", "/notifications/mine", { token: await tok("nabeel") })).json;
-    expect(n.unreadCount >= 1 && n.notifications.some((x) => /Nabeel/.test(x.subject + x.message)), "not delivered or not personalised");
+    const n = (await call("GET", "/notifications/mine", { token: await tok("bu112907") })).json;
+    expect(n.unreadCount >= 1 && n.notifications.some((x) => (x.subject + x.message).includes(s.full_name)), `not delivered or not personalised for ${s.full_name}`);
   }],
   ["TC-FR14-04", "FR14", "Export the flagged list as CSV", "Interventions -> Export CSV", "UTF-8 CSV (BOM) with the documented columns; formula-safe cells", async () => {
     const raw = await fetch(`${API}/admin/at-risk-students/export?label=At-Risk`, { headers: { Authorization: `Bearer ${await tok("admin")}` } });

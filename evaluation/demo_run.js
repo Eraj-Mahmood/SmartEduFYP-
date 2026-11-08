@@ -87,7 +87,7 @@ async function main() {
 
     // ---------------- 2. student portal ----------------
     await page.evaluate(() => {}); // (same window)
-    check(await signIn(page, "student", "student144766@smartedu.edu", "Student@123", "/student"), "2.1", "Sobia Butt signs in");
+    check(await signIn(page, "student", "student144766@smartedu.edu", "Student@123", "/student"), "2.1", "Farah Javed signs in");
     check(await has(page, "High risk - let's act now"), "2.1", "status: High risk - let's act now");
     await talk(page, 4);
     check(await has(page, /1\.62/) && (await has(page, "Random Forest model")), "2.2", "reasons with CGPA 1.62 and the Random Forest badge");
@@ -169,7 +169,7 @@ async function main() {
     check(await has(page, /just now/), "4.3", "Last intervention: just now");
     await talk(page, 3);
     await logout(page);
-    check(await signIn(page, "student", "student144766@smartedu.edu", "Student@123", "/student"), "4.4", "Sobia signs in again");
+    check(await signIn(page, "student", "student144766@smartedu.edu", "Student@123", "/student"), "4.4", "Farah signs in again");
     const bell = page.locator("header").getByRole("button", { name: /notification/i }).first();
     check(((await bell.textContent()) || "").includes("2") || (await bell.getAttribute("aria-label") || "").includes("2"), "4.4", "bell shows 2 unread");
     await page.locator("#what-next").scrollIntoViewIfNeeded();

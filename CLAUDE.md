@@ -435,7 +435,8 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     which rows were rejected and why.
   - `import_dataset.py` — loads the 50k-row CSV: one user+student per `Student_ID`
     (email `student<ID>@smartedu.edu`, roll `BU-<ID>`) and one
-    `student_semester_performance` row each (incl. the dataset's `target_label`).
+    `student_semester_performance` row each (incl. the dataset's `target_label`); students are inserted in a stable
+    `["Semester", "Student_ID"]` order, so `student_id` and the seeded names are the same on every machine).
   - `seed_demo_data.py` — 10 faculty, 20 courses, 25 sections, and 8 students per department
     (`PINNED_STUDENTS`, the original random pick, so the demo roll numbers survive a rebuild) enrolled in
     their department's section-A classes. Deterministic (`random.Random(--seed)`, default 2026; class
@@ -580,7 +581,7 @@ live re-prediction demo (one faculty save that moves BU-112907 from At-Risk to S
 and the Phase 4 interventions demo (demo script step 6) with how to undo it. Phase 5 demos are there
 too: the Model page, the what-if demo (BU-100040 at 55% attendance → Dropout-Likely, nothing saved),
 the upload demo (`docs/demo_files/demo_marks_upload_CS401_A.csv` as bilal.raza: 7 saved, 2 deliberate
-errors, BU-145871 Danish Farooq Safe → At-Risk; `demo_marks_undo_CS401_A.csv` undoes it) and the live cohort +
+errors, BU-145871 Talha Tariq Safe → At-Risk; `demo_marks_undo_CS401_A.csv` undoes it) and the live cohort +
 `live_eval.py` run.
 
 ## Known facts
