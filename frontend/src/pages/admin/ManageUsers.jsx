@@ -183,9 +183,9 @@ export default function ManageUsers() {
       {tab === "student" ? (
         <Card title="Create student account">
           <form onSubmit={createStudent} className="grid gap-3 sm:grid-cols-2">
-            <input required placeholder="Email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="field" />
-            <input required placeholder="Full name" value={form.full_name || ""} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="field" />
-            <input required placeholder="Roll No" value={form.roll_no || ""} onChange={(e) => setForm({ ...form, roll_no: e.target.value })} className="field" />
+            <input required type="email" maxLength={150} placeholder="Email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="field" />
+            <input required maxLength={150} placeholder="Full name" value={form.full_name || ""} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="field" />
+            <input required pattern="[A-Za-z0-9][A-Za-z0-9\-]{2,29}" title="Letters, digits and dashes, 3-30 characters" maxLength={30} placeholder="Roll No" value={form.roll_no || ""} onChange={(e) => setForm({ ...form, roll_no: e.target.value })} className="field" />
             <select required value={form.department_id || ""} onChange={(e) => setForm({ ...form, department_id: Number(e.target.value) })} className="field">
               <option value="" disabled>Select department</option>
               {departments.map((d) => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
@@ -195,21 +195,21 @@ export default function ManageUsers() {
               <option value="Male">Male</option>
               <option value="Female">Female</option>
             </select>
-            <input type="number" placeholder="Age" value={form.age || ""} onChange={(e) => setForm({ ...form, age: Number(e.target.value) })} className="field" />
+            <input type="number" min={14} max={80} placeholder="Age" value={form.age ?? ""} onChange={(e) => setForm({ ...form, age: e.target.value === "" ? undefined : Number(e.target.value) })} className="field" />
             <Button type="submit" className="sm:col-span-2">Create student</Button>
           </form>
         </Card>
       ) : (
         <Card title="Create faculty account">
           <form onSubmit={createFaculty} className="grid gap-3 sm:grid-cols-2">
-            <input required placeholder="Email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="field" />
-            <input required placeholder="Full name" value={form.full_name || ""} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="field" />
-            <input required placeholder="Employee No" value={form.employee_no || ""} onChange={(e) => setForm({ ...form, employee_no: e.target.value })} className="field" />
+            <input required type="email" maxLength={150} placeholder="Email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="field" />
+            <input required maxLength={150} placeholder="Full name" value={form.full_name || ""} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="field" />
+            <input required maxLength={30} placeholder="Employee No" value={form.employee_no || ""} onChange={(e) => setForm({ ...form, employee_no: e.target.value })} className="field" />
             <select required value={form.department_id || ""} onChange={(e) => setForm({ ...form, department_id: Number(e.target.value) })} className="field">
               <option value="" disabled>Select department</option>
               {departments.map((d) => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
             </select>
-            <input placeholder="Designation" value={form.designation || ""} onChange={(e) => setForm({ ...form, designation: e.target.value })} className="field" />
+            <input maxLength={100} placeholder="Designation" value={form.designation || ""} onChange={(e) => setForm({ ...form, designation: e.target.value })} className="field" />
             <Button type="submit" className="sm:col-span-2">Create faculty</Button>
           </form>
         </Card>

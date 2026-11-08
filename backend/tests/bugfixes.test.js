@@ -7,8 +7,10 @@ const { getStudentOverview } = require("../src/services/studentOverview");
 const { todayLocal } = require("../src/services/csv");
 
 // Regression tests for the 2026-11 test pass (bugs 2-14). Each block reproduces one bug.
-// Everything is created in a throwaway course/class taught by ayesha.khan with two students who
-// are in no other class (no demo student is touched), and removed again in afterAll.
+// The admin side runs as a throwaway admin account, so afterAll can remove exactly what it created
+// (found through that account's audit entries) without touching anything else - not even rows someone
+// creates in the app while the tests run. Classes live in a throwaway course taught by ayesha.khan with
+// two students who are in no other class (no demo student is touched).
 
 const as = (t) => ({ Authorization: `Bearer ${t}` });
 const TAG = `BF${Date.now().toString().slice(-6)}`;
@@ -16,7 +18,7 @@ const since = new Date();
 let admin, adminId, fac, facUserId, facultyId;
 let courseId, classId, students, snap, enrollmentId; // enrollmentId: students[0] in the throwaway class
 const made = { users: [], classes: [], courses: [] };
-let maxIds; // ids before the run: anything above them was created here (also by a request that wrongly succeeded)
+let tempAdmin;
 
 const enroll = (studentId) => request(app).post("/api/admin/enrollments").set(as(admin)).send({ student_id: studentId, faculty_course_id: classId });
 const drop = (id) => request(app).put(`/api/admin/enrollments/${id}/drop`).set(as(admin));
@@ -26,9 +28,10 @@ const setStatus = (status) => pool.query("UPDATE enrollments SET status = $2 WHE
 const leaksDb = (res) => /invalid input syntax|violates|is not a function|relation |column /i.test(JSON.stringify(res.body));
 
 beforeAll(async () => {
-  admin = await login(app, "admin@smartedu.edu", "admin");
+  tempAdmin = await createTempUser("admin");
+  adminId = tempAdmin.userId;
+  admin = await login(app, tempAdmin.email, "admin");
   fac = await login(app, "ayesha.khan@smartedu.edu", "faculty");
-  adminId = (await pool.query("SELECT user_id FROM users WHERE email = 'admin@smartedu.edu'")).rows[0].user_id;
   ({ user_id: facUserId, faculty_id: facultyId } = (
     await pool.query("SELECT u.user_id, f.faculty_id FROM faculty f JOIN users u USING (user_id) WHERE u.email = 'ayesha.khan@smartedu.edu'")
   ).rows[0]);
@@ -43,7 +46,6 @@ beforeAll(async () => {
     )
   ).rows;
   snap = await takeSnapshot({ studentIds: students.map((s) => s.student_id) });
-  maxIds = (await pool.query("SELECT (SELECT MAX(user_id) FROM users) AS users, (SELECT MAX(course_id) FROM courses) AS courses")).rows[0];
   const c = await request(app).post("/api/admin/courses").set(as(admin)).send({ course_code: TAG, title: "Bugfix course", department_id: 4, credit_hours: 3 });
   courseId = c.body.course_id;
   made.courses.push(courseId);
@@ -60,18 +62,32 @@ beforeAll(async () => {
 
 afterAll(async () => {
   const ids = students.map((s) => s.student_id);
-  const userIds = students.map((s) => s.user_id);
-  await pool.query("DELETE FROM counselor_assignments WHERE student_id = ANY($1) AND created_at >= $2", [ids, since]);
-  await pool.query("DELETE FROM notifications WHERE sent_at >= $1 AND recipient_user_id = ANY($2)", [since, [...userIds, facUserId]]);
-  await restoreSnapshot(snap); // predictions made since + latest-prediction pointers
-  await pool.query("DELETE FROM prediction_runs WHERE started_at >= $1 AND scope = 'class' AND scope_id = ANY($2)", [since, made.classes]);
-  await pool.query("DELETE FROM enrollments WHERE faculty_course_id = ANY($1)", [made.classes]); // cascades marks + attendance
-  await pool.query("DELETE FROM faculty_courses WHERE faculty_course_id = ANY($1)", [made.classes]);
-  await pool.query("DELETE FROM courses WHERE course_id = ANY($1)", [made.courses]);
-  for (const u of made.users) await dropTempUser(u);
-  await pool.query("DELETE FROM users WHERE user_id > $1", [maxIds.users]);
-  await pool.query("DELETE FROM courses WHERE course_id > $1", [maxIds.courses]);
-  await pool.query("DELETE FROM audit_log WHERE created_at >= $1 AND actor_user_id = ANY($2)", [since, [adminId, facUserId]]);
+  // what the throwaway admin created (also by a request that wrongly succeeded), from its audit entries
+  const created = async (action) =>
+    (await pool.query("SELECT entity_id FROM audit_log WHERE actor_user_id = $1 AND action = $2", [adminId, action])).rows.map((r) => r.entity_id);
+  const courses = [...new Set([...(await created("CREATE_COURSE")), ...made.courses])];
+  const classes = [...new Set([...(await created("ASSIGN_FACULTY")), ...made.classes])];
+  const users = (
+    await pool.query(
+      `SELECT user_id FROM students WHERE student_id = ANY($1) UNION SELECT user_id FROM faculty WHERE faculty_id = ANY($2)`,
+      [await created("CREATE_STUDENT"), await created("CREATE_FACULTY")]
+    )
+  ).rows.map((r) => r.user_id);
+  // every step runs even if an earlier one fails, so a failed run still leaves nothing behind
+  const steps = [
+    () => pool.query("DELETE FROM counselor_assignments WHERE student_id = ANY($1) AND assigned_by = $2", [ids, adminId]),
+    () => pool.query("DELETE FROM notifications WHERE sender_admin_id = $1", [adminId]),
+    () => restoreSnapshot(snap), // predictions made since + latest-prediction pointers
+    () => pool.query("DELETE FROM prediction_runs WHERE started_by = $1", [adminId]),
+    () => pool.query("DELETE FROM audit_log WHERE actor_user_id = $1 AND action = 'MARK_ATTENDANCE' AND (details->>'facultyCourseId')::int = ANY($2)", [facUserId, classes]),
+    // enrollments cascade to marks and attendance
+    () => pool.query("DELETE FROM enrollments WHERE faculty_course_id IN (SELECT faculty_course_id FROM faculty_courses WHERE faculty_course_id = ANY($1) OR course_id = ANY($2))", [classes, courses]),
+    () => pool.query("DELETE FROM faculty_courses WHERE faculty_course_id = ANY($1) OR course_id = ANY($2)", [classes, courses]),
+    () => pool.query("DELETE FROM courses WHERE course_id = ANY($1)", [courses]),
+    () => pool.query("DELETE FROM users WHERE user_id = ANY($1)", [[...users, ...made.users]]),
+    () => dropTempUser(adminId), // its audit entries, then the account
+  ];
+  for (const step of steps) await step().catch((e) => console.error("bugfixes cleanup:", e.message));
   await pool.end();
 });
 
@@ -200,5 +216,60 @@ describe("bug 7: non-numeric ids -> 400, never a raw database error", () => {
     const res = body ? await r.send(body) : await r;
     expect(res.status).toBe(400);
     expect(leaksDb(res)).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------------------------- bug 8
+describe("bug 8: create endpoints validate against the column sizes", () => {
+  const student = (over) => ({ email: `${TAG.toLowerCase()}.v@smartedu.test`, full_name: "Valid Name", roll_no: `${TAG}-V`, department_id: 1, gender: "Male", age: 21, ...over });
+  test.each([
+    ["email 123", { email: 123 }],
+    ["email not-an-email", { email: "not-an-email" }],
+    ["email over 150", { email: `${"a".repeat(140)}@smartedu.test` }],
+    ["empty full_name", { full_name: "" }],
+    ["full_name over 150", { full_name: "x".repeat(151) }],
+    ["roll_no with a space", { roll_no: "BU 1" }],
+    ["roll_no too short", { roll_no: "B1" }],
+    ["roll_no over 30", { roll_no: "B".repeat(31) }],
+    ["age -3", { age: -3 }],
+    ["age 81", { age: 81 }],
+    ["semester 13", { current_semester: 13 }],
+    ["gender Other", { gender: "Other" }],
+  ])("student: %s -> 400", async (_, over) => {
+    const res = await request(app).post("/api/admin/users/student").set(as(admin)).send(student(over));
+    expect(res.status).toBe(400);
+    expect(leaksDb(res)).toBe(false);
+  });
+
+  test.each([
+    ["credit_hours -4", { credit_hours: -4 }],
+    ["credit_hours 7", { credit_hours: 7 }],
+    ["course_code over 20", { course_code: "C".repeat(21) }],
+    ["course_code 1 char", { course_code: "C" }],
+  ])("course: %s -> 400", async (_, over) => {
+    const res = await request(app).post("/api/admin/courses").set(as(admin)).send({ course_code: `${TAG}C`, title: "x", department_id: 1, ...over });
+    expect(res.status).toBe(400);
+  });
+
+  test("faculty: employee_no over 30 -> 400", async () => {
+    const res = await request(app)
+      .post("/api/admin/users/faculty")
+      .set(as(admin))
+      .send({ email: `${TAG.toLowerCase()}.w@smartedu.test`, full_name: "x", employee_no: "E".repeat(31), department_id: 1 });
+    expect(res.status).toBe(400);
+  });
+
+  test("what the admin forms send still passes (optional gender/age left out, email upper-case trimmed)", async () => {
+    const s = await request(app).post("/api/admin/users/student").set(as(admin)).send({ email: ` ${TAG}.Form@SmartEdu.test `, full_name: "Form Student", roll_no: `${TAG}-F1`, department_id: 2 });
+    expect(s.status).toBe(201);
+    made.users.push(s.body.student.user_id);
+    expect((await pool.query("SELECT email FROM users WHERE user_id = $1", [s.body.student.user_id])).rows[0].email).toBe(`${TAG.toLowerCase()}.form@smartedu.test`);
+    const f = await request(app).post("/api/admin/users/faculty").set(as(admin)).send({ email: `${TAG}.ff@smartedu.test`, full_name: "Form Faculty", employee_no: `${TAG}-E1`, department_id: 2, designation: "Lecturer" });
+    expect(f.status).toBe(201);
+    made.users.push(f.body.faculty.user_id);
+    const c = await request(app).post("/api/admin/courses").set(as(admin)).send({ course_code: `${TAG}F`, title: "Form course", department_id: 2 });
+    expect(c.status).toBe(201);
+    expect(c.body.credit_hours).toBe(3);
+    made.courses.push(c.body.course_id);
   });
 });

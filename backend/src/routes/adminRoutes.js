@@ -18,12 +18,52 @@ router.use(authenticate, authorize("admin"));
 const idParam = (name = "id") => param(name).isInt({ min: 1 }).withMessage(`${name} must be a positive integer`).toInt();
 const idField = (name) => body(name).isInt({ min: 1 }).withMessage(`${name} must be a positive integer`).toInt();
 
+// Create forms: checked against the column sizes in database/schema.sql, so bad input is a 400 with a
+// plain message instead of a 500 (or a row like age -3 being saved). Optional fields may be left out.
+const { ROLL_RE } = require("../services/liveCohort");
+const text = (name, min, max) =>
+  body(name).isString().withMessage(`${name} is required`).bail().trim().isLength({ min, max }).withMessage(`${name} must be ${min}-${max} characters`);
+const emailRule = body("email")
+  .isString().withMessage("email is required").bail()
+  .trim().toLowerCase()
+  .isEmail().withMessage("email must be a valid email address").bail()
+  .isLength({ max: 150 }).withMessage("email can be at most 150 characters");
+const optionalInt = (name, min, max) =>
+  body(name).optional({ values: "null" }).isInt({ min, max }).withMessage(`${name} must be a whole number from ${min} to ${max}`).toInt();
+const studentRules = [
+  emailRule,
+  text("full_name", 1, 150),
+  body("roll_no")
+    .isString().withMessage("roll_no is required").bail()
+    .trim()
+    .matches(ROLL_RE).withMessage("roll_no may only use letters, digits and dashes (3-30 characters)"), // same rule as the live-cohort import
+  idField("department_id"),
+  body("gender").optional({ values: "falsy" }).isIn(["Male", "Female"]).withMessage("gender must be Male or Female"),
+  optionalInt("age", 14, 80),
+  optionalInt("current_semester", 1, 12),
+];
+const facultyRules = [
+  emailRule,
+  text("full_name", 1, 150),
+  text("employee_no", 1, 30),
+  idField("department_id"),
+  body("designation").optional({ values: "null" }).isString().trim().isLength({ max: 100 }).withMessage("designation can be at most 100 characters"),
+];
+const courseRules = [text("course_code", 2, 20), text("title", 1, 150), idField("department_id"), optionalInt("credit_hours", 1, 6)];
+const classRules = [
+  idField("faculty_id"),
+  idField("course_id"),
+  body("section").optional({ values: "falsy" }).isString().trim().isLength({ min: 1, max: 10 }).withMessage("section must be 1-10 characters"),
+  body("semester").isInt({ min: 1, max: 12 }).withMessage("semester must be a whole number from 1 to 12").toInt(),
+  body("academic_year").isString().withMessage("academic_year is required").bail().trim().matches(/^\d{4}-\d{4}$/).withMessage("academic_year must look like 2025-2026"),
+];
+
 router.get("/dashboard", ctrl.dashboard);
 router.get("/departments", ctrl.listDepartments);
 
 // User provisioning
-router.post("/users/student", [idField("department_id")], validate, ctrl.createStudentUser);
-router.post("/users/faculty", [idField("department_id")], validate, ctrl.createFacultyUser);
+router.post("/users/student", studentRules, validate, ctrl.createStudentUser);
+router.post("/users/faculty", facultyRules, validate, ctrl.createFacultyUser);
 const userIdRule = [param("userId").isInt({ min: 1 }).withMessage("userId must be a positive integer").toInt()];
 router.put("/users/:userId/deactivate", userIdRule, validate, governance.deactivateUser);
 router.put("/users/:userId/reactivate", userIdRule, validate, governance.reactivateUser);
@@ -39,9 +79,9 @@ router.get("/students/:studentId/full", ctrl.studentFullProfile);
 
 // Courses / faculty assignment / enrollment (drop & assign)
 router.get("/courses", ctrl.listCourses);
-router.post("/courses", [idField("department_id")], validate, ctrl.createCourse);
+router.post("/courses", courseRules, validate, ctrl.createCourse);
 router.get("/faculty-courses", ctrl.listClasses);
-router.post("/faculty-courses", [idField("faculty_id"), idField("course_id")], validate, ctrl.assignFacultyToCourse);
+router.post("/faculty-courses", classRules, validate, ctrl.assignFacultyToCourse);
 router.delete("/faculty-courses/:id", [idParam()], validate, ctrl.unassignFacultyFromCourse);
 router.get("/enrollments", ctrl.listEnrollments);
 router.post("/enrollments", [idField("student_id"), idField("faculty_course_id")], validate, ctrl.enrollStudent);

@@ -237,13 +237,13 @@ export default function Assignments() {
       <div className="grid md:grid-cols-2 gap-4">
         <Card title="Create course">
           <form onSubmit={createCourse} className="space-y-3">
-            <input required placeholder="Course code (e.g. CS301)" value={courseForm.course_code || ""} onChange={(e) => setCourseForm({ ...courseForm, course_code: e.target.value })} className="field" />
-            <input required placeholder="Title" value={courseForm.title || ""} onChange={(e) => setCourseForm({ ...courseForm, title: e.target.value })} className="field" />
+            <input required minLength={2} maxLength={20} placeholder="Course code (e.g. CS301)" value={courseForm.course_code || ""} onChange={(e) => setCourseForm({ ...courseForm, course_code: e.target.value })} className="field" />
+            <input required maxLength={150} placeholder="Title" value={courseForm.title || ""} onChange={(e) => setCourseForm({ ...courseForm, title: e.target.value })} className="field" />
             <select required value={courseForm.department_id || ""} onChange={(e) => setCourseForm({ ...courseForm, department_id: Number(e.target.value) })} className="field">
               <option value="" disabled>Select department</option>
               {departments.map((d) => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
             </select>
-            <input type="number" placeholder="Credit hours (default 3)" value={courseForm.credit_hours || ""} onChange={(e) => setCourseForm({ ...courseForm, credit_hours: Number(e.target.value) })} className="field" />
+            <input type="number" min={1} max={6} placeholder="Credit hours (default 3)" value={courseForm.credit_hours ?? ""} onChange={(e) => setCourseForm({ ...courseForm, credit_hours: e.target.value === "" ? undefined : Number(e.target.value) })} className="field" />
             <Button type="submit" className="w-full">Create course</Button>
           </form>
         </Card>
@@ -258,9 +258,9 @@ export default function Assignments() {
               <option value="" disabled>Select course</option>
               {courses.map((c) => <option key={c.course_id} value={c.course_id}>{c.course_code} — {c.title}</option>)}
             </select>
-            <input placeholder="Section (default A)" value={assignForm.section || ""} onChange={(e) => setAssignForm({ ...assignForm, section: e.target.value })} className="field" />
-            <input required type="number" placeholder="Semester" value={assignForm.semester || ""} onChange={(e) => setAssignForm({ ...assignForm, semester: Number(e.target.value) })} className="field" />
-            <input required placeholder="Academic year (e.g. 2025-2026)" value={assignForm.academic_year || ""} onChange={(e) => setAssignForm({ ...assignForm, academic_year: e.target.value })} className="field" />
+            <input maxLength={10} placeholder="Section (default A)" value={assignForm.section || ""} onChange={(e) => setAssignForm({ ...assignForm, section: e.target.value })} className="field" />
+            <input required type="number" min={1} max={12} placeholder="Semester" value={assignForm.semester || ""} onChange={(e) => setAssignForm({ ...assignForm, semester: Number(e.target.value) })} className="field" />
+            <input required pattern="\d{4}-\d{4}" title="Like 2025-2026" placeholder="Academic year (e.g. 2025-2026)" value={assignForm.academic_year || ""} onChange={(e) => setAssignForm({ ...assignForm, academic_year: e.target.value })} className="field" />
             <Button type="submit" className="w-full">Assign faculty</Button>
           </form>
         </Card>

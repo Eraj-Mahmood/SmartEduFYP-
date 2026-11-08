@@ -313,4 +313,4 @@ async function removeCohort(uploadId, { audit } = {}) {
 /** The empty template (header only). */
 const cohortTemplate = () => toCsv([...REQUIRED, ...OPTIONAL], []);
 
-module.exports = { importCohort, removeCohort, validateCohort, cohortTemplate, REQUIRED, OPTIONAL, DERIVED };
+module.exports = { importCohort, removeCohort, validateCohort, cohortTemplate, REQUIRED, OPTIONAL, DERIVED, ROLL_RE };
