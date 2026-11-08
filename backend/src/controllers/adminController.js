@@ -1,5 +1,6 @@
 const bcrypt = require("bcrypt");
 const pool = require("../config/db");
+const { sendError } = require("../middleware/errors");
 const { logAction } = require("../middleware/audit");
 const { startRun, getRun } = require("../services/predictionRuns");
 const { staffReasons } = require("../services/reasons");
@@ -162,7 +163,7 @@ async function listDepartments(req, res) {
     const { rows } = await pool.query("SELECT department_id, code, name FROM departments ORDER BY name");
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the departments");
   }
 }
 
@@ -225,7 +226,7 @@ async function dashboard(req, res) {
       riskBreakdown: LABELS.map((l) => ({ final_label: l, predicted_label: l, count: counts[l] })).filter((r) => r.count),
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the dashboard");
   }
 }
 
@@ -303,7 +304,7 @@ async function createStudentUser(req, res) {
       client.release();
     }
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not create the student account");
   }
 }
 
@@ -346,7 +347,7 @@ async function createFacultyUser(req, res) {
       client.release();
     }
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not create the faculty account");
   }
 }
 
@@ -392,7 +393,7 @@ async function listStudents(req, res) {
 
     res.json({ rows, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the students");
   }
 }
 
@@ -410,7 +411,7 @@ async function listFaculty(req, res) {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the faculty list");
   }
 }
 
@@ -457,7 +458,7 @@ async function studentFullProfile(req, res) {
       counselor,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load this student's profile");
   }
 }
 
@@ -473,7 +474,7 @@ async function listCourses(req, res) {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the courses");
   }
 }
 
@@ -491,7 +492,7 @@ async function listClasses(req, res) {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the classes");
   }
 }
 
@@ -535,7 +536,7 @@ async function listEnrollments(req, res) {
     const total = count.rows[0].total;
     res.json({ rows: rows.rows, total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the enrollments");
   }
 }
 
@@ -555,7 +556,7 @@ async function createCourse(req, res) {
   } catch (err) {
     if (err.code === "23505") return res.status(409).json({ error: "That course code already exists." });
     if (err.code === "23503") return res.status(400).json({ error: "Invalid department selected." });
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not create the course");
   }
 }
 
@@ -576,7 +577,7 @@ async function assignFacultyToCourse(req, res) {
   } catch (err) {
     if (err.code === "23505") return res.status(409).json({ error: "That faculty member is already assigned to this exact course/section/semester." });
     if (err.code === "23503") return res.status(400).json({ error: "Invalid faculty or course selected." });
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not assign the faculty member");
   }
 }
 
@@ -699,7 +700,7 @@ async function classRecords(req, res) {
     ]);
     res.json({ results: roster.rows, attendance: attendanceRows.rows });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the class records");
   }
 }
 
@@ -802,7 +803,7 @@ async function bulkNotify(req, res) {
       unknownPlaceholders: out.unknownPlaceholders,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not send the messages");
   }
 }
 
@@ -822,7 +823,7 @@ async function previewNotification(req, res) {
       unknownPlaceholders: c.unknown,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not build the preview");
   }
 }
 
@@ -832,7 +833,7 @@ async function atRiskStudents(req, res) {
   try {
     res.json(await latestPredictionPage(req, { riskOnly: true }));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the flagged students");
   }
 }
 
@@ -842,7 +843,7 @@ async function predictionsDetailed(req, res) {
   try {
     res.json(await latestPredictionPage(req, { withCourses: true }));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the predictions");
   }
 }
 
@@ -857,7 +858,7 @@ async function runPredictions(req, res) {
     await logAction(req.user.userId, "RUN_PREDICTIONS", "prediction_runs", run.id, { scope, scopeId, total: run.total });
     res.status(202).json(run);
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not start the prediction run");
   }
 }
 
@@ -881,7 +882,7 @@ async function listPredictionRuns(req, res) {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the prediction runs");
   }
 }
 
@@ -892,7 +893,7 @@ async function getPredictionRun(req, res) {
     if (!run) return res.status(404).json({ error: "Run not found" });
     res.json(run);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the prediction run");
   }
 }
 

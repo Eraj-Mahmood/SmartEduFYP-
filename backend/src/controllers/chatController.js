@@ -1,3 +1,4 @@
+const { sendError } = require("../middleware/errors");
 const chatService = require("../services/chatService");
 const { getMyStudentId } = require("./studentController");
 
@@ -21,8 +22,7 @@ async function history(req, res) {
     const studentId = await getMyStudentId(req.user.userId);
     res.json(await chatService.history(studentId));
   } catch (err) {
-    console.error(err);
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not load your chat history");
   }
 }
 
@@ -32,8 +32,7 @@ async function clear(req, res) {
     const studentId = await getMyStudentId(req.user.userId);
     res.json({ deleted: await chatService.clearHistory(studentId) });
   } catch (err) {
-    console.error(err);
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not clear your chat history");
   }
 }
 

@@ -1,3 +1,4 @@
+const { sendError } = require("../middleware/errors");
 const { logAction } = require("../middleware/audit");
 const { importCohort, cohortTemplate } = require("../services/liveCohort");
 
@@ -26,7 +27,7 @@ async function importLiveCohort(req, res) {
     res.json(out);
   } catch (err) {
     if (!err.status) console.error(err);
-    res.status(err.status || 500).json({ error: err.message, ...(err.missing ? { missing: err.missing } : {}) });
+    sendError(res, err, "Could not import the cohort file");
   }
 }
 

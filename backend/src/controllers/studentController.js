@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { sendError } = require("../middleware/errors");
 const { predictForStudent } = require("../services/predictionService");
 const { getStudentOverview } = require("../services/studentOverview");
 const { round2, importedTermMarks } = require("../services/studentCourses");
@@ -33,8 +34,7 @@ async function dashboard(req, res) {
     const studentId = await getMyStudentId(req.user.userId);
     res.json(await getStudentOverview(studentId));
   } catch (err) {
-    console.error(err);
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not load your dashboard");
   }
 }
 
@@ -44,8 +44,7 @@ async function nextSteps(req, res) {
     const studentId = await getMyStudentId(req.user.userId);
     res.json(await getNextSteps(studentId));
   } catch (err) {
-    console.error(err);
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not load your next steps");
   }
 }
 
@@ -66,8 +65,7 @@ async function predictionTimeline(req, res) {
     );
     res.json(rows.map((r) => ({ ...r, projected_cgpa: round2(r.projected_cgpa) })));
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load your status history");
   }
 }
 
@@ -104,8 +102,7 @@ async function results(req, res) {
       })
     );
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load your results");
   }
 }
 
@@ -128,8 +125,7 @@ async function attendance(req, res) {
     );
     res.json(rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load your attendance");
   }
 }
 
@@ -144,8 +140,7 @@ async function history(req, res) {
     );
     res.json(rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load your academic history");
   }
 }
 
@@ -167,8 +162,7 @@ async function prediction(req, res) {
     }
     return res.json({ message: "No prediction yet. POST /api/student/prediction/refresh to generate one." });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load your status");
   }
 }
 
@@ -185,8 +179,7 @@ async function refreshPrediction(req, res) {
     const { drivers, features, prob_safe, prob_at_risk, prob_dropout, model_label, policy_label, ...studentView } = row;
     res.json(studentView);
   } catch (err) {
-    console.error(err);
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not check your status right now");
   }
 }
 

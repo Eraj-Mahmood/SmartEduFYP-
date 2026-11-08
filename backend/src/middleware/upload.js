@@ -25,7 +25,9 @@ function singleCsv(req, res, next) {
       const msg = err.code === "LIMIT_FILE_SIZE" ? "The file is larger than 2 MB" : `Upload problem: ${err.message}`;
       return res.status(400).json({ error: msg });
     }
-    return res.status(err.status || 400).json({ error: err.message });
+    if (err.status) return res.status(err.status).json({ error: err.message }); // ours, e.g. "Only .csv files can be uploaded"
+    console.error(err); // e.g. a malformed multipart body: don't echo the parser's wording
+    return res.status(400).json({ error: "The upload could not be read. Please try again with a .csv file." });
   });
 }
 

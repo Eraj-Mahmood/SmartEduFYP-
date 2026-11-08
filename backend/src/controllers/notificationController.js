@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { sendError } = require("../middleware/errors");
 
 /** GET /api/notifications/mine - every notification addressed to the logged-in user */
 async function mine(req, res) {
@@ -14,7 +15,7 @@ async function mine(req, res) {
     const unreadCount = rows.filter((r) => !r.read_at).length;
     res.json({ notifications: rows, unreadCount });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load your notifications");
   }
 }
 
@@ -30,7 +31,7 @@ async function markRead(req, res) {
     if (rows.length === 0) return res.status(404).json({ error: "Notification not found" });
     res.json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not mark the notification as read");
   }
 }
 
@@ -43,7 +44,7 @@ async function markAllRead(req, res) {
     );
     res.json({ message: "All notifications marked as read" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not mark the notifications as read");
   }
 }
 

@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { sendError } = require("../middleware/errors");
 const { logAction } = require("../middleware/audit");
 const { staffReasons } = require("../services/reasons");
 const { latestFilters } = require("./adminController");
@@ -21,7 +22,7 @@ async function setActive(req, res, active) {
     await logAction(req.user.userId, active ? "REACTIVATE_USER" : "DEACTIVATE_USER", "users", userId, { email: rows[0].email, role: rows[0].role });
     res.json({ message: active ? "User reactivated" : "User deactivated", user: rows[0] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not change the account status");
   }
 }
 
@@ -55,7 +56,7 @@ async function resetPassword(req, res) {
     res.set("Cache-Control", "no-store");
     res.json({ message: "Password reset. Share the temporary password with the user; it is shown only once.", user: rows[0], tempPassword });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not reset the password");
   }
 }
 
@@ -114,7 +115,7 @@ async function auditLog(req, res) {
       entities: entities.rows.map((r) => r.entity),
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the audit log");
   }
 }
 
@@ -203,9 +204,9 @@ async function exportAtRisk(req, res) {
     res.end();
     await logAction(req.user.userId, "EXPORT_FLAGGED_CSV", "students", null, { rows: ids.length, filters: req.query });
   } catch (err) {
-    console.error(err);
-    if (!res.headersSent) res.status(500).json({ error: err.message });
-    else res.end();
+    if (!res.headersSent) return sendError(res, err, "Could not export the list");
+    console.error(err); // part of the CSV was already streamed: just end it
+    res.end();
   }
 }
 

@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { sendError } = require("../middleware/errors");
 const { runWhatIf, parseOverrides, assertFacultyCanSee } = require("../services/whatIf");
 
 // Model transparency (Phase 5): the admin Model page and the staff what-if simulator.
@@ -90,7 +91,7 @@ async function modelOverview(req, res) {
       limitations: LIMITATIONS,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the model information");
   }
 }
 
@@ -104,7 +105,7 @@ async function facultyWhatIf(req, res) {
     await assertFacultyCanSee(rows[0].faculty_id, studentId);
     res.json(await runWhatIf(studentId, overrides));
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not run the what-if simulation");
   }
 }
 
@@ -113,7 +114,7 @@ async function adminWhatIf(req, res) {
   try {
     res.json(await runWhatIf(Number(req.params.studentId), parseOverrides(req.body)));
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not run the what-if simulation");
   }
 }
 

@@ -36,6 +36,9 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     (migration 012), checked the same way ("You were signed out").
   - `middleware/audit.js` — `logAction()` writes to `audit_log`, never throws.
   - `middleware/validate.js` — turns express-validator errors into `400 {error, details}`.
+  - `middleware/errors.js` — `sendError(res, err, message)`: an error with a 4xx `status` keeps its message; anything
+    else is `console.error`ed and answered `500 {error: message}` (plain English), so database messages never leak. Every
+    controller catch and the central handler in `app.js` use it.
   - `routes/*Routes.js` + `controllers/*Controller.js`, one pair per area:
     - `auth` — `POST /login {email, password, portal}` (Phase 6: separate portals; `portal` = student |
       faculty | admin, missing/invalid → 400; order: rate limit → credentials (unknown email or wrong

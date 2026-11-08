@@ -406,3 +406,35 @@ describe("bug 14: unknown placeholders are refused when sending", () => {
     expect(res.body.unknownPlaceholders).toEqual(["{foo}", "{Bar}"]);
   });
 });
+
+// ------------------------------------------------------------------------------- leftovers: 500s
+describe("a database error never reaches the client", () => {
+  test("controller and central error handler answer with a plain message; the real error is only logged", async () => {
+    const realQuery = pool.query.bind(pool);
+    const pgError = Object.assign(new Error('relation "courses" does not exist'), { code: "42P01", severity: "ERROR" });
+    const logged = jest.spyOn(console, "error").mockImplementation(() => {});
+    const failOn = (pattern) => jest.spyOn(pool, "query").mockImplementation((sql, ...rest) => (pattern.test(String(sql)) ? Promise.reject(pgError) : realQuery(sql, ...rest)));
+    try {
+      // 1) inside a controller (adminController.listCourses)
+      let spy = failOn(/FROM courses c JOIN departments/);
+      const res = await request(app).get("/api/admin/courses").set(as(admin));
+      spy.mockRestore();
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({ error: "Could not load the courses" });
+      // 2) the central handler in app.js (authenticate passes its DB error to next(err))
+      spy = failOn(/FROM users WHERE user_id/);
+      const viaNext = await request(app).get("/api/admin/courses").set(as(admin));
+      spy.mockRestore();
+      expect(viaNext.status).toBe(500);
+      expect(viaNext.body).toEqual({ error: "Something went wrong on the server. Please try again." });
+      for (const r of [res, viaNext]) expect(JSON.stringify(r.body)).not.toMatch(/relation|does not exist|42P01/);
+      expect(logged).toHaveBeenCalledWith(pgError); // the real error is still logged for the developer
+      // a deliberate 4xx keeps its message
+      const missing = await request(app).get("/api/admin/students/99999999/full").set(as(admin));
+      expect(missing.status).toBe(404);
+      expect(missing.body.error).toBe("Student not found");
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+});

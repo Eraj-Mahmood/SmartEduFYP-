@@ -1,14 +1,12 @@
 const pool = require("../config/db");
+const { sendError } = require("../middleware/errors");
 const { logAction } = require("../middleware/audit");
 const svc = require("../services/counselors");
 
 // Counselor assignments (FR12). Admin: assign / reassign / close / list / workload.
 // Faculty: their own active counselees only (403 for anyone else's).
 
-const fail = (res, err) => {
-  if (!err.status) console.error(err);
-  res.status(err.status || 500).json({ error: err.message });
-};
+const fail = (res, err) => sendError(res, err, "Could not complete the counselor request");
 
 // ---------------- admin ----------------
 

@@ -1,6 +1,7 @@
 // The Express app (routes, middleware, error handler). server.js starts it; tests import it.
 require("dotenv").config();
 const express = require("express");
+const { sendError } = require("./middleware/errors");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
@@ -37,10 +38,8 @@ app.use("/api/notifications", notificationRoutes);
 // 404
 app.use((req, res) => res.status(404).json({ error: "Not found" }));
 
-// Central error handler
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(err.status || 500).json({ error: err.message || "Server error" });
-});
+// Central error handler: a 4xx error keeps its message (e.g. malformed JSON -> 400); anything else is
+// logged and answered with a plain message, never the raw error (middleware/errors.js)
+app.use((err, req, res, next) => sendError(res, err));
 
 module.exports = app;

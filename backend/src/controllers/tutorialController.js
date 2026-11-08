@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { sendError } = require("../middleware/errors");
 const { logAction } = require("../middleware/audit");
 
 // Admin management of study material per course (FR11). Every change is audit-logged.
@@ -17,7 +18,7 @@ function dbError(res, err) {
   if (err.code === "23505") return res.status(409).json({ error: "That course already has a tutorial with this link." });
   if (err.code === "23503") return res.status(400).json({ error: "Invalid course selected." });
   if (err.code === "23514") return res.status(400).json({ error: "Invalid tutorial (url must start with http:// or https://, kind must be video, notes or practice)." });
-  return res.status(500).json({ error: err.message });
+  return sendError(res, err, "Could not save the tutorial");
 }
 
 /** GET /api/admin/tutorials?courseId= - every tutorial (active and inactive), by course */
@@ -37,7 +38,7 @@ async function list(req, res) {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not load the tutorials");
   }
 }
 
@@ -92,7 +93,7 @@ async function deactivate(req, res) {
     await logAction(req.user.userId, "DEACTIVATE_TUTORIAL", "tutorials", t.tutorial_id, { course: t.course_code, url: t.url });
     res.json(t);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    sendError(res, err, "Could not deactivate the tutorial");
   }
 }
 

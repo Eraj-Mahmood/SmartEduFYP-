@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { sendError } = require("../middleware/errors");
 const { logAction } = require("../middleware/audit");
 const { processClassUpload, classTemplate, KINDS } = require("../services/uploads");
 
@@ -34,7 +35,7 @@ async function template(req, res) {
     res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
     res.send(csv);
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not build the template");
   }
 }
 
@@ -58,7 +59,7 @@ async function upload(req, res) {
     res.json({ ...out, class: cls });
   } catch (err) {
     if (!err.status) console.error(err);
-    res.status(err.status || 500).json({ error: err.message, ...(err.missing ? { missing: err.missing } : {}) });
+    sendError(res, err, "Could not process the file");
   }
 }
 
@@ -81,7 +82,7 @@ async function history(req, res) {
     );
     res.json(rows);
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not load the upload history");
   }
 }
 

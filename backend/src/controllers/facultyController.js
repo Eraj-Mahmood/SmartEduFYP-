@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { sendError } = require("../middleware/errors");
 const { logAction } = require("../middleware/audit");
 const { MARK_FIELDS, deriveGrade } = require("../services/grading");
 const { predictForStudent, predictForMany } = require("../services/predictionService");
@@ -64,7 +65,7 @@ async function myClasses(req, res) {
     );
     res.json(rows);
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not load your classes");
   }
 }
 
@@ -90,7 +91,7 @@ async function mySummary(req, res) {
     );
     res.json(rows[0]);
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not load your summary");
   }
 }
 
@@ -124,7 +125,7 @@ async function classRoster(req, res) {
     // staff wording ("CGPA 1.98 is below 2.00"); SHAP drivers and features stay on the server
     res.json(rows.map(({ drivers, features, ...r }) => ({ ...r, reasons: staffReasons({ ...r, drivers, features }) })));
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not load the class roster");
   }
 }
 
@@ -175,7 +176,7 @@ async function classRiskSummary(req, res) {
       attendanceBySession: sessions.rows.map((r) => ({ ...r, attendance_pct: Number(r.attendance_pct) })),
     });
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not load the class summary");
   }
 }
 
@@ -246,7 +247,7 @@ async function upsertResult(req, res) {
       },
     });
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not save the marks");
   }
 }
 
@@ -306,7 +307,7 @@ async function markAttendance(req, res) {
     });
     res.json(results);
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not save the attendance");
   }
 }
 
@@ -335,7 +336,7 @@ async function classAttendance(req, res) {
     );
     res.json(rows);
   } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
+    sendError(res, err, "Could not load the attendance");
   }
 }
 

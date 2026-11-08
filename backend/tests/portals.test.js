@@ -73,7 +73,9 @@ describe("wrong credentials look the same on every portal", () => {
       expect(r.status).toBe(401);
       expect(r.body).toEqual({ error: "Invalid email or password" });
     }
-  });
+    // 12 sign-ins, each a bcrypt compare against the seeded hashes (cost 12, ~0.4-0.6 s each): this sat just
+    // under Jest's 5 s default and timed out on a busier machine, so it gets its own limit
+  }, 30000);
 
   test("a deactivated account with a wrong password gets the generic 401 (not 'deactivated')", async () => {
     const u = await createTempUser("student");
