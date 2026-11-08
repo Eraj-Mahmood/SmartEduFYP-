@@ -1,4 +1,4 @@
-"""Run from ml_service/: .venv\Scripts\python -m pytest tests"""
+r"""Run from ml_service/: .venv\Scripts\python -m pytest tests"""
 import sys
 from pathlib import Path
 
