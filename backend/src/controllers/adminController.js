@@ -623,23 +623,34 @@ async function unassignFacultyFromCourse(req, res) {
   }
 }
 
-/** POST /api/admin/enrollments - assign a student into a class (course assigning) */
+/**
+ * POST /api/admin/enrollments - assign a student into a class (course assigning).
+ * UNIQUE (student_id, faculty_course_id) keeps one row per student and class, so re-enrolling a
+ * student who DROPPED the class sets that row back to 'enrolled' (its marks and attendance are kept)
+ * -> 201 with `reenrolled: true`. Already enrolled (or completed) -> 409.
+ */
 async function enrollStudent(req, res) {
   try {
     const { student_id, faculty_course_id } = req.body;
     if (!student_id || !faculty_course_id) {
       return res.status(400).json({ error: "Student and class are both required" });
     }
+    // xmax = 0 only for a freshly inserted row, so it tells a new enrollment from a re-enrollment
     const { rows } = await pool.query(
-      `INSERT INTO enrollments (student_id, faculty_course_id, enrolled_by) VALUES ($1,$2,$3) RETURNING *`,
+      `INSERT INTO enrollments (student_id, faculty_course_id, enrolled_by) VALUES ($1,$2,$3)
+       ON CONFLICT (student_id, faculty_course_id) DO UPDATE SET status = 'enrolled', enrolled_by = EXCLUDED.enrolled_by
+         WHERE enrollments.status = 'dropped'
+       RETURNING *, (xmax <> 0) AS reenrolled`,
       [student_id, faculty_course_id, req.user.userId]
     );
-    await logAction(req.user.userId, "ENROLL_STUDENT", "enrollments", rows[0].enrollment_id, {});
-    res.status(201).json(rows[0]);
+    if (!rows.length) return res.status(409).json({ error: "This student is already enrolled in that class." });
+    const { reenrolled, ...enrollment } = rows[0];
+    await logAction(req.user.userId, "ENROLL_STUDENT", "enrollments", enrollment.enrollment_id, reenrolled ? { reenrolled: true } : {});
+    res.status(201).json({ ...enrollment, reenrolled });
   } catch (err) {
-    if (err.code === "23505") return res.status(409).json({ error: "This student is already enrolled in that class." });
     if (err.code === "23503") return res.status(400).json({ error: "Invalid student or class selected." });
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Could not enroll the student" });
   }
 }
 

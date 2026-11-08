@@ -142,3 +142,24 @@ describe("bug 4: marks can't be edited for a dropped enrollment", () => {
     await setStatus("enrolled");
   });
 });
+
+// ------------------------------------------------------------------------------- bug 5
+describe("bug 5: a dropped student can be re-enrolled", () => {
+  test("201 with the same row, marks and attendance kept; enrolled again -> 409", async () => {
+    await setStatus("dropped");
+    await pool.query(
+      `INSERT INTO course_results (enrollment_id, assignment_avg, grade) VALUES ($1, 77, 'B')
+       ON CONFLICT (enrollment_id) DO UPDATE SET assignment_avg = 77, grade = 'B'`,
+      [enrollmentId]
+    );
+    await pool.query("INSERT INTO attendance (enrollment_id, class_date, status) VALUES ($1, '2026-09-01', 'present') ON CONFLICT DO NOTHING", [enrollmentId]);
+    const res = await enroll(students[0].student_id);
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ enrollment_id: enrollmentId, status: "enrolled" });
+    expect((await pool.query("SELECT assignment_avg FROM course_results WHERE enrollment_id = $1", [enrollmentId])).rows[0].assignment_avg).toBe("77.00");
+    expect((await pool.query("SELECT COUNT(*)::int AS n FROM attendance WHERE enrollment_id = $1 AND class_date = '2026-09-01'", [enrollmentId])).rows[0].n).toBe(1);
+    const again = await enroll(students[0].student_id);
+    expect(again.status).toBe(409);
+    expect(again.body.error).toMatch(/already enrolled/);
+  });
+});

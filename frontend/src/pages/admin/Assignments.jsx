@@ -127,8 +127,8 @@ export default function Assignments() {
     e.preventDefault();
     setError(""); setMessage("");
     try {
-      await client.post("/admin/enrollments", enrollForm);
-      setMessage("Student enrolled (course assigned).");
+      const { data } = await client.post("/admin/enrollments", enrollForm);
+      setMessage(data.reenrolled ? "Student re-enrolled (they had dropped this class; their earlier marks and attendance are kept)." : "Student enrolled (course assigned).");
       setEnrollForm({});
       setSelectedStudent(null);
       setStudentQuery("");
