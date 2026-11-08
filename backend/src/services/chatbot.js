@@ -259,9 +259,22 @@ function counselorLine(ctx) {
 
 // ---------------------------------------------------------------- templates
 
+// A student with no academic record (no student_semester_performance row) can't get a status yet:
+// a prediction starts from that record, so "Check my status" would only fail.
+function noRecordReply() {
+  return {
+    answer:
+      "You don't have a status yet. It's worked out from your academic record, and there isn't one for you in SmartEdu yet. " +
+      "Your status will appear once your record has been added; after that your teachers' marks this term count too. " +
+      `If you think something's missing, contact the ${supportLine()}.`,
+    links: [LINKS.dashboard],
+  };
+}
+
 function whyRisk(ctx, r, rng) {
   const s = ctx.status;
-  if (!s) return { answer: "You don't have a status yet. Press Refresh on your dashboard and I can explain it.", links: [LINKS.dashboard] };
+  if (!s && ctx.standing && ctx.standing.has_record === false) return noRecordReply();
+  if (!s) return { answer: "You don't have a status yet. Press Check my status on your dashboard and I can explain it.", links: [LINKS.dashboard] };
   const intro = pick(rng, [
     `Your status is ${statusName(s.label)}.`,
     `Right now your status is ${statusName(s.label)}.`,
@@ -284,6 +297,7 @@ function whyRisk(ctx, r, rng) {
 
 function standing(ctx, r, rng) {
   const st = ctx.standing;
+  if (st.has_record === false && !ctx.status) return noRecordReply();
   const parts = st.term_marks_imported && !st.projected_is_estimate ? [] : [
     pick(rng, [
       `Your official CGPA is ${gpa(st.official_cgpa)} - that's from your record up to last term.`,

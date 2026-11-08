@@ -22,6 +22,8 @@ const HERO_TONE = {
 function StatusHero({ data, refreshing, onRefresh, onAsk }) {
   const p = data.latestPrediction;
   const meta = riskMeta(p?.final_label);
+  // no academic record yet: a check would fail (nothing to predict from), so explain instead of offering it
+  const noRecord = !p && data.officialCgpa?.value == null;
   return (
     <section aria-labelledby="status-heading" className={`rounded-card border border-line border-l-4 shadow-card ${HERO_TONE[meta.tone]} px-5 py-5 sm:px-6`}>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -31,15 +33,17 @@ function StatusHero({ data, refreshing, onRefresh, onAsk }) {
           </p>
           {p ? <RiskChip label={p.final_label} supportive size="lg" /> : <p className="font-display text-xl">No status yet</p>}
         </div>
-        <Button
-          variant={p ? "secondary" : "primary"}
-          onClick={onRefresh}
-          loading={refreshing}
-          icon={<Icons.Refresh size={16} />}
-          className="self-start"
-        >
-          {refreshing ? "Checking..." : p ? "Refresh" : "Check my status"}
-        </Button>
+        {!noRecord && (
+          <Button
+            variant={p ? "secondary" : "primary"}
+            onClick={onRefresh}
+            loading={refreshing}
+            icon={<Icons.Refresh size={16} />}
+            className="self-start"
+          >
+            {refreshing ? "Checking..." : p ? "Refresh" : "Check my status"}
+          </Button>
+        )}
       </div>
 
       {p ? (
@@ -64,7 +68,11 @@ function StatusHero({ data, refreshing, onRefresh, onAsk }) {
           </div>
         </div>
       ) : (
-        <p className="mt-3 text-sm text-muted">Run a check to see how this term is going, based on your latest marks and attendance.</p>
+        <p className="mt-3 text-sm text-muted">
+          {noRecord
+            ? "Your status appears once your academic record is in SmartEdu; after that your teachers' marks this term count too."
+            : "Run a check to see how this term is going, based on your latest marks and attendance."}
+        </p>
       )}
 
       {p && (
@@ -186,7 +194,12 @@ export default function StudentDashboard() {
         )}
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <StatCard label={data.officialCgpa.label} value={gpa(data.officialCgpa.value)} sublabel="Last completed term" info={data.officialCgpa.note} />
+          <StatCard
+            label={data.officialCgpa.label}
+            value={gpa(data.officialCgpa.value)}
+            sublabel={data.officialCgpa.value == null ? "No record yet" : "Last completed term"}
+            info={data.officialCgpa.note}
+          />
           <StatCard
             label="Projected CGPA"
             value={gpa(projected?.value)}

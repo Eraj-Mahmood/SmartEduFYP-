@@ -36,6 +36,7 @@ async function buildChatContext(studentId, db = pool) {
     },
     standing: {
       official_cgpa: o.officialCgpa.value,
+      has_record: o.officialCgpa.value != null, // false: no academic record in SmartEdu yet, so no status can be worked out
       projected_cgpa: o.projectedCgpa ? o.projectedCgpa.value : null,
       projected_is_estimate: !!o.projectedCgpa && o.projectedCgpa.source === "projected",
       provisional_sgpa: o.provisionalSgpa ? o.provisionalSgpa.value : null,

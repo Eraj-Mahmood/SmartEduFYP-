@@ -308,3 +308,29 @@ describe("bug 10: one attendance submission can't list a student twice", () => {
     expect((await pool.query("SELECT COUNT(*)::int AS n FROM attendance WHERE enrollment_id = $1 AND class_date = $2", [enrollmentId, date])).rows[0].n).toBe(0);
   });
 });
+
+// ------------------------------------------------------------------------------- bug 11
+describe("bug 11: a new student with no performance history", () => {
+  let sid;
+  beforeAll(async () => {
+    const res = await request(app).post("/api/admin/users/student").set(as(admin)).send({ email: `${TAG.toLowerCase()}.new@smartedu.test`, full_name: "New Student", roll_no: `${TAG}-N1`, department_id: 1 });
+    sid = res.body.student.student_id;
+    made.users.push(res.body.student.user_id);
+  });
+
+  test("the dashboard has no official CGPA (null, not 0.00)", async () => {
+    const o = await getStudentOverview(sid);
+    expect(o.officialCgpa.value).toBeNull();
+    expect(o.officialCgpa.note).toMatch(/no academic record/i);
+  });
+
+  test("the chatbot does not send them to Refresh", async () => {
+    const ctx = await buildChatContext(sid);
+    for (const q of ["Why am I at risk?", "What is my CGPA?"]) {
+      const r = chatbot.respond(q, ctx, { catalog: [] });
+      expect(r.answer).not.toMatch(/Refresh|Check my status/);
+      expect(r.answer).toMatch(/record/);
+      expect(r.answer).not.toMatch(/0\.00/);
+    }
+  });
+});

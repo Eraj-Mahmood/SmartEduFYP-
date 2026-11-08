@@ -59,12 +59,16 @@ async function getStudentOverview(studentId, db = pool) {
 
   return {
     profile: student.rows[0],
-    officialCgpa: {
-      value: round2(p.cgpa != null ? p.cgpa : student.rows[0].cgpa),
-      label: "Official CGPA",
-      source: "imported",
-      note: "From your academic record (last completed term).",
-    },
+    // No student_semester_performance row (e.g. an account the admin just created): there is no record
+    // yet, so no CGPA - not students.cgpa's default 0.00
+    officialCgpa: perf.rows.length
+      ? {
+          value: round2(p.cgpa != null ? p.cgpa : student.rows[0].cgpa),
+          label: "Official CGPA",
+          source: "imported",
+          note: "From your academic record (last completed term).",
+        }
+      : { value: null, label: "Official CGPA", source: null, note: "There is no academic record for you in SmartEdu yet." },
     projectedCgpa: pred && {
       value: round2(pred.projected_cgpa),
       label: "Projected CGPA",
