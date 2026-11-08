@@ -83,8 +83,12 @@ describe("courses, classes and enrollments", () => {
     expect((await pool.query("SELECT status FROM enrollments WHERE enrollment_id = $1", [enrollmentId])).rows[0].status).toBe("dropped");
     expect((await request(app).put("/api/admin/enrollments/99999999/drop").set(as(admin))).status).toBe(404);
 
+    // a class with any enrollment (here a dropped one) is never deleted: its marks/attendance would go with it
+    const refused = await request(app).delete(`/api/admin/faculty-courses/${classId}`).set(as(admin));
+    expect(refused.status).toBe(409);
+    await pool.query("DELETE FROM enrollments WHERE enrollment_id = $1", [enrollmentId]);
     const un = await request(app).delete(`/api/admin/faculty-courses/${classId}`).set(as(admin));
-    expect([200, 204]).toContain(un.status);
+    expect(un.status).toBe(200);
   });
 });
 

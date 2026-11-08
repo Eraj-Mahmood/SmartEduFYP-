@@ -580,14 +580,46 @@ async function assignFacultyToCourse(req, res) {
   }
 }
 
-/** DELETE /api/admin/faculty-courses/:id - unassign faculty from a class */
+/**
+ * DELETE /api/admin/faculty-courses/:id - delete (unassign) a class section.
+ * Only an EMPTY class can be deleted: deleting a class cascades through its enrollments to their
+ * marks and attendance, so a class with any enrollment (enrolled or dropped) -> 409. Unknown -> 404.
+ * The class row is locked first, so an enrollment can't be added between the check and the delete.
+ */
 async function unassignFacultyFromCourse(req, res) {
+  const id = Number(req.params.id);
+  const client = await pool.connect();
   try {
-    await pool.query("DELETE FROM faculty_courses WHERE faculty_course_id = $1", [req.params.id]);
-    await logAction(req.user.userId, "UNASSIGN_FACULTY", "faculty_courses", req.params.id, {});
-    res.json({ message: "Unassigned" });
+    await client.query("BEGIN");
+    const cls = await client.query(
+      `SELECT fc.faculty_course_id, fc.section, c.course_code FROM faculty_courses fc
+       JOIN courses c ON c.course_id = fc.course_id WHERE fc.faculty_course_id = $1 FOR UPDATE OF fc`,
+      [id]
+    );
+    if (!cls.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Class not found" });
+    }
+    const { course_code, section } = cls.rows[0];
+    const { rows: [n] } = await client.query("SELECT COUNT(*)::int AS total FROM enrollments WHERE faculty_course_id = $1", [id]);
+    if (n.total > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        error:
+          `${course_code} section ${section} can't be deleted: it has ${n.total} student${n.total === 1 ? "" : "s"} (enrolled or dropped), ` +
+          "and deleting it would erase their marks and attendance. Only an empty class can be deleted.",
+      });
+    }
+    await client.query("DELETE FROM faculty_courses WHERE faculty_course_id = $1", [id]);
+    await client.query("COMMIT");
+    await logAction(req.user.userId, "UNASSIGN_FACULTY", "faculty_courses", id, { course_code, section });
+    res.json({ message: "Class deleted" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await client.query("ROLLBACK").catch(() => {});
+    console.error(err);
+    res.status(500).json({ error: "Could not delete the class" });
+  } finally {
+    client.release();
   }
 }
 
