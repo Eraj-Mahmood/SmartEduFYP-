@@ -189,12 +189,14 @@ async function upsertResult(req, res) {
 
     // Verify this enrollment belongs to one of this faculty's classes
     const own = await pool.query(
-      `SELECT e.enrollment_id, e.student_id FROM enrollments e
+      `SELECT e.enrollment_id, e.student_id, e.status FROM enrollments e
        JOIN faculty_courses fc ON fc.faculty_course_id = e.faculty_course_id
        WHERE e.enrollment_id = $1 AND fc.faculty_id = $2`,
       [enrollmentId, facultyId]
     );
     if (own.rows.length === 0) return res.status(403).json({ error: "Not your class/student" });
+    // like attendance: no marks (and no re-prediction) for a course the student has dropped
+    if (own.rows[0].status === "dropped") return res.status(400).json({ error: "This student has dropped this course" });
 
     // Marks left out of the request keep their saved value (0 for a new result).
     // The grade is always derived on the server; a client-sent grade is ignored.

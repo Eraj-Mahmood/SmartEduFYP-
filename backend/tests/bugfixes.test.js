@@ -129,3 +129,16 @@ describe("bug 3: manual attendance refuses future dates", () => {
     expect((await mark(todayLocal())).status).toBe(200);
   });
 });
+
+// ------------------------------------------------------------------------------- bug 4
+describe("bug 4: marks can't be edited for a dropped enrollment", () => {
+  test("PUT /faculty/results -> 400 and nothing saved", async () => {
+    await setStatus("dropped");
+    await pool.query("DELETE FROM course_results WHERE enrollment_id = $1", [enrollmentId]);
+    const res = await request(app).put(`/api/faculty/results/${enrollmentId}`).set(as(fac)).send({ assignment_avg: 90 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("This student has dropped this course");
+    expect((await pool.query("SELECT COUNT(*)::int AS n FROM course_results WHERE enrollment_id = $1", [enrollmentId])).rows[0].n).toBe(0);
+    await setStatus("enrolled");
+  });
+});
