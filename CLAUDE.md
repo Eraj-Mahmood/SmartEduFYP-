@@ -32,7 +32,8 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     `/api/auth/change-password`, `/api/auth/me` and `/api/auth/logout` gets **403
     `PASSWORD_RESET_REQUIRED`**. The same lookup reads `users.password_changed_at` (migration 010): a token
     issued before it (the token's `iatMs` claim, else `iat`) gets **401 `TOKEN_REVOKED`**; change-password
-    and `createAdmin.js` set it, and change-password returns a fresh token.
+    and `createAdmin.js` set it, and change-password returns a fresh token. Logout sets `users.sessions_revoked_at`
+    (migration 012), checked the same way ("You were signed out").
   - `middleware/audit.js` — `logAction()` writes to `audit_log`, never throws.
   - `middleware/validate.js` — turns express-validator errors into `400 {error, details}`.
   - `routes/*Routes.js` + `controllers/*Controller.js`, one pair per area:
@@ -44,7 +45,8 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       audit `LOGIN_WRONG_PORTAL` with `{portal, correctPortal}`; tests `portals.test.js`; returns token, role,
       `mustResetPassword`, profile), `POST /change-password`
       (current password + new one with 8+ chars, upper, lower and a digit, not the current one; returns a
-      fresh token; audit-logged), `GET /me` (with `mustResetPassword`), `POST /logout` (stateless no-op).
+      fresh token; audit-logged), `GET /me` (with `mustResetPassword`), `POST /logout` (sets `users.sessions_revoked_at`, migration 012: every
+      token issued before it gets 401 `TOKEN_REVOKED`, so logout signs the user out on all devices).
       Only accounts created in the admin UI start with `must_reset_pw = TRUE` (migration 005 cleared it
       for imported students, seeded faculty and the createAdmin admin).
     - `student` — read-only: dashboard, results, attendance, history, prediction,
@@ -428,6 +430,7 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     JSONB, status previewed|committed|failed, created_at, committed_at); `upload_id` on course_results,
     attendance and student_semester_performance; `students.data_source` (synthetic | live) and
     `students.actual_outcome` (safe | at_risk | dropout | unknown, from a live cohort file).
+    `012_sessions_revoked_at.sql` — `users.sessions_revoked_at` (set by logout; older tokens → 401 `TOKEN_REVOKED`).
   - **Data sources** (`data_source` columns): `synthetic` = imported from the 50k dataset or seeded;
     `live` = entered in the app (single result save, attendance marking), uploaded by faculty (then
     `upload_id` also points at the `uploads` row that wrote it) or created by an admin live-cohort import.

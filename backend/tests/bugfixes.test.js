@@ -163,3 +163,21 @@ describe("bug 5: a dropped student can be re-enrolled", () => {
     expect(again.body.error).toMatch(/already enrolled/);
   });
 });
+
+// ------------------------------------------------------------------------------- bug 6
+describe("bug 6: logout revokes the token", () => {
+  test("after logout the old token gets 401 TOKEN_REVOKED; a new sign-in works", async () => {
+    const u = await createTempUser("student");
+    made.users.push(u.userId);
+    const signIn = async () => (await request(app).post("/api/auth/login").send({ email: u.email, password: u.password, portal: "student" })).body.token;
+    const token = await signIn();
+    expect((await request(app).get("/api/auth/me").set(as(token))).status).toBe(200);
+    expect((await request(app).post("/api/auth/logout").set(as(token))).status).toBe(200);
+    const after = await request(app).get("/api/auth/me").set(as(token));
+    expect(after.status).toBe(401);
+    expect(after.body.code).toBe("TOKEN_REVOKED");
+    await new Promise((r) => setTimeout(r, 5));
+    const fresh = await signIn();
+    expect((await request(app).get("/api/auth/me").set(as(fresh))).status).toBe(200);
+  });
+});

@@ -11,7 +11,8 @@ const RESET_ALLOWED = new Set(["/api/auth/change-password", "/api/auth/me", "/ap
  * straight away, instead of letting them work until the token expires. The same lookup
  * enforces the forced password change: while must_reset_pw is TRUE every route except
  * RESET_ALLOWED answers 403 PASSWORD_RESET_REQUIRED, and a token issued before
- * users.password_changed_at answers 401 TOKEN_REVOKED.
+ * users.password_changed_at or users.sessions_revoked_at (the last logout, on any device) answers
+ * 401 TOKEN_REVOKED.
  */
 async function authenticate(req, res, next) {
   const header = req.headers.authorization || "";
@@ -30,7 +31,7 @@ async function authenticate(req, res, next) {
 
   try {
     const { rows } = await pool.query(
-      "SELECT is_active, must_reset_pw, password_changed_at FROM users WHERE user_id = $1",
+      "SELECT is_active, must_reset_pw, password_changed_at, sessions_revoked_at FROM users WHERE user_id = $1",
       [payload.userId]
     );
     if (rows.length === 0 || !rows[0].is_active) {
@@ -42,6 +43,12 @@ async function authenticate(req, res, next) {
     const issuedMs = Number.isFinite(payload.iatMs) ? payload.iatMs : payload.iat * 1000;
     if (changedAt && issuedMs < changedAt.getTime()) {
       return res.status(401).json({ error: "Your password was changed. Please sign in again.", code: "TOKEN_REVOKED" });
+    }
+    // ...and so is a token issued before the user's last logout (migration 012). Logout revokes every
+    // token of the user, so it signs them out on all devices.
+    const revokedAt = rows[0].sessions_revoked_at;
+    if (revokedAt && issuedMs < revokedAt.getTime()) {
+      return res.status(401).json({ error: "You were signed out. Please sign in again.", code: "TOKEN_REVOKED" });
     }
     req.user = { userId: payload.userId, role: payload.role, email: payload.email, mustResetPw: rows[0].must_reset_pw };
     if (req.user.mustResetPw && !RESET_ALLOWED.has(req.originalUrl.split("?")[0].replace(/\/+$/, ""))) {

@@ -47,6 +47,11 @@ describe("forced reset", () => {
     expect(me.status).toBe(200);
     expect(me.body.mustResetPassword).toBe(true);
     expect((await request(app).post("/api/auth/logout").set(as(token))).status).toBe(200);
+    // logout revokes the token (all devices); sign in again for the tests below
+    expect((await request(app).get("/api/auth/me").set(as(token))).body.code).toBe("TOKEN_REVOKED");
+    await new Promise((r) => setTimeout(r, 5));
+    token = (await signIn(u)).body.token;
+    expect((await request(app).get("/api/auth/me").set(as(token))).status).toBe(200);
   });
 
   test("change-password checks the current password, the rules and reuse", async () => {

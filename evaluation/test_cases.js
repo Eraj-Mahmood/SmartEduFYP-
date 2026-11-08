@@ -45,9 +45,9 @@ const ACCOUNTS = {
   admin: { email: "admin@smartedu.edu", password: "Admin@123", portal: "admin" },
   ayesha: { email: "ayesha.khan@smartedu.edu", password: "Faculty@123", portal: "faculty" },
   bilal: { email: "bilal.raza@smartedu.edu", password: "Faculty@123", portal: "faculty" },
-  zainab: { email: "student100040@smartedu.edu", password: "Student@123", portal: "student" }, // BU-100040 Safe
+  bu100040: { email: "student100040@smartedu.edu", password: "Student@123", portal: "student" }, // BU-100040 Safe
   bu112907: { email: "student112907@smartedu.edu", password: "Student@123", portal: "student" }, // BU-112907 At-Risk
-  sobia: { email: "student144766@smartedu.edu", password: "Student@123", portal: "student" }, // BU-144766 Dropout-Likely
+  bu144766: { email: "student144766@smartedu.edu", password: "Student@123", portal: "student" }, // BU-144766 Dropout-Likely
 };
 const tokens = {};
 async function tok(name) {
@@ -97,7 +97,7 @@ const CASES = [
     await p.context().close();
   }],
   ["TC-P-02", "P", "Each role signs in through its own portal", "Sign in as admin, ayesha.khan and student100040 on their own portal", "Each lands on its dashboard (/admin, /faculty, /student)", async () => {
-    for (const [name, home] of [["admin", "/admin"], ["ayesha", "/faculty"], ["zainab", "/student"]]) {
+    for (const [name, home] of [["admin", "/admin"], ["ayesha", "/faculty"], ["bu100040", "/student"]]) {
       const p = await page();
       await uiSignIn(p, ACCOUNTS[name].portal, ACCOUNTS[name].email, ACCOUNTS[name].password);
       await at(p, home);
@@ -107,7 +107,7 @@ const CASES = [
   }],
   ["TC-P-03", "P", "Wrong-portal sign-in", "On Faculty sign in, enter student100040@smartedu.edu / Student@123", '"This is a student account - please use the Student sign in" with a button to the Student portal; no session stored', async () => {
     const p = await page();
-    await uiSignIn(p, "faculty", ACCOUNTS.zainab.email, ACCOUNTS.zainab.password);
+    await uiSignIn(p, "faculty", ACCOUNTS.bu100040.email, ACCOUNTS.bu100040.password);
     const alert = p.locator("[role=alert]");
     await alert.waitFor();
     expect(/This is a student account - please use the Student sign in/.test(await alert.textContent()), "message missing");
@@ -120,7 +120,7 @@ const CASES = [
   ["TC-P-04", "P", "Wrong password reveals nothing", "POST /api/auth/login with a wrong password (and an unknown email) on each portal", "The same 401 'Invalid email or password' every time", async () => {
     const bodies = new Set();
     for (const portal of ["student", "faculty", "admin"]) {
-      for (const email of [ACCOUNTS.zainab.email, ACCOUNTS.ayesha.email, "nobody@smartedu.edu"]) {
+      for (const email of [ACCOUNTS.bu100040.email, ACCOUNTS.ayesha.email, "nobody@smartedu.edu"]) {
         const r = await call("POST", "/auth/login", { body: { email, password: "Wrong-pass1", portal } });
         expect(r.status === 401, `${portal}/${email}: ${r.status}`);
         bodies.add(JSON.stringify(r.json));
@@ -145,11 +145,12 @@ const CASES = [
     expect(pathOf(p) === "/login/faculty", pathOf(p));
     expect(p.errors.length === 0, p.errors.join(" | "));
     await p.context().close();
+    delete tokens.ayesha; // logout revokes every token of the user (all devices), so the cached API token is gone too
   }],
 
   // ---------- FR1 authentication and session security ----------
   ["TC-FR1-01", "FR1", "Role-based access on the server", "Call a student, a faculty and an admin endpoint with each other role's token, and with no token", "403 for another role, 401 with no token", async () => {
-    const routes = { zainab: "/student/dashboard", ayesha: "/faculty/classes", admin: "/admin/dashboard" };
+    const routes = { bu100040: "/student/dashboard", ayesha: "/faculty/classes", admin: "/admin/dashboard" };
     for (const [owner, route] of Object.entries(routes)) {
       expect((await call("GET", route)).status === 401, `${route} without token`);
       for (const other of Object.keys(routes).filter((o) => o !== owner)) {
@@ -304,7 +305,7 @@ const CASES = [
 
   // ---------- FR7 prediction ----------
   ["TC-FR7-01", "FR7", "A student's prediction comes from the Random Forest", "Student refreshes their prediction", "source 'model', model version of the .pkl, label one of Safe/At-Risk/Dropout-Likely", async () => {
-    const r = await call("POST", "/student/prediction/refresh", { token: await tok("zainab") });
+    const r = await call("POST", "/student/prediction/refresh", { token: await tok("bu100040") });
     expect(r.status === 200 && r.json.source === "model" && r.json.final_label === "Safe", JSON.stringify({ s: r.json.source, l: r.json.final_label }));
     expect(r.json.model_version && r.json.model_version !== "rule_fallback", "fallback model version");
   }],
@@ -329,7 +330,7 @@ const CASES = [
 
   // ---------- FR8 explanations and transparency ----------
   ["TC-FR8-01", "FR8", "Student sees plain-language reasons, never probabilities", "Student dashboard (BU-144766)", "1-3 reasons with the student's own numbers; no probabilities, SHAP values or raw features in the response", async () => {
-    const r = await call("GET", "/student/dashboard", { token: await tok("sobia") });
+    const r = await call("GET", "/student/dashboard", { token: await tok("bu144766") });
     const reasons = r.json.latestPrediction.reasons;
     expect(reasons.length >= 1 && reasons.length <= 3 && /1\.62/.test(reasons.join(" ")), JSON.stringify(reasons));
     expect(!/prob_safe|prob_dropout|"drivers"|"shap"/.test(r.text), "probabilities or drivers exposed");
@@ -353,7 +354,7 @@ const CASES = [
   // ---------- FR9 student dashboard ----------
   ["TC-FR9-01", "FR9", "Student dashboard renders", "Sign in as student144766 and open the dashboard", "Status hero (High risk), reasons, 'Random Forest model' badge, CGPA tiles, What to do next, charts; no page errors", async () => {
     const p = await page();
-    await uiSignIn(p, "student", ACCOUNTS.sobia.email, ACCOUNTS.sobia.password);
+    await uiSignIn(p, "student", ACCOUNTS.bu144766.email, ACCOUNTS.bu144766.password);
     await at(p, "/student");
     await p.waitForLoadState("networkidle");
     const text = await p.locator("main").textContent();
@@ -362,7 +363,7 @@ const CASES = [
     await p.context().close();
   }],
   ["TC-FR9-02", "FR9", "Results and attendance pages show the student's own courses", "Student -> Results, Attendance", "4 AI courses with marks and derived grades; attendance per course", async () => {
-    const t = await tok("sobia");
+    const t = await tok("bu144766");
     const r = await call("GET", "/student/results", { token: t });
     expect(r.json.length === 4 && r.json.every((c) => c.course_code.startsWith("AI") && c.grade), JSON.stringify(r.json.map((c) => c.course_code)));
     const a = await call("GET", "/student/attendance", { token: t });
@@ -372,7 +373,7 @@ const CASES = [
     const s = await sid("BU-100040");
     const n = (await one("SELECT COUNT(*)::int AS n FROM predictions WHERE student_id = $1", [s.student_id])).n;
     expect(n >= 2, `${n} predictions`);
-    const t = await call("GET", "/student/prediction/timeline", { token: await tok("zainab") });
+    const t = await call("GET", "/student/prediction/timeline", { token: await tok("bu100040") });
     expect(Array.isArray(t.json) && t.json.length >= 1, "no timeline");
   }],
 
@@ -398,7 +399,7 @@ const CASES = [
     expect(r.n === 0, `${r.n} courses without`);
   }],
   ["TC-FR11-02", "FR11", "A flagged student gets material for their weakest course", "Student BU-144766 -> What to do next", "Tutorial card for AI302 (average 53) with an external link", async () => {
-    const d = (await call("GET", "/student/dashboard", { token: await tok("sobia") })).json;
+    const d = (await call("GET", "/student/dashboard", { token: await tok("bu144766") })).json;
     expect(d.recommendation && d.recommendation.course.course_code === "AI302" && /^https?:/.test(d.recommendation.tutorial.url), JSON.stringify(d.recommendation && d.recommendation.course));
   }],
   ["TC-FR11-03", "FR11", "Admin adds and deactivates a tutorial", "Tutorials -> Add (course AI302) -> Deactivate", "201 then the tutorial is inactive; both in the audit log", async () => {
@@ -417,7 +418,7 @@ const CASES = [
     const f = await one("SELECT faculty_id FROM faculty WHERE full_name = 'Dr. Ayesha Khan'");
     const r = await call("POST", "/admin/counselors", { token: await tok("admin"), body: { studentId: s.student_id, facultyId: f.faculty_id } });
     expect(r.status === 201, `assign ${r.status}`);
-    const d = (await call("GET", "/student/dashboard", { token: await tok("sobia") })).json;
+    const d = (await call("GET", "/student/dashboard", { token: await tok("bu144766") })).json;
     expect(d.counselor && d.counselor.name === "Dr. Ayesha Khan", "no counselor on dashboard");
     const n = (await call("GET", "/notifications/mine", { token: await tok("ayesha") })).json;
     expect(n.notifications.some((x) => /counselor/i.test(`${x.subject} ${x.message}`)), "counselor not notified");
@@ -501,20 +502,20 @@ const CASES = [
 
   // ---------- FR15 chat assistant ----------
   ["TC-FR15-01", "FR15", "Why is my status this?", "Student BU-144766 -> Ask SmartEdu -> 'Why is my status this?'", "Label in supportive wording, the reasons with real numbers, a 'this is a warning, not a final result' line (wording varies); from the templates (no LLM needed)", async () => {
-    const r = (await call("POST", "/student/chat", { token: await tok("sobia"), body: { message: "Why is my status this?" } })).json;
+    const r = (await call("POST", "/student/chat", { token: await tok("bu144766"), body: { message: "Why is my status this?" } })).json;
     expect(r.intent === "why_risk" && r.source === "template" && /1\.62/.test(r.answer) && /warning/i.test(r.answer), r.answer);
   }],
   ["TC-FR15-02", "FR15", "Roman Urdu question", "'meri attendance kaisi hai?'", "Attendance answer with the student's real figures (62.5%, 20 of 32 after a reset), per course, sessions needed to reach 75%", async () => {
-    const d = (await call("GET", "/student/dashboard", { token: await tok("sobia") })).json.liveAttendance;
-    const r = (await call("POST", "/student/chat", { token: await tok("sobia"), body: { message: "meri attendance kaisi hai?" } })).json;
+    const d = (await call("GET", "/student/dashboard", { token: await tok("bu144766") })).json.liveAttendance;
+    const r = (await call("POST", "/student/chat", { token: await tok("bu144766"), body: { message: "meri attendance kaisi hai?" } })).json;
     expect(r.intent === "attendance" && r.answer.includes(`${d.present} of ${d.sessions}`) && /reach 75%/.test(r.answer), r.answer);
   }],
   ["TC-FR15-03", "FR15", "Questions about another student are refused", "'What is BU-122785's CGPA?'", "Fixed refusal; no numbers about that student; never confirms they exist", async () => {
-    const r = (await call("POST", "/student/chat", { token: await tok("sobia"), body: { message: "What is BU-122785's CGPA?" } })).json;
+    const r = (await call("POST", "/student/chat", { token: await tok("bu144766"), body: { message: "What is BU-122785's CGPA?" } })).json;
     expect(r.intent === "other_student" && !/1\.97/.test(r.answer) && !/BU-122785/.test(r.answer), r.answer);
   }],
   ["TC-FR15-04", "FR15", "Wellbeing message gets support contacts", "'I'm so stressed about my exams'", "Supportive reply with the support office contacts", async () => {
-    const r = (await call("POST", "/student/chat", { token: await tok("sobia"), body: { message: "I'm so stressed about my exams" } })).json;
+    const r = (await call("POST", "/student/chat", { token: await tok("bu144766"), body: { message: "I'm so stressed about my exams" } })).json;
     expect(r.intent === "wellbeing" && /@|\d{3}/.test(r.answer), r.answer);
   }],
   ["TC-FR15-05", "FR15", "Live-cohort student's marks (imported)", "Reset SYN-101155's password, sign in, ask 'What are my marks?'", "Their CS301 imported average (89) and that the marks come from the imported record - not 'no marks yet'", async () => {

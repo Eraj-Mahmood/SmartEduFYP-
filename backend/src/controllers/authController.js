@@ -149,10 +149,21 @@ async function me(req, res) {
   return res.json({ userId: req.user.userId, role: req.user.role, email: req.user.email, mustResetPassword: !!req.user.mustResetPw });
 }
 
-/** POST /api/auth/logout - tokens are stateless; this exists so the client can always call it
- *  (it stays allowed while a password change is pending). */
+/**
+ * POST /api/auth/logout - revokes the user's tokens: sets users.sessions_revoked_at (migration 012) and
+ * authenticate() rejects every token issued before it with 401 TOKEN_REVOKED. Tokens are not stored
+ * per device, so this signs the user out on ALL devices, not just this one.
+ * Node's clock (not the DB's), like changePassword, so a token signed after this instant is never caught.
+ * Stays allowed while a password change is pending.
+ */
 async function logout(req, res) {
-  return res.json({ message: "Logged out" });
+  try {
+    await pool.query("UPDATE users SET sessions_revoked_at = $2 WHERE user_id = $1", [req.user.userId, new Date()]);
+    return res.json({ message: "Logged out" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Server error signing out" });
+  }
 }
 
 module.exports = { login, changePassword, me, logout, passwordProblems };

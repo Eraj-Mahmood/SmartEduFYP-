@@ -42,7 +42,8 @@ export function AuthProvider({ children }) {
 
   function logout() {
     const token = localStorage.getItem("smartedu_token");
-    // stateless on the server; best effort (the header is set here because the token is removed next)
+    // the server revokes this user's tokens (on every device; 401 TOKEN_REVOKED afterwards); best effort,
+    // and the header is set here because the token is removed next
     if (token) client.post("/auth/logout", null, { headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
     KEYS.forEach((k) => localStorage.removeItem(k));
     setRole(null);
