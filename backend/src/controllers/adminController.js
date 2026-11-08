@@ -654,18 +654,24 @@ async function enrollStudent(req, res) {
   }
 }
 
-/** PUT /api/admin/enrollments/:id/drop - course dropping */
+/** PUT /api/admin/enrollments/:id/drop - course dropping. Unknown -> 404; already dropped -> 409 (no new audit entry). */
 async function dropEnrollment(req, res) {
   try {
+    const id = Number(req.params.id);
     const { rows } = await pool.query(
-      `UPDATE enrollments SET status = 'dropped' WHERE enrollment_id = $1 RETURNING *`,
-      [req.params.id]
+      `UPDATE enrollments SET status = 'dropped' WHERE enrollment_id = $1 AND status <> 'dropped' RETURNING *`,
+      [id]
     );
-    if (rows.length === 0) return res.status(404).json({ error: "Enrollment not found" });
-    await logAction(req.user.userId, "DROP_COURSE", "enrollments", req.params.id, {});
+    if (rows.length === 0) {
+      const exists = await pool.query("SELECT 1 FROM enrollments WHERE enrollment_id = $1", [id]);
+      if (!exists.rows.length) return res.status(404).json({ error: "Enrollment not found" });
+      return res.status(409).json({ error: "This enrollment is already dropped." });
+    }
+    await logAction(req.user.userId, "DROP_COURSE", "enrollments", id, {});
     res.json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Could not drop the enrollment" });
   }
 }
 

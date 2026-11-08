@@ -334,3 +334,18 @@ describe("bug 11: a new student with no performance history", () => {
     }
   });
 });
+
+// ------------------------------------------------------------------------------- bug 12
+describe("bug 12: dropping an already-dropped enrollment", () => {
+  test("409 the second time with one audit entry; unknown id -> 404", async () => {
+    await setStatus("enrolled");
+    const first = await drop(enrollmentId);
+    expect(first.status).toBe(200);
+    const again = await drop(enrollmentId);
+    expect(again.status).toBe(409);
+    expect(again.body.error).toMatch(/already dropped/i);
+    expect(await auditCount("DROP_COURSE", enrollmentId)).toBe(1);
+    expect((await drop(99999999)).status).toBe(404);
+    await setStatus("enrolled");
+  });
+});
