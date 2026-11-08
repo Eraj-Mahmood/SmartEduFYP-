@@ -165,8 +165,8 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
         for flagged students), `POST /notifications/bulk {studentIds | filter, subject, message,
         includeTutorial}` (≤ 500 ids else 400; a filter sends to the 500 most severe and reports
         `matched`/`capped`), `POST /notifications/preview {studentId, ...}` (one filled-in copy, not sent).
-        Placeholders `{name}`, `{course}`, `{counselor}`; unknown ones are kept and returned in
-        `unknownPlaceholders`.
+        Placeholders `{name}`, `{course}`, `{counselor}`; send and bulk send refuse unknown ones (400 with
+        `unknownPlaceholders`); preview lists them and the compose modal disables Send until they are fixed.
       - Governance (`controllers/governanceController.js`): `PUT /users/:userId/deactivate` and
         `/reactivate` (404 unknown; an admin can't deactivate themselves), `PUT /users/:userId/reset-password`
         (Phase 6, approved exception: a 12-character crypto-random temporary password from

@@ -34,9 +34,10 @@ test("a bulk send to 3 demo students gives each their own name and tutorial", as
   const res = await request(app)
     .post("/api/admin/notifications/bulk")
     .set(as(admin))
-    .send({ studentIds: ids, subject: SUBJECT, message: "Dear {name}, please spend extra time on {course}. Reply by {deadline}." });
+    .send({ studentIds: ids, subject: SUBJECT, message: "Dear {name}, please spend extra time on {course}. Reply this week." });
   expect(res.status).toBe(201);
-  expect(res.body).toMatchObject({ sent: 3, matched: 3, capped: false, unknownPlaceholders: ["{deadline}"] });
+  // an unknown placeholder such as {deadline} is refused before sending (tests/bugfixes.test.js, bug 14)
+  expect(res.body).toMatchObject({ sent: 3, matched: 3, capped: false, unknownPlaceholders: [] });
 
   for (const [i, roll] of DEMO.entries()) {
     const { rows } = await pool.query(
@@ -50,7 +51,7 @@ test("a bulk send to 3 demo students gives each their own name and tutorial", as
     const rec = await recommendFor(ids[i]);
     expect(n.subject).toBe(`Jest check-in for ${n.full_name}`);
     expect(n.message).toContain(`Dear ${n.full_name}, please spend extra time on ${rec.course.course_code} (${rec.course.title}).`);
-    expect(n.message).toContain("{deadline}");
+    expect(n.message).toContain("Reply this week.");
     expect(n.message).toContain(`"${rec.tutorial.title}" - ${rec.tutorial.url}`);
     expect(n.related_tutorial_id).toBe(rec.tutorial.tutorial_id);
     expect(n).toMatchObject({ kind: "intervention", link: "/student#what-next" });

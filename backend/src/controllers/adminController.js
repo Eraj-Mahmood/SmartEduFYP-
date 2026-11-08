@@ -705,9 +705,20 @@ async function classRecords(req, res) {
 
 // ---------------- INTERVENTION NOTIFICATIONS ----------------
 
+/** Sends are refused while the text has placeholders we can't fill ({foo} would reach the student
+ *  literally). -> a 400 body, or null when every placeholder is known. Preview still just lists them. */
+function unknownPlaceholderError(subject, message) {
+  const unknown = interventions.unknownPlaceholders(subject, message);
+  if (!unknown.length) return null;
+  return {
+    error: `Unknown placeholder${unknown.length === 1 ? "" : "s"} ${unknown.join(", ")}: use {name}, {course} or {counselor}, or remove the braces.`,
+    unknownPlaceholders: unknown,
+  };
+}
+
 /**
  * POST /api/admin/notifications {recipient_user_id, subject, message, includeTutorial?}
- * Interventions go to STUDENTS only: {name}/{course}/{counselor} are filled in and, with
+ * Unknown placeholders ({foo}) -> 400 listing them. Interventions go to STUDENTS only: {name}/{course}/{counselor} are filled in and, with
  * includeTutorial (default: true when the student is At-Risk or Dropout-Likely), one line with their
  * recommended tutorial is added. Any other account -> 400; unknown user -> 404. (Counselor-assignment
  * notices to faculty are sent by services/counselors.js, not here.) Returns the row plus unknownPlaceholders.
@@ -715,6 +726,8 @@ async function classRecords(req, res) {
 async function sendNotification(req, res) {
   try {
     const { recipient_user_id, subject, message, includeTutorial } = req.body;
+    const bad = unknownPlaceholderError(subject, message);
+    if (bad) return res.status(400).json(bad);
     const { rows: [user] } = await pool.query(
       "SELECT u.role, s.student_id FROM users u LEFT JOIN students s ON s.user_id = u.user_id WHERE u.user_id = $1",
       [recipient_user_id]
@@ -744,6 +757,8 @@ async function sendNotification(req, res) {
 async function bulkNotify(req, res) {
   try {
     const { studentIds, filter, subject, message, includeTutorial } = req.body;
+    const bad = unknownPlaceholderError(subject, message);
+    if (bad) return res.status(400).json(bad);
     let ids;
     let matched;
     if (Array.isArray(studentIds)) {

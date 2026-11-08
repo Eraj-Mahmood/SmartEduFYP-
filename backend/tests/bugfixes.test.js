@@ -382,3 +382,27 @@ describe("bug 13: a run that fell back to the rules says so", () => {
     expect(run.fallback).toBe(1);
   });
 });
+
+// ------------------------------------------------------------------------------- bug 14
+describe("bug 14: unknown placeholders are refused when sending", () => {
+  const body = { subject: "Jest {name}", message: "Reply by {foo} and {Bar}" };
+  test("single send -> 400 listing them", async () => {
+    const res = await request(app).post("/api/admin/notifications").set(as(admin)).send({ recipient_user_id: students[0].user_id, ...body });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/\{foo\}/);
+    expect(res.body.unknownPlaceholders).toEqual(["{foo}", "{Bar}"]);
+  });
+
+  test("bulk send -> 400; nothing stored", async () => {
+    const res = await request(app).post("/api/admin/notifications/bulk").set(as(admin)).send({ studentIds: [students[0].student_id], ...body });
+    expect(res.status).toBe(400);
+    expect(res.body.unknownPlaceholders).toEqual(["{foo}", "{Bar}"]);
+    expect((await pool.query("SELECT COUNT(*)::int AS n FROM notifications WHERE sent_at >= $1 AND recipient_user_id = $2", [since, students[0].user_id])).rows[0].n).toBe(0);
+  });
+
+  test("preview still shows them", async () => {
+    const res = await request(app).post("/api/admin/notifications/preview").set(as(admin)).send({ studentId: students[0].student_id, ...body });
+    expect(res.status).toBe(200);
+    expect(res.body.unknownPlaceholders).toEqual(["{foo}", "{Bar}"]);
+  });
+});

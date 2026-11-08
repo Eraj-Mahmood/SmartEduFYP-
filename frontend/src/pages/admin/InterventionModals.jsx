@@ -199,21 +199,16 @@ export function ComposeModal({ targets, onClose, onSent }) {
   async function send() {
     setSending(true);
     try {
+      // the server refuses unknown placeholders (400, shown below), so a sent message never contains one
       let sent;
-      let unknown;
       if (targets.length === 1) {
-        const { data } = await client.post("/admin/notifications", { recipient_user_id: first.user_id, ...form });
+        await client.post("/admin/notifications", { recipient_user_id: first.user_id, ...form });
         sent = 1;
-        unknown = data.unknownPlaceholders;
       } else {
         const { data } = await client.post("/admin/notifications/bulk", { studentIds: targets.map((t) => t.student_id), ...form });
         sent = data.sent;
-        unknown = data.unknownPlaceholders;
       }
-      toast(
-        `${sent === 1 ? `Sent to ${first.full_name}` : `Sent to ${sent} students`}${unknown?.length ? `. Left as typed: ${unknown.join(", ")}` : ""}`,
-        { type: unknown?.length ? "warning" : "success", title: "Intervention sent" }
-      );
+      toast(sent === 1 ? `Sent to ${first.full_name}` : `Sent to ${sent} students`, { type: "success", title: "Intervention sent" });
       onSent(targets);
     } catch (e) {
       toast(e.response?.data?.error || "Could not send the intervention", { type: "error" });
@@ -222,7 +217,8 @@ export function ComposeModal({ targets, onClose, onSent }) {
     }
   }
 
-  const ready = form.subject.trim() && form.message.trim();
+  const unknownTokens = preview.data?.unknownPlaceholders || [];
+  const ready = form.subject.trim() && form.message.trim() && unknownTokens.length === 0;
   return (
     <Modal
       open={open}
@@ -302,9 +298,9 @@ export function ComposeModal({ targets, onClose, onSent }) {
                 <p className="text-sm text-muted">Write a subject and message to see a preview.</p>
               )}
             </div>
-            {preview.data?.unknownPlaceholders?.length > 0 && (
-              <p className="mt-2 text-xs text-risk-700">
-                Not a placeholder, will be sent as typed: {preview.data.unknownPlaceholders.join(", ")}
+            {unknownTokens.length > 0 && (
+              <p className="mt-2 text-xs text-risk-700" role="status">
+                Not a placeholder: {unknownTokens.join(", ")}. Use {"{name}"}, {"{course}"} or {"{counselor}"}, or remove the braces, before sending.
               </p>
             )}
           </div>
