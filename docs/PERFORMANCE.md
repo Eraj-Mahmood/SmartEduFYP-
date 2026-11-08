@@ -5,21 +5,21 @@ services over HTTP on one machine (backend :5000, ML service :8001, PostgreSQL),
 Each row: 10 timed runs after one untimed warm-up (the batch run: 10 runs, no warm-up). Times are
 end-to-end request times seen by the client (localhost, so no network latency).
 
-Machine: Intel(R) Core(TM) i5-8365U CPU @ 1.60GHz (8 logical cores), 16 GB RAM, Windows_NT 10.0.22621; Node v24.18.0; PostgreSQL 18.4. Data: 50030 students,
-50030 stored predictions. Chat Layer 2 (LLM): off.
+Machine: Intel(R) Core(TM) i5-8350U CPU @ 1.70GHz (8 logical cores), 16 GB RAM, Windows_NT 10.0.26200; Node v24.18.0; PostgreSQL 17.10. Data: 50030 students,
+50030 stored predictions. Chat Layer 2 (LLM): on (gemini).
 
 | Operation | Runs | Median | p90 | Min | Max |
 |---|---|---|---|---|---|
-| Login (student portal) | 10 | 303 ms | 354 ms | 252 ms | 371 ms |
-| Student dashboard (GET /student/dashboard) | 10 | 15 ms | 45 ms | 6 ms | 52 ms |
-| Admin dashboard (GET /admin/dashboard) | 10 | 152 ms | 201 ms | 114 ms | 204 ms |
-| At-risk list, page 1 (25 rows) | 10 | 551 ms | 623 ms | 427 ms | 813 ms |
-| At-risk list, filtered (AI, Dropout-Likely, search) | 10 | 207 ms | 296 ms | 188 ms | 321 ms |
-| Single-student refresh (POST /prediction/refresh) | 10 | 80 ms | 103 ms | 76 ms | 116 ms |
-| ML service alone: one /predict (with SHAP) | 10 | 58 ms | 75 ms | 46 ms | 88 ms |
-| Chat answer (POST /student/chat, Layer 1) | 10 | 27 ms | 35 ms | 15 ms | 63 ms |
-| Full batch prediction run (50030 students), server time | 10 | 92.82 s | 119.05 s | 91.45 s | 120.81 s |
-| Full batch prediction run, wall time incl. polling | 10 | 93.36 s | 120.16 s | 92.30 s | 121.13 s |
+| Login (student portal) | 10 | 269 ms | 443 ms | 254 ms | 445 ms |
+| Student dashboard (GET /student/dashboard) | 10 | 17 ms | 23 ms | 9 ms | 28 ms |
+| Admin dashboard (GET /admin/dashboard) | 10 | 135 ms | 143 ms | 111 ms | 147 ms |
+| At-risk list, page 1 (25 rows) | 10 | 277 ms | 353 ms | 246 ms | 366 ms |
+| At-risk list, filtered (AI, Dropout-Likely, search) | 10 | 199 ms | 203 ms | 174 ms | 218 ms |
+| Single-student refresh (POST /prediction/refresh) | 10 | 61 ms | 72 ms | 49 ms | 77 ms |
+| ML service alone: one /predict (with SHAP) | 10 | 41 ms | 49 ms | 34 ms | 65 ms |
+| Chat answer (POST /student/chat, Layer 1) | 10 | 16 ms | 21 ms | 9 ms | 24 ms |
+| Full batch prediction run (50030 students), server time | 10 | 101.53 s | 106.82 s | 100.70 s | 122.62 s |
+| Full batch prediction run, wall time incl. polling | 10 | 102.23 s | 107.50 s | 101.13 s | 122.82 s |
 
 Every batch run scored all 50030 students through the Random Forest service (fallback rows per run:
 0, 0, 0, 0, 0, 0, 0, 0, 0, 0). Each timing's writes were undone afterwards (the predictions table is back to 50030 rows).
@@ -28,9 +28,9 @@ Every batch run scored all 50030 students through the Random Forest service (fal
 
 | Target | Measured | Verdict |
 |---|---|---|
-| NFR1.1: 100,000+ records in under 5 minutes | 92.82 s median for 50030 students, about 185.53 s per 100,000 extrapolated linearly | met (extrapolated) |
-| NFR1.2: one prediction under 100 ms | ML service alone 58 ms median (p90 75 ms); the full refresh request incl. feature building, policy and the database write 80 ms | met for the model call |
-| NFR1.3: dashboard under 3 seconds | student 15 ms, admin 152 ms (API time; the browser adds rendering) | met |
+| NFR1.1: 100,000+ records in under 5 minutes | 101.53 s median for 50030 students, about 202.94 s per 100,000 extrapolated linearly | met (extrapolated) |
+| NFR1.2: one prediction under 100 ms | ML service alone 41 ms median (p90 49 ms); the full refresh request incl. feature building, policy and the database write 61 ms | met for the model call |
+| NFR1.3: dashboard under 3 seconds | student 17 ms, admin 135 ms (API time; the browser adds rendering) | met |
 
 Notes
 

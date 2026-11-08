@@ -50,7 +50,7 @@ every step below worked as written; the automated run with the pauses for talkin
 | **5** | **8:55** | **Wrong-portal attempt** | | |
 | 5.1 | 8:55 | **Faculty** sign-in with `student144766@smartedu.edu` / `Student@123` | "Each account only works in its own portal." | **"This is a student account - please use the Student sign in"** with a button; no session |
 | 5.2 | 9:15 | Same form, wrong password `Wrong-pass1` | "A wrong password never reveals whether an account exists." | "Invalid email or password" |
-| 5.3 | 9:30 | Back to the chooser | Wrap up: "Real model, explained predictions, live updates, interventions and privacy - all tested: 505 API tests, 51 manual test cases, 50,000 students re-scored in about 1.5 minutes." | Portal chooser |
+| 5.3 | 9:30 | Back to the chooser | Wrap up: "Real model, explained predictions, live updates, interventions and privacy - all tested: 505 API tests, 51 manual test cases, 50,000 students re-scored in under 2 minutes." | Portal chooser |
 
 ## Reset between rehearsals
 

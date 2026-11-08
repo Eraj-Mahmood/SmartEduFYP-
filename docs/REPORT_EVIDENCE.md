@@ -1,8 +1,10 @@
 # Report evidence (copy from here)
 
-Every number on this page comes from a command run on 2026-11-08 (Phase 6, step 5) on the demo
-database built by `cd backend; npm run demo:reset` (50,000 synthetic students + 30 SYNTHETIC live-cohort
-students). The command is given with each block so anyone can re-run it.
+Every number on this page comes from a command run on 2026-11-08/09 on the demo database built by
+`cd backend; npm run demo:reset` (50,000 synthetic students + 30 SYNTHETIC live-cohort students): first in Phase 6,
+step 5, then re-run in full after the bug-fix pass (branch `bugfix/test-pass-2026-11`, ML service from
+`ml_service/.venv`, scikit-learn 1.9.0). Sections 1-4 were unchanged by the re-run; sections 5 and 6 were updated.
+The command is given with each block so anyone can re-run it.
 
 ## 1. The model (from the `.pkl` metadata)
 
@@ -66,14 +68,15 @@ policy -> dashboards), not real-world accuracy. Labels in the dataset are policy
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend API + unit (Jest + Supertest) | `cd backend; npm run test:coverage` | **453 / 453 passed** in 22 suites |
-| - of which role-based access matrix | `tests/rbac.test.js` | 234 (every route of every group: no token 401, wrong role 403, own role 2xx) |
-| Backend coverage (`backend/src`, CLI scripts excluded) | same | **lines 88.4%**, statements 84.9%, functions 82.5%, branches 67.9% |
+| Backend API + unit (Jest + Supertest) | `cd backend; npm run test:coverage` | **505 / 505 passed** in 23 suites |
+| - of which role-based access | `tests/rbac.test.js` | 238: 233 in the route matrix (every route of every group: no token 401, wrong role 403, own role 2xx) + 5 notification-ownership checks |
+| - of which bug-fix regressions | `tests/bugfixes.test.js` | 45 (one block per bug of the 2026-11 test pass, plus "a database error never reaches the client") |
+| Backend coverage (`backend/src`, CLI scripts excluded) | same | **lines 89.1%**, statements 85.8%, functions 83.0%, branches 71.1% |
 | ML service contract (pytest) | `cd ml_service; .venv\Scripts\python -m pytest tests` | **29 / 29 passed** |
 | Chat assistant evaluation | `cd backend; node ../evaluation/chat_eval.js` | **363 / 363** questions (52 phrasings x 6 demo students incl. Roman Urdu, a counselor pass, 27 live-student questions) |
 | Manual test cases (FR1-FR15 + portals) | `node ../evaluation/test_cases.js` -> `docs/TEST_CASES.md` | **51 / 51 passed**, executed through the API and a real browser |
 | Demo actions (perform + revert) | `node ../evaluation/demo_actions_check.js` | 29 / 29 |
-| Reproducible demo data | `npm run demo:reset` twice | identical per-table fingerprints (every reset in Phase 6) |
+| Reproducible demo data | `npm run demo:reset` twice | identical per-table fingerprints (every reset in Phase 6, and every reset of the bug-fix pass; class dates count back from the day of the reset, so compare resets made on the same day or pass `--as-of`) |
 
 Coverage note: the command-line scripts (`demo:reset`, seeders, migrate) are excluded from the percentage; they are
 verified by running them (the reset prints its own summary and fingerprint). The chatbot templates show 70% line
@@ -85,18 +88,19 @@ Command: `cd backend; node ../evaluation/perf_check.js` (10 runs each, one machi
 
 | Operation | Median | p90 |
 |---|---|---|
-| Login | 303 ms | 354 ms |
-| Student dashboard | 15 ms | 45 ms |
-| Admin dashboard | 152 ms | 201 ms |
-| At-risk list, page 1 | 551 ms | 623 ms |
-| At-risk list, filtered | 207 ms | 296 ms |
-| Single-student refresh | 80 ms | 103 ms |
-| One ML prediction (model + SHAP) | 58 ms | 75 ms |
-| Chat answer (Layer 1) | 27 ms | 35 ms |
-| Full batch prediction, 50,030 students | **92.8 s** | 119.1 s |
+| Login | 269 ms | 443 ms |
+| Student dashboard | 17 ms | 23 ms |
+| Admin dashboard | 135 ms | 143 ms |
+| At-risk list, page 1 | 277 ms | 353 ms |
+| At-risk list, filtered | 199 ms | 203 ms |
+| Single-student refresh | 61 ms | 72 ms |
+| One ML prediction (model + SHAP) | 41 ms | 49 ms |
+| Chat answer (Layer 1) | 16 ms | 21 ms |
+| Full batch prediction, 50,030 students | **101.5 s** | 106.8 s |
 
-Against the SRS: NFR1.1 (100k records < 5 min) met by extrapolation (~3.1 min per 100k); NFR1.2 (one prediction
-< 100 ms) met by the model call; NFR1.3 (dashboard < 3 s) met. Not measured: concurrent users (NFR4.2).
+All 10 batch runs scored every student through the Random Forest (0 fallback). Against the SRS: NFR1.1 (100k records
+< 5 min) met by extrapolation (~3.4 min per 100k); NFR1.2 (one prediction < 100 ms) met by the model call; NFR1.3
+(dashboard < 3 s) met. Not measured: concurrent users (NFR4.2).
 
 ## 7. ML audit statement
 
@@ -113,7 +117,9 @@ Checked again in Phase 6 (`grep -rn "INSERT INTO predictions\|target_label" back
 ## 8. Screenshots, by figure
 
 Produced by `cd frontend; npm run screenshots` into `docs/screenshots/` at 1280 px and 390 px (`<name>-1280.png`,
-`<name>-390.png`). They are regenerated after the Phase 6 changes in step 8 (portal screens, new demo names).
+`<name>-390.png`). They were regenerated in Phase 6, step 8 (portal screens), i.e. BEFORE the demo students were renamed
+in the bug-fix pass, so a student screenshot shows the student's old name (see docs/DEMO_ACCOUNTS.md); re-run
+`npm run screenshots` to refresh them.
 
 | Figure | Screen | File (`docs/screenshots/`) |
 |---|---|---|

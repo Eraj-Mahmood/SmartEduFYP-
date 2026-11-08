@@ -501,7 +501,7 @@ Tests and evaluations:
 
 ```powershell
 cd backend; npm test                              # Jest + Supertest against the local smartedu DB (ML not needed): 505 tests, 23 suites (incl. bugfixes.test.js: regression tests for the 2026-11 test pass)
-cd backend; npm run test:coverage                 # same + coverage of backend/src (CLI scripts excluded): 88.4% lines (2026-11-08)
+cd backend; npm run test:coverage                 # same + coverage of backend/src (CLI scripts excluded): 89.1% lines (2026-11-08, after the bug-fix pass)
                                                   # suites added in Phase 6: portals, passwordReset, rbac (every route x role),
                                                   # policy (escalate-only matrix, reasons), faculty (ownership), student (scoping),
                                                   # admin (provisioning, classes, flagged list, batch runs); helpers takeSnapshot/
