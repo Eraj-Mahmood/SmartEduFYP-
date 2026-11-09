@@ -173,7 +173,9 @@ describe("scheduling", () => {
       currentCounsellor: { faculty_id: ayeshaId, name: "Dr. Ayesha Khan" },
       newCounsellor: { faculty_id: zainId, name: "Mr. Zain Abbas" },
     });
-    expect(refused.body.error).toBe("This makes Mr. Zain Abbas the counsellor instead of Dr. Ayesha Khan.");
+    // Phase 7.1: the answer also says that B's upcoming session with Ayesha (10 days out, 11:30) will be cancelled
+    expect(refused.body.error).toMatch(/^This makes Mr\. Zain Abbas the counsellor instead of Dr\. Ayesha Khan\. (Her|His|Their) 1 upcoming session with Dr\. Ayesha Khan will be cancelled\.$/);
+    expect(refused.body.upcomingWithCurrent).toBe(1);
     // nothing changed
     const before = await pool.query("SELECT faculty_id FROM counselor_assignments WHERE student_id = $1 AND status = 'active'", [B.student_id]);
     expect(before.rows).toEqual([{ faculty_id: ayeshaId }]);
@@ -186,6 +188,10 @@ describe("scheduling", () => {
       { faculty_id: ayeshaId, status: "closed" },
       { faculty_id: zainId, status: "active" },
     ]);
+    // Phase 7.1 (Bug 3): the old counsellor's future session was cancelled with the reason
+    const old = await pool.query("SELECT status, cancelled_reason FROM counselling_sessions WHERE student_id = $1 AND faculty_id = $2", [B.student_id, ayeshaId]);
+    expect(old.rows).toEqual([{ status: "cancelled", cancelled_reason: "Counsellor changed to Mr. Zain Abbas" }]);
+    expect(ok.body.assignment.cancelled_sessions).toBe(1);
   });
 
   test("a failed booking leaves no reassignment behind (one transaction)", async () => {
@@ -408,7 +414,7 @@ describe("who sees what", () => {
     const n = Object.fromEntries(rows.map((r) => [r.action, r.n]));
     expect(n.SCHEDULE_SESSION).toBeGreaterThanOrEqual(8);
     expect(n.RESCHEDULE_SESSION).toBe(1);
-    expect(n.CANCEL_SESSION).toBe(2);
+    expect(n.CANCEL_SESSION).toBe(3); // 2 by hand + 1 automatic when B's counsellor changed (Phase 7.1)
     expect(n.MARK_ATTENDANCE).toBe(3);
     const mark = await pool.query(
       `SELECT details FROM audit_log WHERE action = 'MARK_ATTENDANCE' AND created_at >= $1

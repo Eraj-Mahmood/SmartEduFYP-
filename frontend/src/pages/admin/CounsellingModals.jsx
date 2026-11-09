@@ -257,11 +257,12 @@ export function ScheduleSessionModal({ open, prefill, session, onClose, onSaved 
       {confirm ? (
         <div className="rounded-lg border border-risk/40 bg-risk-50 px-4 py-3 text-sm text-ink space-y-2" role="alert">
           <p className="font-medium">
-            This makes {confirm.newCounsellor.name} the counsellor instead of {confirm.currentCounsellor.name}. Continue?
+            This makes {confirm.newCounsellor.name} the counsellor instead of {confirm.currentCounsellor.name}.
+            {confirm.cancelNote ? ` ${confirm.cancelNote}` : ""} Continue?
           </p>
           <p className="text-muted">
-            {confirm.currentCounsellor.name}'s assignment with {student?.full_name} is closed, and {confirm.newCounsellor.name} becomes their counsellor. Everyone involved is
-            notified.
+            {confirm.currentCounsellor.name}'s assignment with {student?.full_name} is closed, and {confirm.newCounsellor.name} becomes their counsellor. Upcoming sessions with{" "}
+            {confirm.currentCounsellor.name} are cancelled; past sessions still awaiting attendance stay with them. Everyone involved is notified.
           </p>
         </div>
       ) : (

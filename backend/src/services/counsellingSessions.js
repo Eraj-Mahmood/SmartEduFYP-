@@ -1,6 +1,6 @@
 const pool = require("../config/db");
 const { logAction } = require("../middleware/audit");
-const { assignCounselor, notify } = require("./counselors");
+const { assignCounselor, notify, upcomingSessions, cancelNote, auditCancelled } = require("./counselors");
 const { formatDateTime, formatRange } = require("./timeFormat");
 
 // Counselling sessions (Phase 7). The admin books a session between a student and their counsellor
@@ -154,8 +154,9 @@ async function inTransaction(fn) {
  * input: {studentId, facultyId?, scheduledAt, durationMin?, mode, location, agenda?, reason?, reassign?}
  * The counsellor defaults to the student's active one. A student without one gets this teacher as
  * counsellor (assignCounselor). A different teacher than the active counsellor -> 409
- * COUNSELLOR_CHANGE unless reassign is true, which makes them the counsellor (the old assignment is
- * closed). All in one transaction.
+ * COUNSELLOR_CHANGE (with upcomingWithCurrent / cancelNote: how many of the current counsellor's future
+ * sessions would be cancelled) unless reassign is true, which makes them the counsellor (the old
+ * assignment is closed and its future sessions are cancelled - Phase 7.1 Bug 3). All in one transaction.
  */
 async function scheduleSession(input, actorUserId) {
   const durationMin = input.durationMin || 30;
@@ -163,7 +164,8 @@ async function scheduleSession(input, actorUserId) {
   const result = await inTransaction(async (client) => {
     const student = await loadStudent(client, input.studentId);
     const cur = await client.query(
-      `SELECT ca.id, ca.faculty_id, f.full_name FROM counselor_assignments ca JOIN faculty f ON f.faculty_id = ca.faculty_id
+      `SELECT ca.id, ca.faculty_id, f.full_name, s.gender FROM counselor_assignments ca JOIN faculty f ON f.faculty_id = ca.faculty_id
+       JOIN students s ON s.student_id = ca.student_id
        WHERE ca.student_id = $1 AND ca.status = 'active'`,
       [student.student_id]
     );
@@ -173,23 +175,35 @@ async function scheduleSession(input, actorUserId) {
     const faculty = await loadFaculty(client, facultyId);
 
     if (current && current.faculty_id !== faculty.faculty_id && !input.reassign) {
-      throw httpError(409, `This makes ${faculty.full_name} the counsellor instead of ${current.full_name}.`, {
+      const upcoming = (await upcomingSessions(client, student.student_id, current.faculty_id)).length;
+      const note = cancelNote(upcoming, current.gender, current.full_name);
+      throw httpError(409, `This makes ${faculty.full_name} the counsellor instead of ${current.full_name}.${note ? ` ${note}` : ""}`, {
         code: "COUNSELLOR_CHANGE",
         currentCounsellor: { faculty_id: current.faculty_id, name: current.full_name },
         newCounsellor: { faculty_id: faculty.faculty_id, name: faculty.full_name },
+        upcomingWithCurrent: upcoming,
+        cancelNote: note,
       });
     }
 
     await lockPeople(client, faculty.faculty_id, student.student_id);
-    await checkOverlap(client, { facultyId: faculty.faculty_id, studentId: student.student_id, start, durationMin });
 
     let assignmentId = current && current.id;
     let assignment = null;
     if (!current || current.faculty_id !== faculty.faculty_id) {
+      // a reassign cancels the old counsellor's future sessions first, so they don't count as overlaps
       const a = await assignCounselor({ studentId: student.student_id, facultyId: faculty.faculty_id, adminUserId: actorUserId }, { client });
       assignmentId = a.assignment.id;
-      assignment = { id: assignmentId, created: true, closed: a.closed, previous_counsellor: current ? current.full_name : null };
+      assignment = {
+        id: assignmentId,
+        created: true,
+        closed: a.closed,
+        previous_counsellor: current ? current.full_name : null,
+        cancelled: a.cancelled,
+        cancelReason: a.cancelReason,
+      };
     }
+    await checkOverlap(client, { facultyId: faculty.faculty_id, studentId: student.student_id, start, durationMin });
 
     const { rows } = await client.query(
       `INSERT INTO counselling_sessions
@@ -221,8 +235,10 @@ async function scheduleSession(input, actorUserId) {
       faculty_id: session.faculty_id,
       faculty: session.counsellor_name,
       closed_assignment_id: result.assignment.closed,
+      cancelled_sessions: result.assignment.cancelled.length,
       via: "counselling_session",
     });
+    await auditCancelled(actorUserId, result.assignment.cancelled, result.assignment.cancelReason, "reassign");
   }
   await logAction(actorUserId, "SCHEDULE_SESSION", "counselling_sessions", session.session_id, {
     student_id: session.student_id,
@@ -236,7 +252,8 @@ async function scheduleSession(input, actorUserId) {
     assignment_id: session.assignment_id,
     reassigned_from: result.assignment && result.assignment.previous_counsellor,
   });
-  return { session, assignment: result.assignment };
+  const { cancelled = [], cancelReason, ...assignment } = result.assignment || {}; // eslint-disable-line no-unused-vars
+  return { session, assignment: result.assignment ? { ...assignment, cancelled_sessions: cancelled.length } : null };
 }
 
 /** Locks the session row; 404 when it doesn't exist. */

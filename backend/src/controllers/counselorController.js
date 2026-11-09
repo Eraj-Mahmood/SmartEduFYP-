@@ -14,7 +14,7 @@ const fail = (res, err) => sendError(res, err, "Could not complete the counselor
 async function assign(req, res) {
   try {
     const { studentId, facultyId } = req.body;
-    const { assignment, closed } = await svc.assignCounselor({ studentId, facultyId, adminUserId: req.user.userId });
+    const { assignment, closed, cancelled, cancelReason } = await svc.assignCounselor({ studentId, facultyId, adminUserId: req.user.userId });
     await logAction(req.user.userId, closed ? "REASSIGN_COUNSELOR" : "ASSIGN_COUNSELOR", "counselor_assignments", assignment.id, {
       student_id: studentId,
       roll_no: assignment.roll_no,
@@ -23,7 +23,8 @@ async function assign(req, res) {
       prediction_id: assignment.prediction_id,
       closed_assignment_id: closed,
     });
-    res.status(201).json({ ...assignment, closed_assignment_id: closed });
+    await svc.auditCancelled(req.user.userId, cancelled, cancelReason, "assign_counselor"); // Phase 7.1: the old counsellor's future sessions
+    res.status(201).json({ ...assignment, closed_assignment_id: closed, cancelled_sessions: cancelled.length });
   } catch (err) {
     fail(res, err);
   }
@@ -32,9 +33,27 @@ async function assign(req, res) {
 /** PUT /api/admin/counselors/:id/close */
 async function close(req, res) {
   try {
-    const a = await svc.closeAssignment(req.params.id);
-    await logAction(req.user.userId, "CLOSE_COUNSELOR", "counselor_assignments", a.id, { roll_no: a.roll_no, faculty: a.faculty_name, by: "admin" });
+    const a = await svc.closeAssignment(req.params.id, { actorUserId: req.user.userId, via: "admin" });
+    await logAction(req.user.userId, "CLOSE_COUNSELOR", "counselor_assignments", a.id, {
+      roll_no: a.roll_no,
+      faculty: a.faculty_name,
+      by: "admin",
+      cancelled_sessions: a.cancelled_sessions,
+    });
     res.json(a);
+  } catch (err) {
+    fail(res, err);
+  }
+}
+
+/** GET /api/admin/counselors/:id/upcoming-sessions -> {count, sessions} - the future sessions closing this
+ *  assignment (or replacing its counsellor) would cancel (Phase 7.1). 404 unknown. */
+async function upcomingSessions(req, res) {
+  try {
+    const { rows } = await pool.query("SELECT student_id, faculty_id, status FROM counselor_assignments WHERE id = $1", [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: "Assignment not found" });
+    const sessions = rows[0].status === "active" ? await svc.upcomingSessions(pool, rows[0].student_id, rows[0].faculty_id) : [];
+    res.json({ count: sessions.length, sessions });
   } catch (err) {
     fail(res, err);
   }
@@ -155,23 +174,30 @@ async function updateCounselee(req, res) {
       params.push(contacted);
       sets.push(`last_contacted_at = $${params.length}`);
     }
-    if (closeIt) sets.push("status = 'closed'", "closed_at = NOW()");
-    if (!sets.length) return res.status(400).json({ error: "Nothing to update" });
-    params.push(a.id);
-    await pool.query(`UPDATE counselor_assignments SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
+    if (!sets.length && !closeIt) return res.status(400).json({ error: "Nothing to update" });
+    if (sets.length) {
+      params.push(a.id);
+      await pool.query(`UPDATE counselor_assignments SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
+    }
+    // closing also cancels the future sessions with this counsellor (Phase 7.1, Bug 4)
+    const closedRow = closeIt ? await svc.closeAssignment(a.id, { actorUserId: req.user.userId, via: "faculty" }) : null;
 
     const fields = Object.keys(req.body).filter((k) => ["notes", "last_contacted_at", "close"].includes(k));
     await logAction(req.user.userId, closeIt ? "CLOSE_COUNSELOR" : "UPDATE_COUNSELEE", "counselor_assignments", a.id, {
       roll_no: a.roll_no,
       fields,
-      ...(closeIt ? { by: "faculty" } : {}),
+      ...(closeIt ? { by: "faculty", cancelled_sessions: closedRow.cancelled_sessions } : {}),
     });
     const { rows } = await pool.query("SELECT * FROM counselor_assignments WHERE id = $1", [a.id]);
     const updated = { ...a, ...rows[0] };
-    res.json(closeIt ? { id: a.id, status: "closed", closed_at: updated.closed_at } : await svc.counseleeSummary(updated));
+    res.json(
+      closeIt
+        ? { id: a.id, status: "closed", closed_at: updated.closed_at, cancelled_sessions: closedRow.cancelled_sessions }
+        : await svc.counseleeSummary(updated)
+    );
   } catch (err) {
     fail(res, err);
   }
 }
 
-module.exports = { assign, close, list, workload, myCounselees, oneCounselee, updateCounselee };
+module.exports = { assign, close, upcomingSessions, list, workload, myCounselees, oneCounselee, updateCounselee };

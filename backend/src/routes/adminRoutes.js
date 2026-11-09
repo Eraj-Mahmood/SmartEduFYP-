@@ -159,6 +159,7 @@ router.post(
   counselors.assign
 );
 router.put("/counselors/:id/close", [idParam()], validate, counselors.close);
+router.get("/counselors/:id/upcoming-sessions", [idParam()], validate, counselors.upcomingSessions);
 router.get("/counselors", counselors.list);
 router.get("/faculty/workload", counselors.workload);
 

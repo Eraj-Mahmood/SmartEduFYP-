@@ -100,8 +100,11 @@ function CounseleeDrawer({ counselee, onClose, onChange, onClosed }) {
   async function closeAssignment() {
     setBusy("close");
     try {
-      await client.put(`/faculty/counselees/${counselee.id}`, { close: true });
-      toast(`Closed your counselling assignment with ${counselee.full_name}`, { type: "info" });
+      const { data } = await client.put(`/faculty/counselees/${counselee.id}`, { close: true });
+      const n = data.cancelled_sessions || 0;
+      toast(`Closed your counselling assignment with ${counselee.full_name}${n ? ` and cancelled ${n} upcoming session${n === 1 ? "" : "s"}` : ""}`, {
+        type: "info",
+      });
       onClosed(counselee);
     } catch (e) {
       toast(e.response?.data?.error || "Could not close the assignment", { type: "error" });
@@ -121,7 +124,11 @@ function CounseleeDrawer({ counselee, onClose, onChange, onClosed }) {
         c &&
         (confirmClose ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm text-ink">Close this assignment? {c.full_name} will no longer see you as their counselor.</span>
+            <span className="text-sm text-ink">
+              Close this assignment? {c.full_name} will no longer see you as their counselor.
+              {c.upcoming_sessions > 0 &&
+                ` Your ${c.upcoming_sessions} upcoming session${c.upcoming_sessions === 1 ? "" : "s"} with them will be cancelled.`}
+            </span>
             <div className="flex gap-2">
               <Button size="sm" variant="secondary" onClick={() => setConfirmClose(false)}>
                 Keep

@@ -17,6 +17,12 @@ export function AssignCounselorModal({ student, onClose, onAssigned }) {
   const [closing, setClosing] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const current = student?.counselor;
+  // Phase 7.1: closing or replacing the assignment cancels the current counsellor's future sessions
+  const upcoming = useApi(open && current?.assignment_id ? `/admin/counselors/${current.assignment_id}/upcoming-sessions` : null);
+  const upcomingCount = upcoming.data?.count || 0;
+  const cancelText = upcomingCount
+    ? `${upcomingCount} upcoming session${upcomingCount === 1 ? "" : "s"} with ${current?.name} will be cancelled.`
+    : "";
 
   useEffect(() => {
     setChoice(null);
@@ -30,8 +36,11 @@ export function AssignCounselorModal({ student, onClose, onAssigned }) {
     }
     setClosing(true);
     try {
-      await client.put(`/admin/counselors/${current.assignment_id}/close`);
-      toast(`Closed ${current.name}'s assignment with ${student.full_name}`, { type: "info" });
+      const { data } = await client.put(`/admin/counselors/${current.assignment_id}/close`);
+      const n = data.cancelled_sessions || 0;
+      toast(`Closed ${current.name}'s assignment with ${student.full_name}${n ? ` and cancelled ${n} upcoming session${n === 1 ? "" : "s"}` : ""}`, {
+        type: "info",
+      });
       onAssigned(null);
     } catch (e) {
       toast(e.response?.data?.error || "Could not close the assignment", { type: "error" });
@@ -44,7 +53,13 @@ export function AssignCounselorModal({ student, onClose, onAssigned }) {
     setSaving(true);
     try {
       const { data } = await client.post("/admin/counselors", { studentId: student.student_id, facultyId: choice });
-      toast(`${data.faculty_name} is now ${student.full_name}'s counselor. Both have been notified.`, { type: "success", title: "Counselor assigned" });
+      const n = data.cancelled_sessions || 0;
+      toast(
+        `${data.faculty_name} is now ${student.full_name}'s counselor. Both have been notified.${
+          n ? ` ${n} upcoming session${n === 1 ? "" : "s"} with the previous counsellor ${n === 1 ? "was" : "were"} cancelled.` : ""
+        }`,
+        { type: "success", title: "Counselor assigned" }
+      );
       onAssigned(data);
     } catch (e) {
       toast(e.response?.data?.error || "Could not assign the counselor", { type: "error" });
@@ -119,9 +134,12 @@ export function AssignCounselorModal({ student, onClose, onAssigned }) {
             <div className="rounded-lg bg-risk-50 border border-risk/30 px-3 py-2 text-sm text-ink">
               <p>
                 Currently with <strong>{current.name}</strong> (since {timeAgo(current.assigned_at)}). Choosing someone else closes that assignment.
+                {cancelText && <strong> {cancelText}</strong>}
               </p>
               <Button size="sm" variant={confirmClose ? "danger" : "ghost"} className="mt-1 -ml-2" loading={closing} onClick={closeCurrent}>
-                {confirmClose ? "Confirm: close without a new counselor" : "Close assignment"}
+                {confirmClose
+                  ? `Confirm: close without a new counselor${upcomingCount ? ` and cancel ${upcomingCount} session${upcomingCount === 1 ? "" : "s"}` : ""}`
+                  : "Close assignment"}
               </Button>
             </div>
           )}
