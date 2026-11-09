@@ -204,6 +204,9 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
       Assignment/Quiz/Midterm/Final = mean of course results; SGPA ("provisional") = credit-weighted
       `clamp(0.0640 × course mean mark − 2.453, 0, 4)`; CGPA ("projected") = (Previous_SGPA + SGPA) / 2.
       Formulas fitted by `evaluation/sgpa_cgpa_relationship.py`. Credits and Failed_Courses stay imported.
+      Latest row = `ORDER BY semester DESC, performance_id DESC`. Phase 7.1: a row with `close_id` is a closed term's
+      record; with no new-term marks the model sees it as is (projected = official), once new-term marks exist its SGPA
+      becomes Previous_SGPA and Semester = `current_semester`. Semester is never sent above `MODEL_MAX_SEMESTER` (8).
     - `policy.js` + `config/policy.json` — `applyPolicy(features, modelLabel)` →
       `{policyLabel, reason, finalLabel}`. Rules: CGPA < 2.00 and Previous_SGPA < 2.00 → Dropout-Likely;
       attendance < 60% → Dropout-Likely; CGPA < 2.30 → At-Risk; attendance < `min_attendance_pct` (75%)
@@ -437,6 +440,9 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     `students.actual_outcome` (safe | at_risk | dropout | unknown, from a live cohort file).
     `012_sessions_revoked_at.sql` — `users.sessions_revoked_at` (set by logout; older tokens → 401 `TOKEN_REVOKED`).
     `013`-`015` (Phase 7): counselling sessions, academic standing, notification kind `standing` - see the Phase 7 section.
+    `016_semester_close_ends_term.sql` (Phase 7.1): `student_semester_performance.close_id` (the unique rule becomes one
+    non-close row per (student, semester) - partial index, so `import_dataset.py` uses `ON CONFLICT (student_id, semester)
+    WHERE close_id IS NULL` - plus one row per (student, close)) and `academic_standing.final_semester_completed`.
   - **Data sources** (`data_source` columns): `synthetic` = imported from the 50k dataset or seeded;
     `live` = entered in the app (single result save, attendance marking), uploaded by faculty (then
     `upload_id` also points at the `uploads` row that wrote it) or created by an admin live-cohort import.
@@ -497,8 +503,10 @@ side by side).
   11:00 AM"). `academicStanding.js` (pure `nextStanding(prevStatus, prevCount, cgpa, semesterNo, {programme})`,
   `gradeUsed`, `seedStatus`, `recordStanding`, `seedStandings`). `semesterClose.js` (`preview` writes nothing; `confirm`
   needs `resultsFinal: true` (400 `RESULTS_NOT_FINAL`), 409 `TERM_ALREADY_CLOSED` / `RESULTS_INCOMPLETE`; ONE transaction:
-  semester_closes row, a standing row per enrolled student, a new performance row = the new official CGPA (semester + 1:
-  previous_sgpa = SGPA, cgpa = projected CGPA, or the GPA in semester 1; students.cgpa / current_semester move on), a
+  semester_closes row, a standing row per enrolled student, a performance row for the CLOSED term (same semester,
+  `close_id`; previous_sgpa = the term before, sgpa = this term, cgpa = projected CGPA, or the GPA in semester 1;
+  students.cgpa moves on, current_semester + 1 unless already the programme's last), every 'enrolled' enrolment of the
+  plan -> 'completed' (Phase 7.1; nothing enrolled -> 400 "nothing to close"), a
   letter per new probation, a `standing` notification per affected student; audit CLOSE_SEMESTER; then a batch run
   `startRun({scope: 'student', studentIds, trigger: 'semester_close'})`). `warningLetters.js` (letter content with the HoD
   signature line, own-only acknowledge once, `assertMayEnrol` -> 409 `STUDENT_DROPPED` / `ENROLMENT_HOLD` in
@@ -524,12 +532,47 @@ side by side).
   `ctx.academic`); "counselling" and "probation" count as academic words for the other-student refusal.
 - **Demo data** (`scripts/demoPhase7.js`, run by demo:reset after the standing seed): Dr. Ayesha Khan counsels BU-122785,
   BU-112907, BU-114400 with 10 sessions dated from `--as-of` (one awaiting attendance yesterday, two upcoming);
-  BU-114400 Bushra Awan's AI301/AI302 finals = 32, so a close puts her on Probation 1 (CGPA 1.97). Starting standing:
-  good 26,466 / Probation 1 873 / Probation 2 16,508 / not evaluated 6,183. Close preview: 70 students, 38 / 4 / 5 / 23
-  dropped, 9 letters. Demo actions: docs/DEMO_ACCOUNTS.md "Counselling and probation demo", checked by
-  `evaluation/phase7_demo_check.mjs` (17/17); demo script block 5.
-- **Limitation**: the starting standing is seeded from the current CGPA and the dataset's consecutive-low flag (which
-  uses Previous_SGPA, not two end-of-term CGPAs), hence many Probation 2 students.
+  BU-114400 Bushra Awan's AI301/AI302 finals = 32, so a close puts her on Probation 1 (CGPA 1.97). Starting standing
+  (since Phase 7.1): good 26,466 / Probation 1 17,381 / Probation 2 0 / not evaluated 6,183. Close preview: 70 students,
+  38 / 4 / 28 / 0 dropped, 32 letters. Demo actions: docs/DEMO_ACCOUNTS.md "Counselling and probation demo", checked by
+  `evaluation/phase7_demo_check.mjs` (17/17); demo script block 6.
+- **Limitation**: the starting standing is seeded from the current CGPA only (Probation 1 at most, see Phase 7.1); the
+  CGPA judged at a close is the dataset's (Previous_SGPA + SGPA) / 2, not a credit-weighted cumulative CGPA (Handbook 1.1.7).
+
+## Phase 7.1: bug fixes (tag `v7.1-fixes`, 2026-11-09)
+
+Bug fixes only after a QA pass of v7-features; the Random Forest and the ML service did not change. Test cases TC-FIX-01..06.
+
+- **A close ends the term** (Bug 1). Enrolment status `completed` (the `enrollment_status` enum has had it since schema.sql)
+  = finished at a close; `dropped` stays as is. Only `status = 'enrolled'` means "this term" everywhere: featureBuilder,
+  studentCourses (dashboard, next steps, chat, standing card's this-term box), faculty roster / attendance list, upload
+  templates and rows, what-if access, admin drop (a completed one -> 409), semester-close preview. Marks
+  (`PUT /faculty/results/:id`), attendance and upload rows for a completed enrolment -> 400 "This class was completed
+  when the term was closed - marks and attendance can't be changed". After a close every closed-term student's projected
+  CGPA = the official CGPA and no risk label changes (verified on the demo data: 0 of 70). The dashboard calls the SGPA
+  "SGPA (last completed term)" when there are no marks this term, and the standing card says "This term: no marks entered
+  yet". The admin close screen says "nothing to close" when nobody is enrolled.
+- **Final semester** (Bug 2). `academicStanding.json` `programme_length` (BS/BBA/BEE 8, AD 4, MBA/MS/MPhil 4, PhD 8 - TO
+  CONFIRM with the department; `lengthFor(programme)`). A student already in the last semester keeps it at a close
+  (`final_semester_completed = TRUE` on the standing row; preview rows carry `final_semester` / `next_semester`).
+- **Orphaned counselling sessions** (Bugs 3, 4). When an assignment ends - reassign while scheduling, another counselor
+  assigned (`POST /admin/counselors`), admin close (`PUT /admin/counselors/:id/close`), faculty close (`PUT
+  /faculty/counselees/:id {close}`) - the old counsellor's FUTURE unmarked scheduled sessions with the student are
+  cancelled in the same transaction (`counselors.cancelUpcomingSessions`; reason "Counsellor changed to <name>" /
+  "Counselling assignment closed"), the student and the old counsellor get one notification each, and each session gets a
+  `CANCEL_SESSION` audit row with `automatic: true` (`auditCancelled`, after the commit). Past sessions awaiting
+  attendance keep their counsellor. The 409 `COUNSELLOR_CHANGE` carries `upcomingWithCurrent` and `cancelNote` ("Her 1
+  upcoming session with Dr. Y will be cancelled."); `GET /admin/counselors/:id/upcoming-sessions` -> `{count, sessions}`
+  for the close dialogs; counselee summaries carry `upcoming_sessions`; responses return `cancelled_sessions`.
+- **Seed rule** (Bug 5). `seedStatus`: semester 1 -> not evaluated; CGPA >= minimum -> good; below -> **Probation 1**
+  (count 1), never Probation 2 (the dataset can't prove the earlier probation Handbook 5.5.3 needs), so the first close
+  drops nobody. Tests that need a Probation 2 student create one and delete only that row.
+- **Numbers after `demo:reset`** (fingerprint ALL `394bac7ff027f2f8319e4db2c3ba2a9b`, identical on repeated resets; ~160-190 s):
+  good 26,466 / Probation 1 17,381 / Probation 2 0 / not evaluated 6,183. Fall 2026 close: 70 students -> good 38 /
+  Probation 1 4 / Probation 2 28 / dropped 0, 32 letters; curated changes: BU-114400 Bushra good -> P1; BU-122785,
+  BU-144766, BU-115624 P1 -> P2; BU-101986 not evaluated -> P1; BU-100040 / BU-148379 stay in semester 8.
+- Demo script: the wrong-portal attempt is block 5 and counselling + probation is block 6, so the semester close is always
+  the last block; after a close only `npm run demo:reset` repeats it (a new term name has nothing to close).
 
 ## Running each service (Windows, PowerShell)
 
@@ -572,9 +615,9 @@ transaction per file, recorded in `schema_migrations`, already-applied files ski
 Tests and evaluations:
 
 ```powershell
-cd backend; npm test                              # Jest + Supertest against the local smartedu DB (ML not needed): 642 tests, 28 suites (Phase 7 added
+cd backend; npm test                              # Jest + Supertest against the local smartedu DB (ML not needed): 656 tests, 30 suites (Phase 7.1 added semesterCloseTerm, counsellingCancel; Phase 7 added
                                                   # counsellingSessions, counsellingNotifications, academicStanding, semesterClose, standingScreens; run after demo:reset)
-cd backend; npm run test:coverage                 # same + coverage of backend/src (CLI scripts excluded): 88.5% lines (2026-11-09, Phase 7)
+cd backend; npm run test:coverage                 # same + coverage of backend/src (CLI scripts excluded): 88.6% lines (2026-11-09, Phase 7.1)
                                                   # suites added in Phase 6: portals, passwordReset, rbac (every route x role),
                                                   # policy (escalate-only matrix, reasons), faculty (ownership), student (scoping),
                                                   # admin (provisioning, classes, flagged list, batch runs); helpers takeSnapshot/
@@ -587,7 +630,7 @@ cd ml_service; .venv\Scripts\python -m pytest tests  # 29: test_predict.py + tes
                                                      # dataset rows, limits, null imputation, determinism, 500-row agreement, model-info)
 cd backend; node ../evaluation/perf_check.js         # 10 timed runs per operation incl. 10 full 50k batch runs (~25 min; each run's
                                                      # predictions undone + VACUUM) -> docs/PERFORMANCE.md
-cd backend; node ../evaluation/test_cases.js         # 66 manual cases (FR1-FR17 + portals) via API and Playwright -> docs/TEST_CASES.md;
+cd backend; node ../evaluation/test_cases.js         # 72 manual cases (FR1-FR17 + portals + TC-FIX) via API and Playwright -> docs/TEST_CASES.md;
                                                      # changes data: demo:reset before and after
 ml_service\.venv\Scripts\python evaluation/report_numbers.py  # .pkl metrics, label/source/agreement stats, global importance
                                                      # (the numbers in docs/REPORT_EVIDENCE.md)
@@ -628,6 +671,7 @@ frontend `vite` / `esbuild` (dev server only; fix = vite 8), `react-router` (mod
 ## Working rules
 
 - **Phase 7: counselling sessions and academic probation, approved by the project owner and supervisor. No other new features.**
+  Phase 7.1 (bug fixes only) is done - see its section; database changes only as new migrations (next: 017).
 - Single developer, work directly on `main`. Do not create branches.
 - One commit per step, conventional message (e.g. `fix(ml): pin scikit-learn`).
   Commit only after that step's check passes.

@@ -160,7 +160,7 @@ The rules (minimum CGPA per programme, probations before drop, first semester on
 
 | Suite | Command | Needs |
 |---|---|---|
-| Backend API + unit (Jest, 642 tests) | `cd backend; npm test` (`npm run test:coverage` for coverage) | database |
+| Backend API + unit (Jest, 656 tests) | `cd backend; npm test` (`npm run test:coverage` for coverage) | database |
 | ML service (pytest, 29 tests) | `cd ml_service; .venv\Scripts\python -m pytest tests` | - |
 | Chat assistant evaluation (471 questions) | `cd backend; node ../evaluation/chat_eval.js` | database |
 | Demo actions (perform + undo each one) | `cd backend; node ../evaluation/demo_actions_check.js` | all services; reset afterwards |

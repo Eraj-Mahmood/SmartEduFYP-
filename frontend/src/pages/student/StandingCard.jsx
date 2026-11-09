@@ -27,7 +27,8 @@ function sentence(s) {
 }
 
 function Target({ t, minimum }) {
-  if (!t) return null;
+  // no marks this term (e.g. right after a semester close: the closed term's classes are completed)
+  if (!t) return <p className="text-sm text-muted">This term: no marks entered yet - the average you need will appear here once your teachers enter marks.</p>;
   const min = two(minimum);
   if (t.on_track) {
     return (

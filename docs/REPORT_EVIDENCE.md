@@ -70,16 +70,17 @@ policy -> dashboards), not real-world accuracy. Labels in the dataset are policy
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend API + unit (Jest + Supertest) | `cd backend; npm run test:coverage` | **642 / 642 passed** in 28 suites (505 / 23 before Phase 7) |
+| Backend API + unit (Jest + Supertest) | `cd backend; npm run test:coverage` | **656 / 656 passed** in 30 suites on 2026-11-09 after Phase 7.1 (642 / 28 at v7-features; 505 / 23 before Phase 7) |
 | - of which role-based access | `tests/rbac.test.js` | 308: the route matrix over every route of every group (no token 401, wrong role 403, own role 2xx), now including the 19 Phase 7 routes, + 5 notification-ownership checks |
 | - of which Phase 7 | `counsellingSessions`, `counsellingNotifications`, `academicStanding`, `semesterClose`, `standingScreens` | 67 (every scheduling rule, notifications, each handbook rule, the all-or-nothing close via a failing database trigger, letters, the enrolment hold) |
 | - of which bug-fix regressions | `tests/bugfixes.test.js` | 45 (one block per bug of the 2026-11 test pass, plus "a database error never reaches the client") |
-| Backend coverage (`backend/src`, CLI scripts excluded) | same | **lines 88.5%**, statements 85.6%, functions 84.1%, branches 71.8% (before Phase 7: lines 89.1%) |
+| - of which Phase 7.1 bug fixes | `semesterCloseTerm`, `counsellingCancel` (+ new cases in `academicStanding`) | 14: written first and failing, then fixed - the close ends the term (projected = official, no double-counted term, nothing to close, completed classes refuse marks/attendance/uploads), final semester kept, orphaned sessions cancelled on reassign / assign / admin and faculty close, no seeded Probation 2 and no drop at the first close |
+| Backend coverage (`backend/src`, CLI scripts excluded) | same | **lines 88.6%**, statements 85.7%, functions 84.2%, branches 71.9% (v7-features: lines 88.5%; before Phase 7: 89.1%) |
 | ML service contract (pytest) | `cd ml_service; .venv\Scripts\python -m pytest tests` | **29 / 29 passed** |
 | Chat assistant evaluation | `cd backend; node ../evaluation/chat_eval.js` | **471 / 471** questions (69 phrasings x 6 demo students incl. Roman Urdu - counselling, probation status and rules added in Phase 7 -, a counselor pass, a booked-session pass, 27 live-student questions) |
-| Manual test cases (FR1-FR17 + portals) | `node ../evaluation/test_cases.js` -> `docs/TEST_CASES.md` | **66 / 66 passed** on 2026-11-09 (15 new for FR16 counselling sessions and FR17 academic probation), executed through the API and a real browser |
+| Manual test cases (FR1-FR17 + portals + Phase 7.1) | `node ../evaluation/test_cases.js` -> `docs/TEST_CASES.md` | **72 / 72 passed** on 2026-11-09 (15 for FR16/FR17 in Phase 7; 6 TC-FIX cases, one per Phase 7.1 bug), executed through the API and a real browser |
 | Demo actions (perform + revert) | `node ../evaluation/demo_actions_check.js` | 29 / 29 (re-run after Phase 7) |
-| Phase 7 demo actions (real browser) | `node ../evaluation/phase7_demo_check.mjs` | **17 / 17** (schedule -> mark Present -> close semester -> Probation 1 -> schedule counselling -> acknowledge letter) |
+| Phase 7 demo actions (real browser) | `node ../evaluation/phase7_demo_check.mjs` | **17 / 17** (schedule -> mark Present -> close semester -> Probation 1 -> schedule counselling -> acknowledge letter); re-run 2026-11-09 right after `demo_run.js` 35/35 on the same reset (the full demo script end to end) |
 | Reproducible demo data | `npm run demo:reset` twice | identical per-table fingerprints (every reset in Phase 6, and every reset of the bug-fix pass; class dates count back from the day of the reset, so compare resets made on the same day or pass `--as-of`) |
 
 Coverage note: the command-line scripts (`demo:reset`, seeders, migrate) are excluded from the percentage; they are
@@ -96,9 +97,10 @@ Command: `cd backend; npm run demo:reset -- --yes` (prints the counts and the fi
 | Item | Value |
 |---|---|
 | Rules | BU Student Handbook (Spring 2024) clause 5.5, in `backend/src/config/academicStanding.json` only: minimum CGPA BS/BBA/BEE/AD 2.0, MBA/MS/MPhil 2.5, PhD 3.0; 2 probations before drop; first semester judged on GPA; Probation 2 needs the Principal's approval to enrol |
-| Starting standing after `demo:reset` (50,030 students) | **Good 26,466 · Probation 1 873 · Probation 2 16,508 · Dropped 0 · Not evaluated 6,183** (current semester 1) |
-| Deterministic | two resets on the same day: identical fingerprint for every table (`academic_standing` md5 `131503e66874e2fc94520be34f081746`; all tables `b0d9bc173c159507b0ee4f5fdb9e0afd`) |
-| Close-semester preview on the demo data ("Fall 2026") | 70 students enrolled this term: 38 good, 4 Probation 1, 5 Probation 2, 23 dropped; 9 warning letters |
+| Starting standing after `demo:reset` (50,030 students) | **Good 26,466 · Probation 1 17,381 · Probation 2 0 · Dropped 0 · Not evaluated 6,183** (current semester 1). Since Phase 7.1 every student below the minimum starts on Probation 1 at most (before: 873 / 16,508) |
+| Deterministic | two resets on the same day: identical fingerprint for every table (all tables `394bac7ff027f2f8319e4db2c3ba2a9b` since Phase 7.1, 2026-11-09; was `b0d9bc173c159507b0ee4f5fdb9e0afd`) |
+| Close-semester preview on the demo data ("Fall 2026") | 70 students enrolled this term: 38 good, 4 Probation 1, 28 Probation 2, **0 dropped**; 32 warning letters (Phase 7.1; before: 38 / 4 / 5 / 23 dropped, 9 letters) |
+| After the close (Phase 7.1) | the 190 enrolments are *completed*; each student's projected CGPA = the new official CGPA; **no risk label changes**; 7 final-semester students stay in semester 8; a second close is refused ("nothing to close") |
 | Demo counselling data | 3 counsellor assignments (Dr. Ayesha Khan), 10 sessions (Present / Absent history, one awaiting attendance, two upcoming) |
 | Probation and the ML label | Standing is not a model input (the model still has its 20 features); the screens show "Risk prediction (Random Forest)" and "Academic standing (BU rules)" separately |
 
@@ -158,7 +160,7 @@ names match docs/DEMO_ACCOUNTS.md; the script reported no sideways scrolling and
 | 14 | Users, tutorials, audit log, assignments | `admin-users`, `admin-tutorials`, `admin-audit-log`, `admin-assignments` |
 | 15 | Forced and voluntary password change | `change-password-forced`, `change-password` |
 | 16 | Counselling: admin page, faculty sessions, student page (Phase 7) | `admin-counselling`, `faculty-ayesha-counselling`, `student-BU-122785-counselling` |
-| 17 | Academic standing: admin page (close semester, probation list), student card | `admin-academic-standing`, `student-BU-144766-dashboard` (Probation 2 card with the enrolment hold) |
+| 17 | Academic standing: admin page (close semester, probation list), student card | `admin-academic-standing`, `student-BU-144766-dashboard` (Probation 1 card; she reaches Probation 2, with the enrolment hold, at the Fall 2026 close) |
 | 18 | Phase 7 demo actions, step by step | `phase7_demo/` (`1_admin_booked` ... `5_student_letter`) |
 
 ## 9. Known limitations
@@ -169,12 +171,20 @@ names match docs/DEMO_ACCOUNTS.md; the script reported no sideways scrolling and
 - **No real-world validation.** The live-cohort run is synthetic and probably uses training rows (section 4).
 - **One semester per student.** The dataset has one row per student, so "history" is a single term plus predictions
   made inside the app.
-- **Starting probation status is seeded, not observed.** Because each student has only one completed term, the
-  starting academic standing comes from the current CGPA and the dataset's consecutive-low-CGPA flag, and that flag is
-  defined on the *previous SGPA* (CGPA < 2.0 and Previous_SGPA < 2.0), not on two consecutive end-of-term CGPAs as the
-  handbook means. This is why so many students (16,508) start on Probation 2. Real standing builds up from semester
-  closes made in the app; the end-of-term CGPA there is the projected CGPA from this term's marks
-  ((Previous_SGPA + SGPA) / 2, SGPA from the fitted mark formula), not an official transcript calculation.
+- **Starting probation status is seeded, not observed - Probation 1 at most.** Each student has only one completed
+  term, so the starting standing comes from the current CGPA alone: below the minimum -> Probation 1, never Probation 2.
+  The dataset's consecutive-low-CGPA flag is not used: it is defined on the *previous SGPA* (CGPA < 2.0 and
+  Previous_SGPA < 2.0), not on two consecutive end-of-term CGPAs, so it can't prove the earlier probation that Handbook
+  5.5.3 needs before a drop (using it put 16,508 students on Probation 2 and dropped 23 of the 70 at the first demo
+  close). Consequence: nobody can be dropped at the first close; real Probation 2 and drops build up from semester
+  closes made in the app.
+- **Probation uses the projected CGPA, not a credit-weighted cumulative CGPA.** At a close the CGPA judged is the
+  dataset's formula **(Previous_SGPA + SGPA) / 2** (R² 0.992 on the dataset), with SGPA from this term's marks (fitted
+  mark formula) - not the full credit-weighted cumulative CGPA over every semester that the handbook defines (1.1.7).
+  It is a faithful stand-in for this dataset, not an official transcript calculation.
+- **Programme lengths are assumed.** A student in their programme's final semester is not moved past it at a close
+  (BS/BBA/BEE 8, AD 4, MBA/MS/MPhil 4, PhD 8 in `academicStanding.json`); these lengths still need the department's
+  confirmation.
 - **Probation rules are configured, not per programme in the data.** Students have no programme field; the programme
   (and so the minimum CGPA) comes from the department mapping in `academicStanding.json` (all current departments are
   undergraduate, minimum 2.00). No HoD or Principal accounts exist: the admin records the approver role.

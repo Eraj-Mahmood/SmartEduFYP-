@@ -558,11 +558,16 @@ const CASES = [
     expect(past.status === 400 && /future/.test(past.json.error), `${past.status}`);
     expect((await one("SELECT COUNT(*)::int AS n FROM counselling_sessions")).n === before, "a session was saved");
   }],
-  ["TC-FR16-03", "FR16", "Choosing a different counsellor needs confirmation", "Schedule BU-122785 with Mr. Zain Abbas", "409: 'This makes Mr. Zain Abbas the counsellor instead of Dr. Ayesha Khan.' (the form asks Continue?); the counsellor is unchanged", async () => {
+  ["TC-FR16-03", "FR16", "Choosing a different counsellor needs confirmation", "Schedule BU-122785 with Mr. Zain Abbas", "409: 'This makes Mr. Zain Abbas the counsellor instead of Dr. Ayesha Khan. Her N upcoming session(s) with Dr. Ayesha Khan will be cancelled.' (the form asks Continue?); the counsellor is unchanged", async () => {
     const st = await sid("BU-122785");
     const zain = await one("SELECT f.faculty_id FROM faculty f JOIN users u ON u.user_id = f.user_id WHERE u.email = 'zain.abbas@smartedu.edu'");
     const r = await call("POST", "/admin/counselling-sessions", { token: await tok("admin"), body: { studentId: st.student_id, facultyId: zain.faculty_id, scheduledAt: `${pkDay(4)}T09:00:00+05:00`, mode: "online", location: "https://meet.example.com/x" } });
-    expect(r.status === 409 && r.json.code === "COUNSELLOR_CHANGE" && r.json.error === "This makes Mr. Zain Abbas the counsellor instead of Dr. Ayesha Khan.", `${r.status} ${r.json && r.json.error}`);
+    const n = r.json && r.json.upcomingWithCurrent;
+    expect(
+      r.status === 409 && r.json.code === "COUNSELLOR_CHANGE" && n >= 1 &&
+        r.json.error === `This makes Mr. Zain Abbas the counsellor instead of Dr. Ayesha Khan. Her ${n} upcoming session${n === 1 ? "" : "s"} with Dr. Ayesha Khan will be cancelled.`,
+      `${r.status} ${r.json && r.json.error}`
+    );
     const a = await one("SELECT f.full_name FROM counselor_assignments ca JOIN faculty f USING (faculty_id) WHERE ca.student_id = $1 AND ca.status = 'active'", [st.student_id]);
     expect(a.full_name === "Dr. Ayesha Khan", a.full_name);
   }],
@@ -668,9 +673,11 @@ const CASES = [
     const w = await one("SELECT acknowledged_at FROM warning_letters WHERE id = $1", [id]);
     expect(w.acknowledged_at, "not stored");
   }],
-  ["TC-FR17-06", "FR17", "Enrolment hold on Probation 2; dropped can't enrol", "Assignments -> enroll BU-100076 (Probation 2) in AI301 A -> Record approval ('Principal via HoD') -> enroll again; enroll BU-144766 (dropped at the close)", "409 ENROLMENT_HOLD, then 201 after the approval; 409 STUDENT_DROPPED", async () => {
-    const cls = await one(`SELECT fc.faculty_course_id FROM faculty_courses fc JOIN courses c USING (course_id) WHERE c.course_code = 'AI301' AND fc.section = 'A'`);
-    const held = await sid("BU-100076");
+  ["TC-FR17-06", "FR17", "Enrolment hold on Probation 2; dropped can't enrol", "Assignments -> enroll BU-144766 (Probation 2 after the Fall 2026 close) in CS401 A -> Record approval ('Principal via HoD') -> enroll again, then drop it; enroll a dropped student (dropped standing set up directly: nobody can be dropped at the first close)", "409 ENROLMENT_HOLD, then 201 after the approval; 409 STUDENT_DROPPED", async () => {
+    const cls = await one(`SELECT fc.faculty_course_id FROM faculty_courses fc JOIN courses c USING (course_id) WHERE c.course_code = 'CS401' AND fc.section = 'A'`);
+    const held = await sid("BU-144766");
+    const st = await one("SELECT academic_status FROM students WHERE student_id = $1", [held.student_id]);
+    expect(st.academic_status === "probation_2", `Farah is ${st.academic_status}, expected probation_2 after the close`);
     const tokA = await tok("admin");
     const r1 = await call("POST", "/admin/enrollments", { token: tokA, body: { student_id: held.student_id, faculty_course_id: cls.faculty_course_id } });
     expect(r1.status === 409 && r1.json.code === "ENROLMENT_HOLD", `${r1.status}`);
@@ -678,8 +685,12 @@ const CASES = [
     expect(ap.status === 201, `approval ${ap.status}`);
     const r2 = await call("POST", "/admin/enrollments", { token: tokA, body: { student_id: held.student_id, faculty_course_id: cls.faculty_course_id } });
     expect(r2.status === 201, `after approval ${r2.status}`);
-    const dropped = await sid("BU-144766");
-    const r3 = await call("POST", "/admin/enrollments", { token: tokA, body: { student_id: dropped.student_id, faculty_course_id: 4 } });
+    const drop = await call("PUT", `/admin/enrollments/${r2.json.enrollment_id}/drop`, { token: tokA }); // keep the closed term empty for the next cases
+    expect(drop.status === 200, `drop ${drop.status}`);
+    const d = await sid("BU-100076");
+    await q("INSERT INTO academic_standing (student_id, semester_no, cgpa_used, status, probation_count, source) VALUES ($1, 5, 1.50, 'dropped', 2, 'seed')", [d.student_id]);
+    await q("UPDATE students SET academic_status = 'dropped', probation_count = 2 WHERE student_id = $1", [d.student_id]);
+    const r3 = await call("POST", "/admin/enrollments", { token: tokA, body: { student_id: d.student_id, faculty_course_id: cls.faculty_course_id } });
     expect(r3.status === 409 && r3.json.code === "STUDENT_DROPPED", `${r3.status} ${r3.json && r3.json.code}`);
   }],
   ["TC-FR17-07", "FR17", "Standing and the risk prediction are shown side by side, never mixed", "Student dashboard (Bushra Awan); Admin -> Model", "'Risk prediction (Random Forest)' and 'Academic standing (BU rules)' are separate; the model still has exactly its 20 features (no standing input)", async () => {
@@ -700,6 +711,86 @@ const CASES = [
     expect(b.intent === "probation_rules" && /dropped/.test(b.answer), b.answer);
     const c = (await call("POST", "/student/chat", { token: t, body: { message: "Is Ali on probation?" } })).json;
     expect(c.intent === "other_student", c.intent);
+  }],
+  // ---- Phase 7.1 bug fixes (run after the Fall 2026 close in TC-FR17-04) ----
+  ["TC-FIX-01", "FIX", "Bug 1: the close ends the term - the closed term is not counted again", "After Fall 2026 is closed: Bushra Awan's dashboard; Admin -> Overview", "Every enrolment of the term is completed; Bushra's projected CGPA = official CGPA = 1.97; no 'two consecutive low terms' note; no student's risk label changed because of the close", async () => {
+    const e = await q("SELECT status, COUNT(*)::int AS n FROM enrollments GROUP BY 1");
+    expect(!e.some((r) => r.status === "enrolled"), JSON.stringify(e));
+    const d = (await call("GET", "/student/dashboard", { token: await tok("bu114400") })).json;
+    expect(d.officialCgpa.value === 1.97 && d.projectedCgpa.value === 1.97, `official ${d.officialCgpa.value}, projected ${d.projectedCgpa.value}`);
+    expect(!/consecutive/i.test(d.latestPrediction.policy_reason || ""), d.latestPrediction.policy_reason);
+    const changed = await q(`SELECT s.roll_no FROM predictions p JOIN students s USING (student_id)
+      WHERE p.triggered_by = 'semester_close' AND p.final_label IS DISTINCT FROM (
+        SELECT p2.final_label FROM predictions p2 WHERE p2.student_id = p.student_id AND p2.prediction_id < p.prediction_id ORDER BY p2.prediction_id DESC LIMIT 1)`);
+    expect(changed.length === 0, `labels changed by the close: ${changed.map((r) => r.roll_no).join(", ")}`);
+  }],
+  ["TC-FIX-02", "FIX", "Bug 1: a completed class takes no marks or attendance; a second close is refused", "ayesha.khan -> AI301 A -> enter a mark / mark attendance for Bushra; Admin -> Standing -> Term 'Spring 2027' -> Preview / Close", "400 'This class was completed when the term was closed ...' for marks and attendance; preview 0 students; close 400 'nothing to close'", async () => {
+    const e = await one(`SELECT e.enrollment_id, e.faculty_course_id FROM enrollments e JOIN students s USING (student_id)
+      JOIN faculty_courses fc ON fc.faculty_course_id = e.faculty_course_id JOIN courses c USING (course_id)
+      WHERE s.roll_no = 'BU-114400' AND c.course_code = 'AI301'`);
+    const t = await tok("ayesha");
+    const m = await call("PUT", `/faculty/results/${e.enrollment_id}`, { token: t, body: { final_marks: 90 } });
+    expect(m.status === 400 && /completed when the term was closed/.test(m.json.error), `${m.status} ${m.json && m.json.error}`);
+    const a = await call("POST", "/faculty/attendance", { token: t, body: { facultyCourseId: e.faculty_course_id, classDate: pkDay(0), entries: [{ enrollmentId: e.enrollment_id, status: "present" }] } });
+    expect(a.status === 400 && /completed/.test(a.json.error), `${a.status} ${a.json && a.json.error}`);
+    const tokA = await tok("admin");
+    const p = (await call("POST", "/admin/semester-close/preview", { token: tokA, body: { termLabel: "Spring 2027" } })).json;
+    expect(p.total === 0, `preview total ${p.total}`);
+    const c = await call("POST", "/admin/semester-close/confirm", { token: tokA, body: { termLabel: "Spring 2027", resultsFinal: true } });
+    expect(c.status === 400 && /nothing to close/.test(c.json.error), `${c.status} ${c.json && c.json.error}`);
+  }],
+  ["TC-FIX-03", "FIX", "Bug 2: a final-semester student is not moved past semester 8", "After the close: BU-100040 Sana Raza (semester 8)", "No student above semester 8; Sana stays in semester 8, her standing row says final semester completed; her new prediction comes from the model with Semester 8", async () => {
+    const over = await one("SELECT COUNT(*)::int AS n FROM students WHERE current_semester > 8");
+    expect(over.n === 0, `${over.n} students above semester 8`);
+    const s = await one(`SELECT s.current_semester, a.final_semester_completed FROM students s
+      JOIN academic_standing a ON a.student_id = s.student_id AND a.source = 'close' WHERE s.roll_no = 'BU-100040'`);
+    expect(s.current_semester === 8 && s.final_semester_completed === true, JSON.stringify(s));
+    const p = await latest("BU-100040");
+    expect(p.source === "model" && Number(p.features.Semester) === 8, `${p.source} Semester ${p.features.Semester}`);
+  }],
+  ["TC-FIX-04", "FIX", "Bug 3: changing the counsellor cancels the old counsellor's upcoming sessions", "Admin -> Counselling -> Schedule session for BU-122785 with Mr. Bilal Raza -> Continue", "The form says how many sessions will be cancelled; afterwards no upcoming 'scheduled' session with Dr. Ayesha Khan remains (reason 'Counsellor changed to Mr. Bilal Raza'); both people notified", async () => {
+    const st = await sid("BU-122785");
+    const bilal = await one("SELECT f.faculty_id FROM faculty f JOIN users u ON u.user_id = f.user_id WHERE u.email = 'bilal.raza@smartedu.edu'");
+    const tokA = await tok("admin");
+    const body = { studentId: st.student_id, facultyId: bilal.faculty_id, scheduledAt: `${pkDay(6)}T16:10:00+05:00`, mode: "in_person", location: "Room 110" };
+    const ask = await call("POST", "/admin/counselling-sessions", { token: tokA, body });
+    expect(ask.status === 409 && ask.json.upcomingWithCurrent >= 1 && /will be cancelled/.test(ask.json.error), `${ask.status} ${ask.json && ask.json.error}`);
+    const n = ask.json.upcomingWithCurrent;
+    const ok = await call("POST", "/admin/counselling-sessions", { token: tokA, body: { ...body, reassign: true } });
+    expect(ok.status === 201 && ok.json.assignment.cancelled_sessions === n, `${ok.status} cancelled ${ok.json && ok.json.assignment && ok.json.assignment.cancelled_sessions}`);
+    const left = await q(`SELECT 1 FROM counselling_sessions cs JOIN faculty f USING (faculty_id) WHERE cs.student_id = $1 AND f.full_name = 'Dr. Ayesha Khan'
+      AND cs.status = 'scheduled' AND cs.scheduled_at > NOW()`, [st.student_id]);
+    expect(left.length === 0, `${left.length} upcoming sessions left with Dr. Khan`);
+    const why = await q("SELECT cancelled_reason FROM counselling_sessions WHERE student_id = $1 AND cancelled_reason = 'Counsellor changed to Mr. Bilal Raza'", [st.student_id]);
+    expect(why.length === n, `reason rows ${why.length}`);
+    const sn = (await call("GET", "/notifications/mine", { token: await tok("bu122785") })).json.notifications;
+    const fn = (await call("GET", "/notifications/mine", { token: await tok("ayesha") })).json.notifications;
+    expect(sn.some((x) => /Counsellor changed to Mr\. Bilal Raza/.test(x.message)) && fn.some((x) => /BU-122785.*Counsellor changed to Mr\. Bilal Raza/.test(x.message)), "notifications missing");
+  }],
+  ["TC-FIX-05", "FIX", "Bug 4: closing a counselling assignment cancels its upcoming sessions", "Admin -> Interventions -> BU-112907 -> Dr. Ayesha Khan -> Close assignment (the dialog says how many sessions will be cancelled)", "Close returns cancelled_sessions = the count shown; no upcoming 'scheduled' session remains for that assignment (reason 'Counselling assignment closed'); audit-logged", async () => {
+    const st = await sid("BU-112907");
+    const a = await one("SELECT id FROM counselor_assignments WHERE student_id = $1 AND status = 'active'", [st.student_id]);
+    const tokA = await tok("admin");
+    const cnt = (await call("GET", `/admin/counselors/${a.id}/upcoming-sessions`, { token: tokA })).json.count;
+    expect(cnt >= 1, `count ${cnt}`);
+    const r = await call("PUT", `/admin/counselors/${a.id}/close`, { token: tokA });
+    expect(r.status === 200 && r.json.cancelled_sessions === cnt, `${r.status} ${r.json && r.json.cancelled_sessions}`);
+    const left = await q("SELECT 1 FROM counselling_sessions WHERE assignment_id = $1 AND status = 'scheduled' AND scheduled_at > NOW()", [a.id]);
+    expect(left.length === 0, `${left.length} left`);
+    const audit = await q(`SELECT 1 FROM audit_log WHERE action = 'CANCEL_SESSION' AND details->>'reason' = 'Counselling assignment closed'
+      AND entity_id IN (SELECT session_id FROM counselling_sessions WHERE assignment_id = $1)`, [a.id]);
+    expect(audit.length === cnt, `audit ${audit.length}`);
+  }],
+  ["TC-FIX-06", "FIX", "Bug 5: the seeded status can't drop anyone at the first close", "demo:reset -> Admin -> Overview; Standing -> Fall 2026 close (TC-FR17-04)", "No seeded Probation 2 or dropped rows; the Fall 2026 close dropped nobody (BU-144766 Farah Javed went Probation 1 -> Probation 2)", async () => {
+    // TC-FR17-06 sets BU-100076 up as dropped, so it is left out
+    const seed = await one(`SELECT COUNT(*) FILTER (WHERE status = 'probation_2')::int AS p2, COUNT(*) FILTER (WHERE status = 'dropped')::int AS dr
+      FROM academic_standing WHERE source = 'seed' AND student_id <> (SELECT student_id FROM students WHERE roll_no = 'BU-100076')`);
+    expect(seed.p2 === 0 && seed.dr === 0, JSON.stringify(seed));
+    const c = await one("SELECT dropped_count, probation_2_count FROM semester_closes WHERE term_label = 'Fall 2026'");
+    expect(c.dropped_count === 0, JSON.stringify(c));
+    const f = await one(`SELECT a.status FROM academic_standing a JOIN semester_closes sc ON sc.id = a.close_id JOIN students s USING (student_id)
+      WHERE s.roll_no = 'BU-144766' AND sc.term_label = 'Fall 2026'`);
+    expect(f.status === "probation_2", f.status);
   }],
 ];
 
@@ -722,6 +813,7 @@ const FR_TITLES = {
   FR15: ['"Ask SmartEdu" chat assistant', "FR4.1"],
   FR16: ["Counselling sessions: scheduling, reschedule/cancel, attendance, notifications (Phase 7)", "FR4.2"],
   FR17: ["Academic probation under the BU Student Handbook 5.5: standing, semester close, letters, enrolment hold (Phase 7)", "FR4.2, FR4.3"],
+  FIX: ["Phase 7.1 bug fixes: the close ends the term, final semester, orphaned counselling sessions, seeded status", "FR4.2, FR4.3"],
 };
 
 async function main() {

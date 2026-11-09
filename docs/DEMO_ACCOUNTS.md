@@ -231,31 +231,52 @@ minimum - closing the semester puts her on **Probation 1 of 2** with a warning l
 six curated students above: their marks and the existing demos are unchanged. BU-144766 Farah Javed still
 has no counsellor, for the interventions demo.)
 
-Starting statuses after a reset (BU Student Handbook 5.5, seeded from each student's CGPA and the dataset's
-consecutive-low-CGPA flag): good 26,466 · Probation 1 873 · Probation 2 16,508 · not evaluated 6,183
-(semester-1 students). Probation is shown next to the risk label and never changes it.
+Starting statuses after a reset (BU Student Handbook 5.5, seeded from each student's CGPA): good 26,466 ·
+Probation 1 17,381 · Probation 2 0 · not evaluated 6,183 (semester-1 students). Every student below the minimum starts
+on **Probation 1 at most** (Phase 7.1): the data has one completed term per student, so it can't prove the earlier
+probation that Handbook 5.5.3 needs before a drop - so nobody can be dropped by the first close. Probation is shown
+next to the risk label and never changes it.
 
 Use three windows: **Admin**, **Dr. Ayesha Khan** and the student named in each step.
 
 1. **Schedule a session (both notified).** Admin → **Counselling** → **Schedule session** → search
    `BU-122785` → pick **Ayesha Akhtar** (the counsellor fills in as **Dr. Ayesha Khan · 3 counselees
-   (current counsellor)**) → Date: tomorrow, Time: 10:00, Location: Room 204, Agenda: "Plan for the final
+   (current counsellor)**; 4 if the interventions demo already assigned her to Farah) → Date: tomorrow, Time: 10:00, Location: Room 204, Agenda: "Plan for the final
    exams" → **Schedule session**. The toast says "Session booked for <tomorrow>, 10:00 AM". Ayesha Akhtar's
    bell: "Counselling session with Dr. Ayesha Khan on <tomorrow>, 10:00 AM (30 min), Room 204. Agenda: ...";
    Dr. Khan's bell: "Counselling session with Ayesha Akhtar (BU-122785) on ...".
    *Optional:* choose another teacher in the dropdown - the form asks "This makes Mr. Zain Abbas the
-   counsellor instead of Dr. Ayesha Khan. Continue?" (press **Go back**).
+   counsellor instead of Dr. Ayesha Khan. Her 1 upcoming session with Dr. Ayesha Khan will be cancelled.
+   Continue?" (press **Go back**; **Continue** would cancel that session and notify both people).
 2. **The teacher marks it Present.** Dr. Khan → **Counselling**: the first row is **Zain Khan, yesterday 2:00
    PM, Awaiting attendance** (highlighted, with "1 session awaiting your attendance mark"). **Present** → add a
    note ("Reviewed the study plan; on track for the midterm.") → **Save**. It moves to **History** as Present.
    Zain Khan (`student112907@smartedu.edu`) → **Counselling**: the session shows **Present**, "Attended 3 of 3
    sessions so far", and the note is not shown; his bell says the session "was marked Present".
 3. **Close the semester -> Probation 1.** Admin → **Standing** → Term `Fall 2026` → **Preview**: 70 students;
-   good 38 · Probation 1 4 · Probation 2 5 · Dropped 23; 9 letters. The row **Bushra Awan BU-114400, CGPA
+   good 38 · Probation 1 4 · Probation 2 28 · Dropped 0; 32 letters. The row **Bushra Awan BU-114400, CGPA
    1.97 / min 2.00, Good -> Probation 1, Level 1**. Tick **"All results for this term, including FYP, are
    final"** → **Close Fall 2026** → **Close the semester**. Toast: "Fall 2026 closed". Bushra Awan
    (`student114400@smartedu.edu`): bell "Academic standing: Probation 1 of 2"; the dashboard card **Academic
-   standing (BU rules)** shows Probation 1 of 2, the average needed this term and the warning letter.
+   standing (BU rules)** shows Probation 1 of 2, "This term: no marks entered yet" (the closed term is over) and the
+   warning letter. Her official CGPA is now 1.97 and her projected CGPA is the same 1.97; her risk label stays
+   **Needs attention** (At-Risk) - the closed term's marks are not counted a second time.
+
+   **Who changes at the close** (curated and demo students; risk labels do not change):
+
+   | Student | Standing before -> after |
+   |---|---|
+   | Bushra Awan BU-114400 | Good -> Probation 1 (CGPA 1.97), letter 1 |
+   | Ayesha Akhtar BU-122785 | Probation 1 -> Probation 2 (1.97), letter 2 |
+   | Farah Javed BU-144766 | Probation 1 -> Probation 2 (1.62), letter 2 |
+   | Naveed Awan BU-115624 | Probation 1 -> Probation 2 (1.16), letter 2 |
+   | Omar Akhtar BU-101986 | Not evaluated -> Probation 1 (semester-1 GPA 1.00), letter 1 |
+   | Sana Raza BU-100040, Imran Aziz BU-148379 | Good -> Good; final semester, they stay in semester 8 |
+   | Zain Khan BU-112907, Aiman Gill BU-106864, Talha Tariq BU-145871 | no change |
+
+   The close also **ends the term**: the 190 enrolments become *completed*, so the class rosters are empty, those
+   classes take no more marks or attendance, and a second close (any term name) is refused with "nothing to close".
+   Run `npm run demo:reset -- --yes` to repeat it.
 4. **Schedule counselling from the probation list.** Admin → **Standing** → *Students on probation* → search
    `BU-114400` → **Schedule session**: the form is pre-filled (Bushra Awan, Dr. Ayesha Khan, agenda
    "Probation follow-up (Probation 1 of 2, Fall 2026): CGPA 1.97 ...") → pick tomorrow, 3:00 PM, Room 204 →
@@ -265,8 +286,9 @@ Use three windows: **Admin**, **Dr. Ayesha Khan** and the student named in each 
    longer "not acknowledged".
 
 Also worth showing: Admin **Overview** (Probation 1 / Probation 2 / Dropped tiles), the **Standing** filter on
-**Interventions** and **Users**, a Probation 2 student's enrolment hold on **Assignments** (e.g. enrol
-`BU-100076` - refused with "Record approval"), and the chat: "Am I on probation?", "meri counselling kab
+**Interventions** and **Users**, after the close a Probation 2 student's enrolment hold on **Assignments** (e.g.
+enrol `BU-144766` Farah Javed in a CS class - refused with "Record approval"; nobody is on Probation 2 before the
+close), and the chat: "Am I on probation?", "meri counselling kab
 hai?", "What happens if my CGPA stays below 2?".
 
 **Verified 2026-11-09** by `cd backend; node ../evaluation/phase7_demo_check.mjs` (performs steps 1-5 in a real
