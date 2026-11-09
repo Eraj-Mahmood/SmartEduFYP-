@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Drawer, RiskChip, EmptyState, Icons, SkeletonText, PredictionSource, Tabs } from "../../components/ui";
+import { Drawer, RiskChip, EmptyState, Icons, SkeletonText, PredictionSource, Tabs, Button } from "../../components/ui";
 import WhatIfPanel from "../../components/WhatIfPanel";
 import useApi from "../../lib/useApi";
 import { gpa, num, timeAgo } from "../../lib/format";
@@ -28,7 +28,8 @@ const TABS = [
   { key: "whatif", label: "What if?" },
 ];
 
-export default function AdminStudentDrawer({ studentId, onClose }) {
+/** onSchedule(prefill): optional - shows "Schedule counselling" (pre-fill shape: Interventions' sessionPrefill). */
+export default function AdminStudentDrawer({ studentId, onClose, onSchedule }) {
   const { data, error, loading } = useApi(studentId ? `/admin/students/${studentId}/full` : null);
   const [tab, setTab] = useState("overview");
   useEffect(() => setTab("overview"), [studentId]);
@@ -89,7 +90,31 @@ export default function AdminStudentDrawer({ studentId, onClose }) {
           </section>
 
           <section>
-            <h3 className="text-sm font-semibold text-ink mb-1">Counselor</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h3 className="text-sm font-semibold text-ink">Counselor</h3>
+              {onSchedule && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<Icons.Calendar size={13} />}
+                  onClick={() =>
+                    onSchedule({
+                      student: {
+                        student_id: data.profile.student_id,
+                        roll_no: data.profile.roll_no,
+                        full_name: data.profile.full_name,
+                        final_label: p?.final_label || null,
+                        counselor: data.counselor ? { faculty_id: data.counselor.faculty_id, name: data.counselor.name } : null,
+                      },
+                      reason: p && p.final_label !== "Safe" ? "risk" : "manual",
+                      agenda: p?.reasons?.[0] ? `Discuss: ${p.reasons[0]}` : "",
+                    })
+                  }
+                >
+                  Schedule counselling
+                </Button>
+              )}
+            </div>
             <p className="text-sm text-ink/90">
               {data.counselor ? `${data.counselor.name} (assigned ${timeAgo(data.counselor.assigned_at)})` : "No counselor assigned."}
             </p>

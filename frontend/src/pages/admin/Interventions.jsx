@@ -7,6 +7,16 @@ import useApi from "../../lib/useApi";
 import { timeAgo } from "../../lib/format";
 import { AssignCounselorModal, ComposeModal } from "./InterventionModals";
 import AdminStudentDrawer from "./AdminStudentDrawer";
+import { ScheduleSessionModal } from "./CounsellingModals";
+
+/** Pre-fill for the "Schedule counselling" form from a flagged student (reason risk, agenda = top reason). */
+export function sessionPrefill({ student_id, roll_no, full_name, final_label, counselor, reasons }) {
+  return {
+    student: { student_id, roll_no, full_name, final_label, counselor: counselor ? { faculty_id: counselor.faculty_id, name: counselor.name } : null },
+    reason: final_label === "At-Risk" || final_label === "Dropout-Likely" ? "risk" : "manual",
+    agenda: reasons?.[0] ? `Discuss: ${reasons[0]}` : "",
+  };
+}
 
 // The intervention workflow: every flagged student with their weakest course, its tutorial,
 // their counselor and the last intervention, so an admin can see what is still missing and act
@@ -40,6 +50,7 @@ export default function Interventions() {
   const [composeFor, setComposeFor] = useState([]);
   const [exporting, setExporting] = useState(false);
   const [viewId, setViewId] = useState(null); // student shown in the detail drawer
+  const [scheduleFor, setScheduleFor] = useState(null); // "Schedule counselling" pre-fill
   const { toast } = useToast();
 
   // CSV of every flagged student matching the current filters (not just this page)
@@ -203,9 +214,14 @@ export default function Interventions() {
         header: "",
         sortable: false,
         render: (r) => (
-          <Button size="sm" onClick={() => setComposeFor([r])} icon={<Icons.Send size={13} />}>
-            Send
-          </Button>
+          <div className="flex justify-end gap-1.5">
+            <Button size="sm" variant="secondary" onClick={() => setScheduleFor(sessionPrefill(r))} icon={<Icons.Calendar size={13} />} title="Schedule counselling">
+              Schedule
+            </Button>
+            <Button size="sm" onClick={() => setComposeFor([r])} icon={<Icons.Send size={13} />}>
+              Send
+            </Button>
+          </div>
         ),
       },
     ],
@@ -284,7 +300,7 @@ export default function Interventions() {
               loading={list.loading && !list.data}
               rows={data.rows}
               rowKey={(r) => r.student_id}
-              minWidth={1020}
+              minWidth={1110}
               sort={{ key: sortKey, dir: SERVER_SORT[sortKey].dir }}
               onSortChange={({ key }) => SERVER_SORT[key] && setSortKey(key)}
               rowClassName={(r) => (selected[r.student_id] ? "bg-brand-50/60" : "")}
@@ -314,7 +330,19 @@ export default function Interventions() {
         </div>
       )}
 
-      <AdminStudentDrawer studentId={viewId} onClose={() => setViewId(null)} />
+      <AdminStudentDrawer studentId={viewId} onClose={() => setViewId(null)} onSchedule={(prefill) => {
+          setViewId(null);
+          setScheduleFor(prefill);
+        }} />
+      <ScheduleSessionModal
+        open={Boolean(scheduleFor)}
+        prefill={scheduleFor}
+        onClose={() => setScheduleFor(null)}
+        onSaved={() => {
+          setScheduleFor(null);
+          list.reload({ quiet: true });
+        }}
+      />
       <AssignCounselorModal
         student={assignFor}
         onClose={() => setAssignFor(null)}

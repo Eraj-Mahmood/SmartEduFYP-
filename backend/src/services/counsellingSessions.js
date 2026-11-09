@@ -1,6 +1,6 @@
 const pool = require("../config/db");
 const { logAction } = require("../middleware/audit");
-const { assignCounselor } = require("./counselors");
+const { assignCounselor, notify } = require("./counselors");
 const { formatDateTime, formatRange } = require("./timeFormat");
 
 // Counselling sessions (Phase 7). The admin books a session between a student and their counsellor
@@ -50,6 +50,20 @@ const STUDENT_SELECT = `
          ${DISPLAY_SQL} AS display_status
   FROM counselling_sessions cs
   JOIN faculty f ON f.faculty_id = cs.faculty_id`;
+
+// ---------------- notifications (Phase 7, step 2) ----------------
+// Sent with the existing notify() helper inside the same transaction as the change, so a refused or
+// failed write sends nothing. Schedule / reschedule / cancel go to both people (sender = the admin);
+// attendance goes to the student (sender = whoever marked it).
+const LINKS = { student: "/student/counselling", faculty: "/faculty/counselling" };
+const place = (mode, location) => (mode === "online" ? `online (${location})` : location);
+const details = (s) => `${formatDateTime(s.scheduled_at)} (${s.duration_min} min), ${place(s.mode, s.location)}`;
+
+/** p: {studentUserId, studentName, rollNo, counsellorUserId, counsellorName} */
+async function notifyBoth(db, sender, p, subject, forStudent, forCounsellor) {
+  await notify(db, { sender, recipient: p.studentUserId, subject, message: forStudent, link: LINKS.student });
+  await notify(db, { sender, recipient: p.counsellorUserId, subject, message: forCounsellor, link: LINKS.faculty });
+}
 
 const decorate = (row) => row && { ...row, display_label: DISPLAY_LABELS[row.display_status], when: formatDateTime(row.scheduled_at) };
 
@@ -186,6 +200,16 @@ async function scheduleSession(input, actorUserId) {
         input.agenda || null, input.reason || "manual", actorUserId,
       ]
     );
+    const booked = { scheduled_at: start, duration_min: durationMin, mode: input.mode, location: input.location };
+    const agenda = input.agenda ? ` Agenda: ${input.agenda}` : "";
+    await notifyBoth(
+      client,
+      actorUserId,
+      { studentUserId: student.user_id, counsellorUserId: faculty.user_id },
+      "Counselling session booked",
+      `Counselling session with ${faculty.full_name} on ${details(booked)}.${agenda}`,
+      `Counselling session with ${student.full_name} (${student.roll_no}) on ${details(booked)}.${agenda}`
+    );
     return { id: rows[0].session_id, assignment, student, faculty };
   });
 
@@ -218,8 +242,12 @@ async function scheduleSession(input, actorUserId) {
 /** Locks the session row; 404 when it doesn't exist. */
 async function lockSession(client, id) {
   const { rows } = await client.query(
-    `SELECT cs.*, f.user_id AS counsellor_user_id FROM counselling_sessions cs
-     JOIN faculty f ON f.faculty_id = cs.faculty_id WHERE cs.session_id = $1 FOR UPDATE OF cs`,
+    `SELECT cs.*, f.user_id AS counsellor_user_id, f.full_name AS counsellor_name,
+            s.user_id AS student_user_id, s.full_name AS student_name, s.roll_no
+     FROM counselling_sessions cs
+     JOIN faculty f ON f.faculty_id = cs.faculty_id
+     JOIN students s ON s.student_id = cs.student_id
+     WHERE cs.session_id = $1 FOR UPDATE OF cs`,
     [id]
   );
   if (!rows.length) throw httpError(404, "Session not found");
@@ -253,6 +281,16 @@ async function rescheduleSession(id, input, actorUserId) {
         input.agenda === undefined ? s.agenda : input.agenda || null,
       ]
     );
+    const moved = { scheduled_at: start, duration_min: durationMin, mode: input.mode || s.mode, location: input.location || s.location };
+    const from = formatDateTime(s.scheduled_at);
+    await notifyBoth(
+      client,
+      actorUserId,
+      { studentUserId: s.student_user_id, counsellorUserId: s.counsellor_user_id },
+      "Counselling session moved",
+      `Your counselling session with ${s.counsellor_name} has moved from ${from} to ${details(moved)}.`,
+      `Your counselling session with ${s.student_name} (${s.roll_no}) has moved from ${from} to ${details(moved)}.`
+    );
     return s;
   });
   const session = await getSession(id);
@@ -274,6 +312,15 @@ async function cancelSession(id, reason, actorUserId) {
     await client.query(
       "UPDATE counselling_sessions SET status = 'cancelled', cancelled_reason = $2, updated_at = NOW() WHERE session_id = $1",
       [s.session_id, reason]
+    );
+    const when = formatDateTime(s.scheduled_at);
+    await notifyBoth(
+      client,
+      actorUserId,
+      { studentUserId: s.student_user_id, counsellorUserId: s.counsellor_user_id },
+      "Counselling session cancelled",
+      `Your counselling session with ${s.counsellor_name} on ${when} has been cancelled. Reason: ${reason}`,
+      `Your counselling session with ${s.student_name} (${s.roll_no}) on ${when} has been cancelled. Reason: ${reason}`
     );
   });
   const session = await getSession(id);
@@ -309,6 +356,17 @@ async function markAttendance(id, { attendance, notes }, actor) {
        WHERE session_id = $1`,
       [s.session_id, attendance, actor.userId, notes !== undefined, notes === undefined ? null : notes || null]
     );
+    if (s.attendance !== attendance) {
+      // a notes-only re-save doesn't notify the student again
+      const word = attendance === "present" ? "Present" : "Absent";
+      await notify(client, {
+        sender: actor.userId,
+        recipient: s.student_user_id,
+        subject: "Counselling attendance",
+        message: `Your counselling session with ${s.counsellor_name} on ${formatDateTime(s.scheduled_at)} ${s.attendance ? "was corrected to" : "was marked"} ${word}.`,
+        link: LINKS.student,
+      });
+    }
     return s;
   });
   const session = await getSession(id);

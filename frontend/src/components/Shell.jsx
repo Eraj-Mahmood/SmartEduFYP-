@@ -21,6 +21,7 @@ const NAV = {
   admin: [
     { to: "/admin", label: "Overview", end: true },
     { to: "/admin/interventions", label: "Interventions" },
+    { to: "/admin/counselling", label: "Counselling" },
     { to: "/admin/model", label: "Model" },
     { to: "/admin/tutorials", label: "Tutorials" },
     { to: "/admin/users", label: "Users" },
@@ -97,7 +98,9 @@ function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[min(22rem,calc(100vw-1.5rem))] bg-surface text-ink rounded-xl shadow-pop border border-line z-30 max-h-96 overflow-y-auto animate-fade-up">
+        // phones: a full-width panel under the header (anchored to the bell it ran off the left edge,
+        // because the menu button sits to its right); sm and up: dropped down from the bell
+        <div className="fixed inset-x-3 top-[3.75rem] sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[22rem] bg-surface text-ink rounded-xl shadow-pop border border-line z-30 max-h-96 overflow-y-auto animate-fade-up">
           <div className="flex items-center justify-between px-4 py-3 border-b border-line">
             <span className="font-display text-sm font-semibold">Notifications</span>
             {unreadCount > 0 && (

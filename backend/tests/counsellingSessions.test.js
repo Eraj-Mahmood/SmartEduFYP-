@@ -64,7 +64,8 @@ afterAll(async () => {
   await pool.query("DELETE FROM audit_log WHERE entity = 'counselor_assignments' AND entity_id = ANY($1)", [a.rows.map((r) => r.id)]);
   await pool.query("DELETE FROM counselor_assignments WHERE student_id = ANY($1)", [ids]);
   await pool.query(
-    `DELETE FROM notifications WHERE sent_at >= $1 AND subject IN ('Your academic counselor', 'New counselee')
+    `DELETE FROM notifications WHERE sent_at >= $1
+       AND (subject IN ('Your academic counselor', 'New counselee') OR link IN ('/student/counselling', '/faculty/counselling'))
        AND recipient_user_id IN (SELECT user_id FROM students WHERE student_id = ANY($2)
                                  UNION SELECT user_id FROM faculty WHERE faculty_id = ANY($3))`,
     [since, ids, [ayeshaId, zainId]]

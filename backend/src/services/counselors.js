@@ -209,6 +209,7 @@ module.exports = {
   getAssignment,
   assignCounselor,
   closeAssignment,
+  notify,
   counseleeSummary,
   facultyAssignments,
   httpError,
