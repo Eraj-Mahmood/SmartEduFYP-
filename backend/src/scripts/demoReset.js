@@ -295,6 +295,9 @@ async function main() {
   step("Academic standing (seeded starting status, BU Handbook 5.5; config/academicStanding.json)");
   const standing = await require("../services/academicStanding").seedStandings(pool);
   console.log("  " + Object.entries(standing).map(([k, v]) => `${k} ${v}`).join(" · "));
+  step("Counselling demo data and the semester-close demo student (demoPhase7.js)");
+  const p7 = await require("./demoPhase7").seedPhase7Demo(pool, { asOf, adminUserId: admin.user_id });
+  console.log(`  ${p7.assignments} counsellor assignments (Dr. Ayesha Khan), ${p7.sessions} sessions, ${p7.marksChanged} final marks lowered (BU-114400)`);
   step("Predict every student through the ML service (strict, no fallback)");
   await predictAll(pool, admin.user_id);
   step("Summary");

@@ -164,8 +164,10 @@ const cell = (s) => String(s).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
         if (!r.links.some((l) => l.href === "/student#standing")) problems.push("no link to the standing card");
       }
       if (opts.noSession) {
-        if (me.counselling.next) problems.push("context: a session is booked (the eval expects none)");
-        if (!r.answer.includes("don't have a counselling session booked")) problems.push("doesn't say no session is booked");
+        // the student's own record: their next session if one is booked (demo:reset books some), else "none"
+        if (me.counselling.next) {
+          if (!r.answer.includes(me.counselling.next.when)) problems.push("doesn't quote the student's own next session");
+        } else if (!r.answer.includes("don't have a counselling session booked")) problems.push("doesn't say no session is booked");
         if (!r.links.some((l) => l.href === "/student/counselling")) problems.push("no link to the counselling page");
       }
       const leaked = [

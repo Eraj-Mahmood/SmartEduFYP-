@@ -31,7 +31,7 @@ or password" on every portal, so the portals never reveal which accounts exist.
 | Role | Name | Email | Password | Why |
 |---|---|---|---|---|
 | Admin | — | `admin@smartedu.edu` | `Admin@123` | Sees all students, predictions and interventions. |
-| Faculty | Dr. Ayesha Khan (AI) | `ayesha.khan@smartedu.edu` | `Faculty@123` | Teaches AI301 and AI302 section A (classes 16 and 17). Four of the six demo students are in her classes, covering all three labels. |
+| Faculty | Dr. Ayesha Khan (AI) | `ayesha.khan@smartedu.edu` | `Faculty@123` | Teaches AI301 and AI302 section A (classes 16 and 17). Four of the six demo students are in her classes, covering all three labels. Counsellor of BU-122785, BU-112907 and BU-114400 with a session history (Phase 7 demo). |
 | Faculty | Mr. Bilal Raza (CS) | `bilal.raza@smartedu.edu` | `Faculty@123` | Teaches CS401 section A (class 4, no demo students): the **upload demo** class. |
 | Faculty | Dr. Amina Sheikh (CS) | `amina.sheikh@smartedu.edu` | `Faculty@123` | Teaches the **live cohort** class (CS301 section LIVE, class 26, 30 SYNTHETIC students `SYN-*`). |
 
@@ -213,6 +213,65 @@ It is a pipeline test, not real-world accuracy, and the report says so.
 To start again from scratch: `cd backend; node src/scripts/removeLiveCohort.js` (lists imports) →
 `node src/scripts/removeLiveCohort.js <id>`, then import the file again on the admin page, press
 **Run predictions for this class**, and upload attendance as Dr. Sheikh.
+
+## Counselling and probation demo (Phase 7)
+
+`npm run demo:reset` adds this data (fixed; dates counted from the reset day, Pakistan time, so **reset
+on the day of the demo**):
+
+| Student | Standing (BU rules) | Counsellor | Sessions with Dr. Ayesha Khan |
+|---|---|---|---|
+| Ayesha Akhtar, BU-122785, `student122785@smartedu.edu` | Probation 1 of 2 (starting status) | Dr. Ayesha Khan | 28 days ago Present, 21 days ago Absent, 14 days ago Present; **in 2 days, 11:00 AM, Room 204** (upcoming) |
+| Zain Khan, BU-112907, `student112907@smartedu.edu` | Good standing | Dr. Ayesha Khan | 20 and 13 days ago Present (online); **yesterday 2:00 PM, Room 204 - Awaiting attendance**; in 3 days 2:00 PM online (upcoming) |
+| Bushra Awan, BU-114400, `student114400@smartedu.edu` | Good standing | Dr. Ayesha Khan | 17 days ago Present, 10 days ago Absent |
+
+**Bushra Awan is the semester-close demo student.** She is in Dr. Khan's AI301 and AI302; the reset sets
+her two final exams to 32 (both grades stay C), so this term's projected CGPA is 1.97, below the 2.00
+minimum - closing the semester puts her on **Probation 1 of 2** with a warning letter. (She is not one of the
+six curated students above: their marks and the existing demos are unchanged. BU-144766 Farah Javed still
+has no counsellor, for the interventions demo.)
+
+Starting statuses after a reset (BU Student Handbook 5.5, seeded from each student's CGPA and the dataset's
+consecutive-low-CGPA flag): good 26,466 · Probation 1 873 · Probation 2 16,508 · not evaluated 6,183
+(semester-1 students). Probation is shown next to the risk label and never changes it.
+
+Use three windows: **Admin**, **Dr. Ayesha Khan** and the student named in each step.
+
+1. **Schedule a session (both notified).** Admin → **Counselling** → **Schedule session** → search
+   `BU-122785` → pick **Ayesha Akhtar** (the counsellor fills in as **Dr. Ayesha Khan · 3 counselees
+   (current counsellor)**) → Date: tomorrow, Time: 10:00, Location: Room 204, Agenda: "Plan for the final
+   exams" → **Schedule session**. The toast says "Session booked for <tomorrow>, 10:00 AM". Ayesha Akhtar's
+   bell: "Counselling session with Dr. Ayesha Khan on <tomorrow>, 10:00 AM (30 min), Room 204. Agenda: ...";
+   Dr. Khan's bell: "Counselling session with Ayesha Akhtar (BU-122785) on ...".
+   *Optional:* choose another teacher in the dropdown - the form asks "This makes Mr. Zain Abbas the
+   counsellor instead of Dr. Ayesha Khan. Continue?" (press **Go back**).
+2. **The teacher marks it Present.** Dr. Khan → **Counselling**: the first row is **Zain Khan, yesterday 2:00
+   PM, Awaiting attendance** (highlighted, with "1 session awaiting your attendance mark"). **Present** → add a
+   note ("Reviewed the study plan; on track for the midterm.") → **Save**. It moves to **History** as Present.
+   Zain Khan (`student112907@smartedu.edu`) → **Counselling**: the session shows **Present**, "Attended 3 of 3
+   sessions so far", and the note is not shown; his bell says the session "was marked Present".
+3. **Close the semester -> Probation 1.** Admin → **Standing** → Term `Fall 2026` → **Preview**: 70 students;
+   good 38 · Probation 1 4 · Probation 2 5 · Dropped 23; 9 letters. The row **Bushra Awan BU-114400, CGPA
+   1.97 / min 2.00, Good -> Probation 1, Level 1**. Tick **"All results for this term, including FYP, are
+   final"** → **Close Fall 2026** → **Close the semester**. Toast: "Fall 2026 closed". Bushra Awan
+   (`student114400@smartedu.edu`): bell "Academic standing: Probation 1 of 2"; the dashboard card **Academic
+   standing (BU rules)** shows Probation 1 of 2, the average needed this term and the warning letter.
+4. **Schedule counselling from the probation list.** Admin → **Standing** → *Students on probation* → search
+   `BU-114400` → **Schedule session**: the form is pre-filled (Bushra Awan, Dr. Ayesha Khan, agenda
+   "Probation follow-up (Probation 1 of 2, Fall 2026): CGPA 1.97 ...") → pick tomorrow, 3:00 PM, Room 204 →
+   **Schedule session**. **Letter 1** in the same row opens the print view (**Print / Save as PDF**).
+5. **The student acknowledges the letter.** Bushra Awan → dashboard → *Warning letters* → **I acknowledge this
+   letter**. It shows "Acknowledged by the student on ..."; in the admin probation list the letter is no
+   longer "not acknowledged".
+
+Also worth showing: Admin **Overview** (Probation 1 / Probation 2 / Dropped tiles), the **Standing** filter on
+**Interventions** and **Users**, a Probation 2 student's enrolment hold on **Assignments** (e.g. enrol
+`BU-100076` - refused with "Record approval"), and the chat: "Am I on probation?", "meri counselling kab
+hai?", "What happens if my CGPA stays below 2?".
+
+**Verified 2026-11-09** by `cd backend; node ../evaluation/phase7_demo_check.mjs` (performs steps 1-5 in a real
+browser and checks each result; screenshots in `docs/screenshots/phase7_demo/`). The actions change the data:
+**`npm run demo:reset` afterwards** (and before a presentation).
 
 ## Forced password change
 
