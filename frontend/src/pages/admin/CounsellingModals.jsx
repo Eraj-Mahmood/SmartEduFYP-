@@ -427,17 +427,17 @@ export function CancelSessionModal({ session, onClose, onSaved }) {
  * Mark Present / Absent with optional private notes (never shown to the student). Also corrects an
  * earlier mark. endpoint: "/admin/counselling-sessions" (admin override) or "/faculty/counselling-sessions".
  */
-export function AttendanceModal({ session, onClose, onSaved, endpoint = "/admin/counselling-sessions" }) {
+export function AttendanceModal({ session, onClose, onSaved, endpoint = "/admin/counselling-sessions", preset }) {
   const { toast } = useToast();
   const [attendance, setAttendance] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    setAttendance(session?.attendance || "");
+    setAttendance(preset || session?.attendance || "");
     setNotes(session?.counsellor_notes || "");
     setError("");
-  }, [session]);
+  }, [session, preset]);
 
   async function save() {
     if (!attendance) {

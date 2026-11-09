@@ -82,6 +82,20 @@ async function buildChatContext(studentId, db = pool) {
     counselor: o.counselor
       ? { name: o.counselor.name, designation: o.counselor.designation, email: o.counselor.email, assigned_at: o.counselor.assigned_at }
       : null,
+    // the student's own next counselling session and attendance record (Phase 7), never the notes
+    counselling: {
+      next: o.counselling.next
+        ? {
+            when: o.counselling.next.when,
+            counsellor: o.counselling.next.counsellor_name,
+            duration_min: o.counselling.next.duration_min,
+            mode: o.counselling.next.mode,
+            location: o.counselling.next.location,
+          }
+        : null,
+      attended: o.counselling.attended,
+      marked: o.counselling.marked,
+    },
     interventions: interventions.rows.map((n) => ({ subject: n.subject, message: n.message, sent_at: n.sent_at })),
     thresholds: o.thresholds,
   };

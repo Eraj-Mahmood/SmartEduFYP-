@@ -13,10 +13,12 @@ const NAV = {
     { to: "/student", label: "Overview", end: true },
     { to: "/student/results", label: "Results" },
     { to: "/student/attendance", label: "Attendance" },
+    { to: "/student/counselling", label: "Counselling" },
   ],
   faculty: [
     { to: "/faculty", label: "My classes", end: true, also: ["/faculty/class/"] }, // class roster/attendance pages
     { to: "/faculty/counselees", label: "My counselees" },
+    { to: "/faculty/counselling", label: "Counselling" },
   ],
   admin: [
     { to: "/admin", label: "Overview", end: true },

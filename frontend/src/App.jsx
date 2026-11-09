@@ -18,6 +18,8 @@ const FacultyDashboard = lazy(() => import("./pages/faculty/FacultyDashboard"));
 const ClassRoster = lazy(() => import("./pages/faculty/ClassRoster"));
 const MarkAttendance = lazy(() => import("./pages/faculty/MarkAttendance"));
 const MyCounselees = lazy(() => import("./pages/faculty/MyCounselees"));
+const CounsellingSessions = lazy(() => import("./pages/faculty/CounsellingSessions"));
+const StudentCounselling = lazy(() => import("./pages/student/StudentCounselling"));
 
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const ManageUsers = lazy(() => import("./pages/admin/ManageUsers"));
@@ -57,12 +59,14 @@ export default function App() {
           <Route path="/student" element={<ProtectedRoute allowedRole="student"><StudentDashboard /></ProtectedRoute>} />
           <Route path="/student/results" element={<ProtectedRoute allowedRole="student"><StudentResults /></ProtectedRoute>} />
           <Route path="/student/attendance" element={<ProtectedRoute allowedRole="student"><StudentAttendance /></ProtectedRoute>} />
+          <Route path="/student/counselling" element={<ProtectedRoute allowedRole="student"><StudentCounselling /></ProtectedRoute>} />
 
           {/* FACULTY PORTAL - read-write on own classes only */}
           <Route path="/faculty" element={<ProtectedRoute allowedRole="faculty"><FacultyDashboard /></ProtectedRoute>} />
           <Route path="/faculty/class/:facultyCourseId/roster" element={<ProtectedRoute allowedRole="faculty"><ClassRoster /></ProtectedRoute>} />
           <Route path="/faculty/class/:facultyCourseId/attendance" element={<ProtectedRoute allowedRole="faculty"><MarkAttendance /></ProtectedRoute>} />
           <Route path="/faculty/counselees" element={<ProtectedRoute allowedRole="faculty"><MyCounselees /></ProtectedRoute>} />
+          <Route path="/faculty/counselling" element={<ProtectedRoute allowedRole="faculty"><CounsellingSessions /></ProtectedRoute>} />
 
           {/* ADMIN PORTAL - full authority except results/attendance edits */}
           <Route path="/admin" element={<ProtectedRoute allowedRole="admin"><AdminDashboard /></ProtectedRoute>} />

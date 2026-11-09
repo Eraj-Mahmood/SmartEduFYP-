@@ -332,6 +332,18 @@ describe("who sees what", () => {
     expect(other.body.sessions.map((s) => s.session_id).sort()).toEqual(ownB.sort());
   });
 
+  test("the student dashboard and chat context carry the next session and the attended count, never the notes", async () => {
+    const res = await request(app).get("/api/student/dashboard").set(as(tokA));
+    expect(res.status).toBe(200);
+    expect(res.body.counselling).toMatchObject({ attended: 1, marked: 1, next: { counsellor_name: "Dr. Ayesha Khan" } });
+    expect(new Date(res.body.counselling.next.scheduled_at).getTime()).toBeGreaterThan(Date.now());
+    expect(JSON.stringify(res.body.counselling)).not.toMatch(/counsellor_notes|Discussed a study plan/);
+    const { buildChatContext } = require("../src/services/chatContext");
+    const ctx = await buildChatContext(A.student_id);
+    expect(ctx.counselling).toMatchObject({ attended: 1, marked: 1, next: { counsellor: "Dr. Ayesha Khan", mode: expect.any(String) } });
+    expect(ctx.counselling.next.when).toMatch(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) /);
+  });
+
   test("a teacher sees only their own sessions", async () => {
     const res = await request(app).get("/api/faculty/counselling-sessions?view=upcoming").set(as(zain));
     expect(res.status).toBe(200);

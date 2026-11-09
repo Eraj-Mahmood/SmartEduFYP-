@@ -4,6 +4,7 @@ const { getCourseSummary, PASS_MARK, round2 } = require("./studentCourses");
 const { toReasons } = require("./reasons");
 const { recommendFor } = require("./tutorials");
 const { getActiveCounselor } = require("./counselors");
+const { studentSessionSummary } = require("./counsellingSessions");
 
 // One student's overview: official (imported) and this term's live/projected figures side by
 // side, each with a label and source, plus the latest prediction and this term's courses.
@@ -52,9 +53,10 @@ async function getStudentOverview(studentId, db = pool) {
   const pred = latest.rows[0] || null;
   const src = (pred && pred.feature_sources) || {};
   const { courses, weakest, present, sessions, termMarksImported } = summary;
-  const [recommendation, c] = await Promise.all([
+  const [recommendation, c, counselling] = await Promise.all([
     recommendFor(studentId, { summary, label: pred ? pred.final_label : null, db }),
     getActiveCounselor(studentId, db),
+    studentSessionSummary(studentId, db),
   ]);
 
   return {
@@ -108,6 +110,8 @@ async function getStudentOverview(studentId, db = pool) {
     recommendation,
     // the student's academic counselor (Phase 4), or null
     counselor: c && { name: c.name, designation: c.designation, email: c.email, department: c.department, assigned_at: c.assigned_at },
+    // counselling sessions (Phase 7): the next one (no counsellor notes) and attended / marked counts
+    counselling,
     courses,
     // this term's marks came from a live-cohort import, not from teachers (see studentCourses.js)
     termMarksImported,

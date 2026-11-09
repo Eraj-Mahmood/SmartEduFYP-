@@ -1,17 +1,38 @@
+import { Link } from "react-router-dom";
 import { Card, Icons, buttonClass } from "../../components/ui";
-import { timeAgo } from "../../lib/format";
+import { timeAgo, pkDateTime } from "../../lib/format";
 
 // "What to do next" on the student dashboard: who to talk to (their counselor), what to study
 // (the recommended tutorial for their weakest course) and the ranked next steps.
 
 const KIND_LABEL = { video: "Video lectures", notes: "Notes & readings", practice: "Practice" };
 
-function CounselorCard({ counselor }) {
+/** The next counselling session (Phase 7), with a link to all of them. */
+function NextSession({ session }) {
+  if (!session) return null;
+  const place = session.mode === "online" ? "Online" : session.location;
+  return (
+    <div className="mt-3 rounded-lg bg-brand-50 px-3 py-2 text-sm">
+      <p className="inline-flex items-center gap-1.5 font-medium text-brand-dark">
+        <Icons.Calendar size={14} /> Next session
+      </p>
+      <p className="text-ink">
+        {pkDateTime(session.scheduled_at)} · {place}
+      </p>
+      <Link to="/student/counselling" className="text-brand hover:underline text-xs font-medium">
+        All my sessions →
+      </Link>
+    </div>
+  );
+}
+
+function CounselorCard({ counselor, nextSession }) {
   if (!counselor) {
     return (
       <div className="rounded-xl border border-dashed border-line bg-surface/60 p-4">
         <p className="text-xs font-mono uppercase tracking-wider text-muted">Your counselor</p>
         <p className="mt-1.5 text-sm text-muted">No counselor is assigned to you yet. Ask SmartEdu "Who can help me?" for support contacts.</p>
+        <NextSession session={nextSession} />
       </div>
     );
   }
@@ -34,6 +55,7 @@ function CounselorCard({ counselor }) {
           <p className="text-xs text-muted mt-1">Assigned {timeAgo(counselor.assigned_at)}</p>
         </div>
       </div>
+      <NextSession session={nextSession} />
     </div>
   );
 }
@@ -65,10 +87,10 @@ function TutorialCard({ recommendation }) {
   );
 }
 
-export default function WhatToDoNext({ counselor, recommendation, steps, flagged }) {
+export default function WhatToDoNext({ counselor, nextSession, recommendation, steps, flagged }) {
   // the tutorial has its own card, so its step isn't repeated in the list
   const list = steps.filter((s) => s.id !== "tutorial" || !recommendation?.tutorial);
-  const side = recommendation || counselor || flagged;
+  const side = recommendation || counselor || flagged || nextSession;
   return (
     <Card title="What to do next" subtitle="Your steps, who can help, and what to study" as="section">
       <div id="what-next" className={`scroll-mt-28 grid gap-5 ${side ? "lg:grid-cols-[1.4fr_1fr]" : ""}`}>
@@ -90,7 +112,7 @@ export default function WhatToDoNext({ counselor, recommendation, steps, flagged
         </div>
         {side && (
           <div className="space-y-3">
-            <CounselorCard counselor={counselor} />
+            <CounselorCard counselor={counselor} nextSession={nextSession} />
             {recommendation && <TutorialCard recommendation={recommendation} />}
           </div>
         )}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
 import { Card, Drawer, Button, RiskChip, EmptyState, SkeletonCard, useToast, Icons, buttonClass, RISK_SEVERITY } from "../../components/ui";
@@ -236,10 +236,17 @@ export default function MyCounselees() {
 
   return (
     <PortalShell>
-      <h1 className="font-display text-2xl sm:text-[28px] mb-1">My counselees</h1>
-      <p className="text-muted text-sm mb-5 max-w-2xl">
-        Students you counsel. You can see their status, next steps and recommended tutorial here, even if they aren't in your classes.
-      </p>
+      <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="font-display text-2xl sm:text-[28px] mb-1">My counselees</h1>
+          <p className="text-muted text-sm max-w-2xl">
+            Students you counsel. You can see their status, next steps and recommended tutorial here, even if they aren't in your classes.
+          </p>
+        </div>
+        <Link to="/faculty/counselling" className="self-start sm:self-auto shrink-0 text-sm font-medium text-brand hover:underline inline-flex items-center gap-1">
+          <Icons.Calendar size={15} /> Counselling sessions <Icons.ChevronRight size={14} />
+        </Link>
+      </div>
 
       {loading && !data ? (
         <div className="grid gap-4 md:grid-cols-2">

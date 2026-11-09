@@ -9,6 +9,9 @@
 //     student has one;
 //   - who_can_help with a counselor assigned names the counselor and their email (a second pass
 //     with a real faculty member as counselor in the context; nothing is written to the database).
+//   - counselling_session (Phase 7): with no session booked the answer says so and links the
+//     counselling page; a third pass puts a booked session into the context (only there) and checks
+//     the date, time, counsellor, place and attended count are quoted. Another student's session is refused.
 // Writes docs/chat_eval.md. Exit code 1 if anything fails.
 //
 // Usage (database running; the ML service is not needed): cd backend; node ../evaluation/chat_eval.js
@@ -64,6 +67,11 @@ function questions(me, other, foreignCourse) {
     ["who_can_help", "Who can help me?"],
     ["who_can_help", "Do I have a counselor?"],
     ["who_can_help", "kis se baat karun?"],
+    ["counselling_session", "When is my counselling session?", { noSession: true }],
+    ["counselling_session", "meri counselling kab hai?", { noSession: true }],
+    ["counselling_session", "Do I have a counselling appointment?", { noSession: true }],
+    ["counselling_session", "agla session counsellor ke sath kab hai", { noSession: true }],
+    ["other_student", `When is ${otherFirst}'s counselling session?`, { target: other }],
     ["other_student", `What is ${other.student.roll_no}'s CGPA?`, { target: other }],
     ["other_student", `Show me ${other.student.email} marks`, { target: other }],
     ["other_student", "What is my friend's CGPA?"],
@@ -131,6 +139,11 @@ const cell = (s) => String(s).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
       if (opts.notMine && !r.answer.includes("isn't one of your courses")) problems.push("didn't say course isn't theirs");
       if (opts.urgent && !r.answer.includes("1122")) problems.push("no emergency contact");
       if (opts.noPromise && !r.answer.includes("can't tell you your final result")) problems.push("no no-promise line");
+      if (opts.noSession) {
+        if (me.counselling.next) problems.push("context: a session is booked (the eval expects none)");
+        if (!r.answer.includes("don't have a counselling session booked")) problems.push("doesn't say no session is booked");
+        if (!r.links.some((l) => l.href === "/student/counselling")) problems.push("no link to the counselling page");
+      }
       const leaked = [
         ...leakText.filter((t) => r.answer.toLowerCase().includes(String(t).toLowerCase())),
         ...leakNums.filter((n) => new RegExp(`(^|[^\\d.])${n.replace(".", "\\.")}([^\\d]|$)`).test(r.answer)),
@@ -164,6 +177,40 @@ const cell = (s) => String(s).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
       const words = r.answer.split(/\s+/).filter(Boolean).length;
       if (words > MAX_WORDS) problems.push(`${words} words`);
       results.push({ roll: me.student.roll_no, label: me.status && me.status.label, expected: "who_can_help", group: "who_can_help (counselor)", q, r, words, pass: problems.length === 0, problems });
+    });
+  });
+
+  // ---- counselling_session with a booked session (Phase 7; context only, nothing written)
+  const booked = (mode) => ({
+    when: "Tue 18 Nov 2026, 11:00 AM",
+    counsellor: counselor.name,
+    duration_min: 30,
+    mode,
+    location: mode === "online" ? "https://meet.example.com/abc" : "Room 204",
+  });
+  const SESSION_QS = [
+    ["When is my counselling session?", "in_person"],
+    ["meri counselling kab hai?", "in_person"],
+    ["When is my next session with my counsellor?", "online"],
+    [`When is my session with ${counselor.name}?`, "online"],
+  ];
+  contexts.forEach((me, i) => {
+    SESSION_QS.forEach(([q, mode], k) => {
+      const next = booked(mode);
+      const ctx = { ...me, counselor, counselling: { next, attended: 2, marked: 3 } };
+      const r = respond(q, ctx, { catalog: catalogRows, rng: seeded(55000 + i * 100 + k) });
+      const problems = [];
+      if (r.intent !== "counselling_session") problems.push(`intent ${r.intent}`);
+      if (!r.answer.includes(next.when)) problems.push("date/time missing");
+      if (!r.answer.includes(counselor.name)) problems.push("counsellor missing");
+      if (mode === "in_person" && !r.answer.includes("Room 204")) problems.push("room missing");
+      if (mode === "online" && !r.links.some((l) => l.href === next.location)) problems.push("no meeting link");
+      if (!r.answer.includes("attended 2 of 3")) problems.push("attended count missing");
+      if (!r.links.some((l) => l.href === "/student/counselling")) problems.push("no link to the counselling page");
+      if (FORBIDDEN.test(r.answer)) problems.push("probability/promise");
+      const words = r.answer.split(/\s+/).filter(Boolean).length;
+      if (words > MAX_WORDS) problems.push(`${words} words`);
+      results.push({ roll: me.student.roll_no, label: me.status && me.status.label, expected: "counselling_session", group: "counselling_session (booked)", q, r, words, pass: problems.length === 0, problems });
     });
   });
 
@@ -225,7 +272,7 @@ const cell = (s) => String(s).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
     "",
     `Generated by \`evaluation/chat_eval.js\` on ${new Date().toISOString().slice(0, 10)}. ` +
       `${results.length} questions: ${results.filter((x) => !x.group).length / DEMO.length} phrasings x ${DEMO.length} demo students, ` +
-      `the counselor pass and ${results.filter((x) => x.group && x.group.startsWith("live")).length} questions for live-cohort students (this term's marks imported, one per label). ` +
+      `the counselor pass, the booked-session pass and ${results.filter((x) => x.group && x.group.startsWith("live")).length} questions for live-cohort students (this term's marks imported, one per label). ` +
       "A row passes when the intent is right, the answer is at most 120 words with no probabilities or promises, " +
       "data answers contain real numbers, and nothing from another student (roll no, email, name, GPA figures) appears.",
     "",
@@ -242,7 +289,7 @@ const cell = (s) => String(s).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
     "|---|---|---|---|---|---|",
     ...results.map(
       (x) =>
-        `| ${cell(x.q)}${x.group ? ` *(${x.group.startsWith("live") ? "live student" : "counselor assigned"})*` : ""} | ${x.roll} (${x.label}) | ${x.expected} | ${x.r.intent} | ${x.pass ? "pass" : `**FAIL** ${cell(x.problems.join("; "))}`} | ${cell(x.r.answer)} |`
+        `| ${cell(x.q)}${x.group ? ` *(${x.group.startsWith("live") ? "live student" : x.group.startsWith("counselling") ? "session booked" : "counselor assigned"})*` : ""} | ${x.roll} (${x.label}) | ${x.expected} | ${x.r.intent} | ${x.pass ? "pass" : `**FAIL** ${cell(x.problems.join("; "))}`} | ${cell(x.r.answer)} |`
     ),
     "",
   ];

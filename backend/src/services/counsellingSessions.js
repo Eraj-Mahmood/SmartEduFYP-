@@ -455,6 +455,31 @@ async function listForStudent(userId) {
   };
 }
 
+/**
+ * For the student dashboard and the chat (Phase 7, step 3): the next session that hasn't ended and
+ * isn't marked or cancelled (no notes), and how many marked sessions they attended.
+ * -> {next: null | {session_id, scheduled_at, when, duration_min, mode, location, agenda, counsellor_name}, attended, marked}
+ */
+async function studentSessionSummary(studentId, db = pool) {
+  const [counts, next] = await Promise.all([
+    db.query(
+      `SELECT COUNT(*) FILTER (WHERE attendance = 'present')::int AS attended, COUNT(attendance)::int AS marked
+       FROM counselling_sessions WHERE student_id = $1 AND status = 'scheduled'`,
+      [studentId]
+    ),
+    db.query(
+      `SELECT cs.session_id, cs.scheduled_at, cs.duration_min, cs.mode, cs.location, cs.agenda, f.full_name AS counsellor_name
+       FROM counselling_sessions cs JOIN faculty f ON f.faculty_id = cs.faculty_id
+       WHERE cs.student_id = $1 AND cs.status = 'scheduled' AND cs.attendance IS NULL
+         AND cs.scheduled_at + cs.duration_min * INTERVAL '1 minute' > NOW()
+       ORDER BY cs.scheduled_at LIMIT 1`,
+      [studentId]
+    ),
+  ]);
+  const n = next.rows[0];
+  return { next: n ? { ...n, when: formatDateTime(n.scheduled_at) } : null, ...counts.rows[0] };
+}
+
 module.exports = {
   MAX_DAYS_AHEAD,
   DISPLAY_LABELS,
@@ -466,4 +491,5 @@ module.exports = {
   listForAdmin,
   listForFaculty,
   listForStudent,
+  studentSessionSummary,
 };

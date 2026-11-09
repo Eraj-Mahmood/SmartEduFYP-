@@ -3,6 +3,49 @@ import { PortalShell } from "../../components/Shell";
 import { Card, StatCard, EmptyState, Skeleton, Button, Icons } from "../../components/ui";
 import useApi from "../../lib/useApi";
 import RiskBar from "./RiskBar";
+import { pkDate, pkTime } from "../../lib/format";
+
+/** "Counselling today / awaiting attendance" (Phase 7). Hidden when there is nothing to show. */
+function CounsellingCard() {
+  const { data } = useApi("/faculty/counselling-sessions", { params: { view: "upcoming" } });
+  const sessions = data?.sessions || [];
+  const today = pkDate(new Date());
+  const todays = sessions.filter((s) => s.display_status === "upcoming" && pkDate(s.scheduled_at) === today);
+  const awaiting = sessions.filter((s) => s.display_status === "awaiting_attendance").length;
+  if (!todays.length && !awaiting) return null;
+  return (
+    <Card className="mb-6" title="Counselling" subtitle="Today's sessions and attendance still to mark">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-mono uppercase tracking-wider text-muted mb-1.5">Today</p>
+          {todays.length ? (
+            <ul className="space-y-1.5">
+              {todays.map((s) => (
+                <li key={s.session_id} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <span className="font-medium tabular-nums">{pkTime(s.scheduled_at)}</span>
+                  <span className="text-ink">{s.student_name}</span>
+                  <span className="text-xs text-muted">{s.mode === "online" ? "Online" : s.location}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted">No sessions today.</p>
+          )}
+        </div>
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          {awaiting > 0 && (
+            <p className="inline-flex items-center gap-1.5 text-sm font-medium text-risk-700">
+              <Icons.Warning size={15} /> {awaiting} awaiting attendance
+            </p>
+          )}
+          <Link to="/faculty/counselling" className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark">
+            Open counselling <Icons.ChevronRight size={15} />
+          </Link>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 /** Unique students across all my classes (a student in two of them counts once): one request. */
 function useUniqueStudents() {
@@ -74,6 +117,8 @@ export default function FacultyDashboard() {
           [0, 1, 2].map((i) => <Skeleton key={i} className="h-[104px]" rounded="rounded-card" />)
         )}
       </div>
+
+      <CounsellingCard />
 
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2">

@@ -23,6 +23,7 @@ const LINKS = {
   dashboard: { label: "Open my dashboard", href: "/student" },
   results: { label: "See my results", href: "/student/results" },
   attendance: { label: "See my attendance", href: "/student/attendance" },
+  counselling: { label: "My counselling sessions", href: "/student/counselling" },
 };
 
 const STARTERS = ["Why is my status this?", "Which course should I focus on?", "Is my attendance OK?", "How can I improve?"];
@@ -76,6 +77,18 @@ const WORDS = {
   academic: [
     "cgpa", "gpa", "sgpa", "marks", "mark", "result", "results", "grade", "grades", "attendance", "hazri", "haazri",
     "status", "risk", "score", "scores", "performance", "number", "numbers",
+    // Phase 7: "When is Ali's counselling session?" is about someone else
+    "counselling", "counseling", "counselling session", "counseling session",
+  ],
+  // counselling_session (Phase 7): a counselling word AND a when/booking word ("who is my counsellor"
+  // has none, so it stays who_can_help)
+  counsellingTopic: [
+    "counselling", "counseling", "counsellor", "counselor", "counsellors", "counselors", "counselling session",
+    "counseling session", "advisor meeting",
+  ],
+  counsellingWhen: [
+    "when", "kab", "next", "upcoming", "schedule", "scheduled", "appointment", "meeting", "session", "sessions",
+    "time", "date", "day", "booked", "book", "timing", "waqt", "agla", "agli", "agle",
   ],
   whoCanHelp: [
     "who can help", "who could help", "who will help", "talk to someone", "someone to talk", "counselor", "counsellor",
@@ -160,7 +173,16 @@ function mentionsOtherStudent(message, norm, ctx) {
   const raw = String(message || "").toLowerCase().replace(/[‘’ʼ`]/g, "'");
   const ownDigits = String(ctx.student.roll_no || "").replace(/\D/g, "");
   const ownEmail = String(ctx.student.email || "").toLowerCase();
-  const ownNames = new Set(String(ctx.student.name || "").toLowerCase().split(/\s+/));
+  // the student's own name, and their counsellor's (Phase 7: "my session with Dr. Ayesha Khan" is not about another student)
+  const ownNames = new Set(
+    [ctx.student.name, ctx.counselor && ctx.counselor.name, ctx.counselling && ctx.counselling.next && ctx.counselling.next.counsellor]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w && !["dr", "mr", "ms", "mrs", "prof"].includes(w))
+  );
 
   for (const m of raw.matchAll(ROLL_RE)) if (m[1] !== ownDigits) return true;
   for (const m of raw.matchAll(STUDENT_ID_RE)) if ((m[1] || m[2]) !== ownDigits) return true;
@@ -179,6 +201,14 @@ function mentionsOtherStudent(message, norm, ctx) {
     if (!["me", "mine", "my", "this", "the", "all", "each", "every", "last", "a", "an", "our"].includes(m[2]) && !ownNames.has(m[2])) return true;
   }
   return norm.split(" ").some((w) => FIRST_NAMES.has(w) && !ownNames.has(w));
+}
+
+/** The words of the student's counsellor's name, without titles ("ayesha", "khan"). */
+function counsellorNameWords(ctx) {
+  const names = [ctx.counselor && ctx.counselor.name, ctx.counselling && ctx.counselling.next && ctx.counselling.next.counsellor];
+  return normalise(names.filter(Boolean).join(" "))
+    .split(" ")
+    .filter((w) => w.length > 2 && !["mrs", "prof"].includes(w));
 }
 
 /** Courses named in the message (codes like "AI301"/"ai 301", or full titles). */
@@ -200,6 +230,8 @@ function routeIntent(message, ctx, catalog = []) {
   if (has(norm, WORDS.quitting)) return { intent: "wellbeing", quitting: true };
   if (has(norm, WORDS.distress)) return { intent: "wellbeing" };
   if (mentionsOtherStudent(message, norm, ctx)) return { intent: "other_student" };
+  if (has(norm, WORDS.counsellingTopic) && has(norm, WORDS.counsellingWhen)) return { intent: "counselling_session" };
+  if (has(norm, ["session", "meeting", "appointment"]) && has(norm, counsellorNameWords(ctx))) return { intent: "counselling_session" };
   const courses = findCourses(norm, catalog);
   if (courses.length) return { intent: "course_detail", courses, noPromise: has(norm, WORDS.noPromise) };
   if (has(norm, WORDS.attendance)) return { intent: "attendance" };
@@ -488,6 +520,36 @@ function whoCanHelp(ctx, r, rng) {
   };
 }
 
+/** "When is my counselling session?" - only the student's own next session (Phase 7). */
+function counsellingSession(ctx, r, rng) {
+  const cs = ctx.counselling || { next: null, attended: 0, marked: 0 };
+  const record = cs.marked ? ` So far you've attended ${cs.attended} of ${cs.marked} counselling session${cs.marked === 1 ? "" : "s"}.` : "";
+  const n = cs.next;
+  if (n) {
+    const online = n.mode === "online";
+    const isLink = /^https?:\/\//i.test(n.location || "");
+    const where = online ? (isLink ? "online (the meeting link is below)" : `online (${n.location})`) : `in ${n.location}`;
+    return {
+      answer:
+        `Your next counselling session is on ${n.when} with ${n.counsellor}, ${n.duration_min} minutes, ${where}.${record} ` +
+        pick(rng, ["Please be on time - if you can't make it, tell your counsellor beforehand.", "If you can't make it, let your counsellor know in advance."]),
+      links: [online && isLink ? { label: "Open meeting link", href: n.location } : null, LINKS.counselling].filter(Boolean),
+      suggestions: ["How can I improve?", "Who can help me?"],
+    };
+  }
+  const c = counselorLine(ctx);
+  return {
+    answer:
+      "You don't have a counselling session booked right now." +
+      (c
+        ? ` If you'd like one, email ${c} - sessions are booked by the admin office.`
+        : " No counselor is assigned yet - your department admin can assign one and book a session.") +
+      record,
+    links: [LINKS.counselling],
+    suggestions: ["Who can help me?", "How can I improve?"],
+  };
+}
+
 function otherStudent(ctx, r, rng) {
   return {
     answer: pick(rng, [
@@ -554,6 +616,7 @@ const TEMPLATES = {
   attendance,
   improve,
   who_can_help: whoCanHelp,
+  counselling_session: counsellingSession,
   other_student: otherStudent,
   wellbeing,
   greeting,

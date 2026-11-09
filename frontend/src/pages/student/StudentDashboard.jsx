@@ -187,6 +187,7 @@ export default function StudentDashboard() {
         {data.latestPrediction && (
           <WhatToDoNext
             counselor={data.counselor}
+            nextSession={data.counselling?.next}
             recommendation={data.recommendation}
             steps={next.data || []}
             flagged={data.latestPrediction.final_label !== "Safe"}
