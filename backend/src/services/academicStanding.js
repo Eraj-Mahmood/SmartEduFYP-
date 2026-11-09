@@ -64,13 +64,16 @@ function nextStanding(previousStatus, previousCount, cgpa, semesterNo, { program
 
 /**
  * Starting status for demo:reset (source 'seed'; the dataset has one completed term per student):
- * current semester 1 -> not_evaluated; CGPA at or above the minimum -> good; below and the dataset's
- * consecutive-low-CGPA flag set -> probation_2; below otherwise -> probation_1.
+ * current semester 1 -> not_evaluated; CGPA at or above the minimum -> good; below -> probation_1 (count 1).
+ * Never probation_2 (Phase 7.1, Bug 5): Handbook 5.5.3 drops a student only after two consecutive
+ * probations, and the seed cannot prove an earlier one - the dataset's consecutive-low flag compares the
+ * CGPA with the previous SGPA, not two end-of-term CGPAs. So the first close can't drop anyone.
+ * `consecutiveLow` is accepted and ignored.
  */
-function seedStatus({ semester, cgpa, consecutiveLow, programme = config.default_programme }) {
+function seedStatus({ semester, cgpa, programme = config.default_programme }) {
   if (!semester || semester <= 1 || cgpa === null || cgpa === undefined) return { status: "not_evaluated", count: 0 };
   if (round2(cgpa) >= minimumFor(programme)) return { status: "good", count: 0 };
-  return consecutiveLow ? { status: "probation_2", count: 2 } : { status: "probation_1", count: 1 };
+  return { status: "probation_1", count: 1 };
 }
 
 /**

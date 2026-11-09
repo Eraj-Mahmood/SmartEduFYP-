@@ -85,9 +85,10 @@ describe("seedStatus (starting status for demo:reset)", () => {
   test("CGPA >= 2.00 -> good", () => {
     expect(s.seedStatus({ semester: 4, cgpa: 2.0, consecutiveLow: false })).toEqual({ status: "good", count: 0 });
   });
-  test("below 2.00 with the consecutive-low flag -> probation 2, otherwise probation 1", () => {
-    expect(s.seedStatus({ semester: 4, cgpa: 1.7, consecutiveLow: true })).toEqual({ status: "probation_2", count: 2 });
+  test("below 2.00 -> Probation 1, never Probation 2 (Phase 7.1 Bug 5: the seed can't prove two probations)", () => {
+    expect(s.seedStatus({ semester: 4, cgpa: 1.7, consecutiveLow: true })).toEqual({ status: "probation_1", count: 1 });
     expect(s.seedStatus({ semester: 4, cgpa: 1.7, consecutiveLow: false })).toEqual({ status: "probation_1", count: 1 });
+    expect(s.seedStatus({ semester: 8, cgpa: 0.5, consecutiveLow: true })).toEqual({ status: "probation_1", count: 1 });
   });
   test("labels for the screens", () => {
     expect(s.LABELS).toMatchObject({ good: "Good standing", probation_1: "Probation 1 of 2", probation_2: "Probation 2 of 2" });
@@ -95,6 +96,15 @@ describe("seedStatus (starting status for demo:reset)", () => {
 });
 
 describe("seeded data (after demo:reset)", () => {
+  test("Bug 5: no seeded Probation 2 rows, and the first close (Fall 2026 preview) drops nobody", async () => {
+    const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM academic_standing WHERE source = 'seed' AND status IN ('probation_2', 'dropped')");
+    expect(rows[0].n).toBe(0);
+    const { preview } = require("../src/services/semesterClose");
+    const p = await preview("Fall 2026");
+    expect(p.total).toBeGreaterThan(0);
+    expect(p.counts.dropped).toBe(0);
+  });
+
   test("students.academic_status / probation_count match each student's latest standing row", async () => {
     const { rows } = await pool.query(
       `SELECT COUNT(*)::int AS n FROM students s

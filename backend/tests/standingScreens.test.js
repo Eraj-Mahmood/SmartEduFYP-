@@ -1,20 +1,31 @@
 const request = require("supertest");
 const app = require("../src/app");
 const { login, pool } = require("./helpers");
+const { recordStanding } = require("../src/services/academicStanding");
 
 // Phase 7, step 6: the data behind the probation screens - admin list, KPIs, standing filters
-// (directory, at-risk list, CSV), faculty roster / counselees, the student card. Read-only.
+// (directory, at-risk list, CSV), faculty roster / counselees, the student card. Read-only, except that
+// BU-144766 (Farah Javed) is put on Probation 2 for the suite and put back afterwards: since Phase 7.1
+// (Bug 5) nobody is seeded on Probation 2.
 const as = (t) => ({ Authorization: `Bearer ${t}` });
-let admin, ayesha, student;
+let admin, ayesha, student, farahBefore, farahRowId;
 
 beforeAll(async () => {
+  farahBefore = (await pool.query("SELECT student_id, academic_status, probation_count FROM students WHERE roll_no = 'BU-144766'")).rows[0];
+  farahRowId = await recordStanding(pool, { studentId: farahBefore.student_id, semesterNo: 5, cgpaUsed: 1.62, status: "probation_2", count: 2, source: "seed" });
   [admin, ayesha, student] = await Promise.all([
     login(app, "admin@smartedu.edu", "admin"),
     login(app, "ayesha.khan@smartedu.edu", "faculty"),
     login(app, "student144766@smartedu.edu", "student"),
   ]);
 });
-afterAll(() => pool.end());
+afterAll(async () => {
+  await pool.query("DELETE FROM academic_standing WHERE id = $1", [farahRowId]); // only the row this suite added
+  await pool.query("UPDATE students SET academic_status = $2, probation_count = $3 WHERE student_id = $1", [
+    farahBefore.student_id, farahBefore.academic_status, farahBefore.probation_count,
+  ]);
+  await pool.end();
+});
 
 const count = async (status) => (await pool.query("SELECT COUNT(*)::int AS n FROM students WHERE academic_status = $1", [status])).rows[0].n;
 

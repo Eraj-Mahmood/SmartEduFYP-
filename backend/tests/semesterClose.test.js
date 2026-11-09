@@ -258,7 +258,7 @@ describe("warning letters", () => {
 });
 
 describe("enrolment hold (Handbook 5.5.3 / 5.5.5)", () => {
-  let classId, held, dropped, droppedBefore;
+  let classId, held, heldBefore, heldRowId, dropped, droppedBefore;
   const enroll = (studentId) => request(app).post("/api/admin/enrollments").set(as(admin)).send({ student_id: studentId, faculty_course_id: classId });
 
   beforeAll(async () => {
@@ -273,7 +273,10 @@ describe("enrolment hold (Handbook 5.5.3 / 5.5.5)", () => {
           [status, offset]
         )
       ).rows[0];
-    held = await pick("probation_2", 0);
+    // nobody is seeded on Probation 2 any more (Phase 7.1 Bug 5): put a Probation 1 student there for the test
+    held = await pick("probation_1", 0);
+    heldBefore = held;
+    heldRowId = await recordStanding(pool, { studentId: held.student_id, semesterNo: 5, cgpaUsed: 1.5, status: "probation_2", count: 2, source: "seed" });
     dropped = await pick("good", 0);
     droppedBefore = dropped;
     await recordStanding(pool, { studentId: dropped.student_id, semesterNo: 5, cgpaUsed: 1.5, status: "dropped", count: 2, source: "seed" });
@@ -283,6 +286,10 @@ describe("enrolment hold (Handbook 5.5.3 / 5.5.5)", () => {
     await pool.query("DELETE FROM enrollments WHERE student_id = ANY($1) AND faculty_course_id = $2", [[held.student_id, dropped.student_id], classId]);
     await pool.query("DELETE FROM enrolment_approvals WHERE student_id = $1", [held.student_id]);
     await pool.query("DELETE FROM academic_standing WHERE student_id = $1 AND status = 'dropped'", [dropped.student_id]);
+    await pool.query("DELETE FROM academic_standing WHERE id = $1", [heldRowId]); // only the row this suite added
+    await pool.query("UPDATE students SET academic_status = $2, probation_count = $3 WHERE student_id = $1", [
+      heldBefore.student_id, heldBefore.academic_status, heldBefore.probation_count,
+    ]);
     await pool.query("UPDATE students SET academic_status = $2, probation_count = $3 WHERE student_id = $1", [
       droppedBefore.student_id, droppedBefore.academic_status, droppedBefore.probation_count,
     ]);

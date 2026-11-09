@@ -612,18 +612,18 @@ const CASES = [
   }],
 
   // ---------- FR17 academic probation (BU Student Handbook 5.5, Phase 7) ----------
-  ["TC-FR17-01", "FR17", "Starting standing after demo:reset", "Admin -> Overview -> Academic standing tiles; Users -> Standing filter", "Every student has a standing: semester 1 not evaluated; CGPA >= 2.00 good; below 2.00 Probation 1 or 2 (consecutive-low flag); counts 26,466 / 873 / 16,508 / 6,183", async () => {
+  ["TC-FR17-01", "FR17", "Starting standing after demo:reset", "Admin -> Overview -> Academic standing tiles; Users -> Standing filter", "Every student has a standing: semester 1 not evaluated; CGPA >= 2.00 good; below 2.00 Probation 1 (never 2 at the start - Phase 7.1); counts 26,466 / 17,381 / 0 / 6,183", async () => {
     const k = (await call("GET", "/admin/dashboard", { token: await tok("admin") })).json;
     const c = k.standingCounts;
     // TC-FR2-01 creates one student account earlier in this run: new accounts start "not evaluated"
-    expect(c.good === 26466 && c.probation_1 === 873 && c.probation_2 === 16508 && c.not_evaluated >= 6183 && c.dropped === 0, JSON.stringify(c));
-    expect(k.kpis.probation_2 === 16508, "KPI");
+    expect(c.good === 26466 && c.probation_1 === 17381 && c.probation_2 === 0 && c.not_evaluated >= 6183 && c.dropped === 0, JSON.stringify(c));
+    expect(k.kpis.probation_1 === 17381 && k.kpis.probation_2 === 0, "KPI");
   }],
-  ["TC-FR17-02", "FR17", "Close-semester preview writes nothing", "Admin -> Standing -> Term 'Fall 2026' -> Preview", "70 students with their from -> to standing (after a fresh reset: 38 good, 4 Probation 1, 5 Probation 2, 23 dropped, 9 letters); Bushra Awan (BU-114400) Good -> Probation 1 on CGPA 1.97; no rows written", async () => {
+  ["TC-FR17-02", "FR17", "Close-semester preview writes nothing", "Admin -> Standing -> Term 'Fall 2026' -> Preview", "70 students with their from -> to standing (after a fresh reset: 38 good, 4 Probation 1, 28 Probation 2, 0 dropped, 32 letters - nobody can be dropped at the first close); Bushra Awan (BU-114400) Good -> Probation 1 on CGPA 1.97; no rows written", async () => {
     const before = await one("SELECT (SELECT COUNT(*) FROM academic_standing) a, (SELECT COUNT(*) FROM semester_closes) c, (SELECT COUNT(*) FROM warning_letters) w");
     const r = (await call("POST", "/admin/semester-close/preview", { token: await tok("admin"), body: { termLabel: "Fall 2026" } })).json;
     const b = r.students.find((s) => s.roll_no === "BU-114400");
-    // exact counts depend on the marks earlier cases changed (e.g. the CS401 upload); after a fresh reset: 38 / 4 / 5 / 23, 9 letters
+    // exact counts depend on the marks earlier cases changed (e.g. the CS401 upload); after a fresh reset: 38 / 4 / 28 / 0, 32 letters
     expect(r.total === 70 && Object.values(r.counts).reduce((a, b) => a + b, 0) === 70 && r.letters >= 1, JSON.stringify(r.counts));
     expect(b.from.status === "good" && b.to.status === "probation_1" && b.cgpa_used === 1.97, JSON.stringify(b));
     const after = await one("SELECT (SELECT COUNT(*) FROM academic_standing) a, (SELECT COUNT(*) FROM semester_closes) c, (SELECT COUNT(*) FROM warning_letters) w");
