@@ -24,6 +24,7 @@ const NAV = {
     { to: "/admin", label: "Overview", end: true },
     { to: "/admin/interventions", label: "Interventions" },
     { to: "/admin/counselling", label: "Counselling" },
+    { to: "/admin/academic-standing", label: "Standing" },
     { to: "/admin/model", label: "Model" },
     { to: "/admin/tutorials", label: "Tutorials" },
     { to: "/admin/users", label: "Users" },
@@ -201,8 +202,8 @@ function AccountMenu({ onLogout }) {
   );
 }
 
-const linkClass = ({ isActive }) =>
-  `px-3 py-1.5 rounded-lg text-sm transition ${
+const linkClass = ({ isActive }, dense = false) =>
+  `${dense ? "px-2" : "px-3"} py-1.5 rounded-lg text-sm whitespace-nowrap transition ${
     isActive ? "bg-white/15 text-white font-medium" : "text-white/70 hover:text-white hover:bg-white/10"
   }`;
 
@@ -216,8 +217,14 @@ export function PortalShell({ title, children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const role = localStorage.getItem("smartedu_role");
   const nav = NAV[role] || [];
-  // more than 5 links (admin) don't fit beside the logo on tablets: use the menu button below lg
-  const bp = nav.length > 5 ? { desktop: "hidden lg:flex", mobile: "lg:hidden" } : { desktop: "hidden md:flex", mobile: "md:hidden" };
+  // more than 5 links don't fit beside the logo on tablets: use the menu button below lg; more than 8
+  // (admin since Phase 7) need the full 1280 px width, tighter link padding and no wrapping
+  const dense = nav.length > 8;
+  const bp = dense
+    ? { desktop: "hidden xl:flex", mobile: "xl:hidden" }
+    : nav.length > 5
+      ? { desktop: "hidden lg:flex", mobile: "lg:hidden" }
+      : { desktop: "hidden md:flex", mobile: "md:hidden" };
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
   // a link also counts as active on the pages listed in its `also` prefixes
@@ -235,7 +242,7 @@ export function PortalShell({ title, children }) {
       </a>
       <header className="bg-ink text-white sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0 shrink-0">
             <span className="font-display text-xl tracking-tight">SmartEdu</span>
             <span className="text-[11px] font-mono uppercase tracking-wider text-white/60 border border-white/15 rounded px-1.5 py-0.5">
               {ROLE_TITLE[role] || title}
@@ -244,7 +251,7 @@ export function PortalShell({ title, children }) {
 
           <nav aria-label="Main" className={`${bp.desktop} items-center gap-1`}>
             {nav.map((l) => (
-              <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => linkClass({ isActive: isActive || inSection(l) })}>
+              <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => linkClass({ isActive: isActive || inSection(l) }, dense)}>
                 {l.label}
               </NavLink>
             ))}

@@ -16,3 +16,4 @@ export { default as Modal } from "./Modal";
 export { default as PredictionSource } from "./PredictionSource";
 export { default as Tabs } from "./Tabs";
 export { default as SessionStatusChip, SESSION_STATUSES } from "./SessionStatusChip";
+export { default as StandingChip, STANDING_OPTIONS, standingText } from "./StandingChip";

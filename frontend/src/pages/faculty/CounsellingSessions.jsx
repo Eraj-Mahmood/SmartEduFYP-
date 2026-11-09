@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PortalShell } from "../../components/Shell";
-import { Card, DataTable, RiskChip, Button, EmptyState, Icons, SessionStatusChip, Tabs } from "../../components/ui";
+import { StandingChip, Card, DataTable, RiskChip, Button, EmptyState, Icons, SessionStatusChip, Tabs } from "../../components/ui";
 import useApi from "../../lib/useApi";
 import useWide from "../../lib/useWide";
 import { pkDate, pkTime } from "../../lib/format";
@@ -64,7 +64,9 @@ export default function CounsellingSessions() {
   const rows = useMemo(() => {
     const s = list.data?.sessions || [];
     if (view !== "upcoming") return s;
-    return [...s.filter((x) => x.display_status === "awaiting_attendance"), ...s.filter((x) => x.display_status !== "awaiting_attendance")];
+    // to-do first, then students on probation (Probation 2 before 1), then the rest; soonest first within each
+    const rank = (x) => (x.display_status === "awaiting_attendance" ? 0 : x.academic_status === "probation_2" ? 1 : x.academic_status === "probation_1" ? 2 : 3);
+    return [...s].sort((a, b) => rank(a) - rank(b) || new Date(a.scheduled_at) - new Date(b.scheduled_at));
   }, [list.data, view]);
   const awaiting = view === "upcoming" ? rows.filter((s) => s.display_status === "awaiting_attendance").length : 0;
   const onMark = (session, preset) => setMark({ session, preset });
@@ -100,6 +102,7 @@ export default function CounsellingSessions() {
             <span className="flex flex-col items-end gap-2">
               <SessionStatusChip status={s.display_status} />
               {s.final_label && <RiskChip label={s.final_label} size="sm" short />}
+              {s.academic_status && s.academic_status !== "good" && <StandingChip status={s.academic_status} short />}
               <Actions s={s} onMark={onMark} />
             </span>
           ),
@@ -119,7 +122,17 @@ export default function CounsellingSessions() {
           </span>
         ),
       },
-      { key: "student", header: "Student", sortable: false, render: (s) => <span className="font-medium">{s.student_name}</span> },
+      {
+        key: "student",
+        header: "Student",
+        sortable: false,
+        render: (s) => (
+          <span className="inline-flex flex-col items-start gap-1">
+            <span className="font-medium">{s.student_name}</span>
+            {s.academic_status && s.academic_status !== "good" && <StandingChip status={s.academic_status} short />}
+          </span>
+        ),
+      },
       { key: "roll", header: "Roll no", sortable: false, render: (s) => <span className="font-mono text-xs whitespace-nowrap">{s.roll_no}</span> },
       { key: "risk", header: "Risk label", sortable: false, render: (s) => (s.final_label ? <RiskChip label={s.final_label} size="sm" short /> : "—") },
       { key: "location", header: "Location", sortable: false, render: (s) => <Place s={s} /> },

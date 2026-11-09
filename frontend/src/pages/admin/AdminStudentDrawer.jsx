@@ -1,8 +1,58 @@
 import { useEffect, useState } from "react";
-import { Drawer, RiskChip, EmptyState, Icons, SkeletonText, PredictionSource, Tabs, Button } from "../../components/ui";
+import { Drawer, RiskChip, EmptyState, Icons, SkeletonText, PredictionSource, Tabs, Button, StandingChip } from "../../components/ui";
 import WhatIfPanel from "../../components/WhatIfPanel";
 import useApi from "../../lib/useApi";
-import { gpa, num, timeAgo } from "../../lib/format";
+import { gpa, num, timeAgo, pkDateTime } from "../../lib/format";
+
+/** Academic standing (BU rules): current status, history, warning letters and Probation 2 approvals. */
+function StandingSection({ studentId }) {
+  const { data: st, error } = useApi(studentId ? `/admin/students/${studentId}/standing` : null);
+  if (error || !st) return null;
+  return (
+    <section>
+      <h3 className="text-sm font-semibold text-ink mb-2">Academic standing (BU rules)</h3>
+      <div className="rounded-card border border-line bg-surface p-3 space-y-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <StandingChip status={st.status} />
+          {st.cgpa_used != null && <span className="text-muted">CGPA {Number(st.cgpa_used).toFixed(2)} · minimum {Number(st.minimum).toFixed(2)}</span>}
+        </div>
+        {st.hold.active && (
+          <p className="text-danger-700 inline-flex items-center gap-1">
+            <Icons.Lock size={13} /> Enrolment hold - needs the Principal's approval (5.5.5)
+          </p>
+        )}
+        {st.history.length > 0 && (
+          <ul className="text-xs text-muted space-y-0.5">
+            {st.history.map((h) => (
+              <li key={h.id}>
+                {h.label}
+                {h.cgpa_used != null ? ` · ${h.cgpa_used.toFixed(2)}` : ""}
+                {h.term_label ? ` · ${h.term_label}` : h.source === "seed" ? " · starting status" : ""} · {pkDateTime(h.created_at)}
+              </li>
+            ))}
+          </ul>
+        )}
+        {st.letters.map((l) => (
+          <p key={l.id} className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              {l.title} · {l.date} ·{" "}
+              <span className={l.acknowledged_at ? "text-safe-700" : "text-risk-700"}>{l.acknowledged_at ? "acknowledged" : "not acknowledged"}</span>
+            </span>
+            <a href={`/admin/warning-letters/${l.id}/print`} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline text-xs">
+              Print
+            </a>
+          </p>
+        ))}
+        {st.approvals?.map((a) => (
+          <p key={a.id} className="text-xs text-safe-700">
+            Enrolment approved by {a.approver_role} on {pkDateTime(a.approved_at)}
+            {a.note ? ` - ${a.note}` : ""}
+          </p>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 // Admin view of one student (GET /admin/students/:id/full): the latest prediction with staff
 // reasons, the staff-worded next steps, the counselor and this term's courses.
@@ -58,6 +108,7 @@ export default function AdminStudentDrawer({ studentId, onClose, onSchedule }) {
           <section className="bg-surface rounded-card border border-line p-4">
             {p ? (
               <>
+                <p className="text-xs font-mono uppercase tracking-wider text-muted mb-1.5">Risk prediction (Random Forest)</p>
                 <div className="flex items-center justify-between gap-3">
                   <RiskChip label={p.final_label} />
                   <span className="text-xs text-muted inline-flex items-center gap-1">
@@ -83,6 +134,8 @@ export default function AdminStudentDrawer({ studentId, onClose, onSchedule }) {
               <p className="text-sm text-muted">Not predicted yet.</p>
             )}
           </section>
+
+          <StandingSection studentId={studentId} />
 
           <section>
             <h3 className="text-sm font-semibold text-ink mb-2">Next steps</h3>

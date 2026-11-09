@@ -24,6 +24,7 @@ const LINKS = {
   results: { label: "See my results", href: "/student/results" },
   attendance: { label: "See my attendance", href: "/student/attendance" },
   counselling: { label: "My counselling sessions", href: "/student/counselling" },
+  standing: { label: "My academic standing", href: "/student#standing" },
 };
 
 const STARTERS = ["Why is my status this?", "Which course should I focus on?", "Is my attendance OK?", "How can I improve?"];
@@ -77,8 +78,8 @@ const WORDS = {
   academic: [
     "cgpa", "gpa", "sgpa", "marks", "mark", "result", "results", "grade", "grades", "attendance", "hazri", "haazri",
     "status", "risk", "score", "scores", "performance", "number", "numbers",
-    // Phase 7: "When is Ali's counselling session?" is about someone else
-    "counselling", "counseling", "counselling session", "counseling session",
+    // Phase 7: "When is Ali's counselling session?" / "Is Ali on probation?" are about someone else
+    "counselling", "counseling", "counselling session", "counseling session", "probation", "academic standing",
   ],
   // counselling_session (Phase 7): a counselling word AND a when/booking word ("who is my counsellor"
   // has none, so it stays who_can_help)
@@ -89,6 +90,20 @@ const WORDS = {
   counsellingWhen: [
     "when", "kab", "next", "upcoming", "schedule", "scheduled", "appointment", "meeting", "session", "sessions",
     "time", "date", "day", "booked", "book", "timing", "waqt", "agla", "agli", "agle",
+  ],
+  // probation (Phase 7, BU rules): status, or "what happens if"
+  probation: [
+    "probation", "probabtion", "probaton", "academic standing", "good standing", "warning letter", "warning letters",
+    "dropped from the programme", "dropped from the program", "dropped from programme", "dropped from program",
+    "enrolment hold", "enrollment hold",
+  ],
+  probationWhatIf: [
+    "what happens", "what will happen", "what if", "kya hoga", "kia hoga", "kya ho ga", "agar", "rule", "rules",
+    "handbook", "how many probations", "kitni probation", "second probation", "third", "next semester", "stay", "stays",
+  ],
+  lowCgpa: [
+    "stays below", "stay below", "remains below", "remain below", "below 2", "under 2", "less than 2", "se kam",
+    "kam rahi", "kam raha", "kam rahe", "neeche rahi", "neeche raha", "low cgpa", "cgpa is low",
   ],
   whoCanHelp: [
     "who can help", "who could help", "who will help", "talk to someone", "someone to talk", "counselor", "counsellor",
@@ -195,7 +210,7 @@ function mentionsOtherStudent(message, norm, ctx) {
 
   for (const m of raw.matchAll(/\b([a-z]+)'s\b/g)) if (!NOT_PEOPLE.has(m[1]) && !ownNames.has(m[1])) return true;
   for (const m of raw.matchAll(/\b([a-z]+)\s+(ki|ka|ke)\s+([a-z]+)/g)) {
-    if (!URDU_SELF.has(m[1]) && !ownNames.has(m[1]) && WORDS.academic.includes(m[3])) return true;
+    if (!URDU_SELF.has(m[1]) && !ownNames.has(m[1]) && !WORDS.academic.includes(m[1]) && WORDS.academic.includes(m[3])) return true;
   }
   for (const m of raw.matchAll(/\b(cgpa|gpa|marks|result|results|attendance|grades?|status)\s+of\s+([a-z]+)\b/g)) {
     if (!["me", "mine", "my", "this", "the", "all", "each", "every", "last", "a", "an", "our"].includes(m[2]) && !ownNames.has(m[2])) return true;
@@ -231,6 +246,8 @@ function routeIntent(message, ctx, catalog = []) {
   if (has(norm, WORDS.distress)) return { intent: "wellbeing" };
   if (mentionsOtherStudent(message, norm, ctx)) return { intent: "other_student" };
   if (has(norm, WORDS.counsellingTopic) && has(norm, WORDS.counsellingWhen)) return { intent: "counselling_session" };
+  if (has(norm, WORDS.probation)) return { intent: has(norm, WORDS.probationWhatIf) ? "probation_rules" : "probation_status" };
+  if (has(norm, ["cgpa", "gpa"]) && has(norm, WORDS.lowCgpa) && has(norm, WORDS.probationWhatIf)) return { intent: "probation_rules" };
   if (has(norm, ["session", "meeting", "appointment"]) && has(norm, counsellorNameWords(ctx))) return { intent: "counselling_session" };
   const courses = findCourses(norm, catalog);
   if (courses.length) return { intent: "course_detail", courses, noPromise: has(norm, WORDS.noPromise) };
@@ -520,6 +537,65 @@ function whoCanHelp(ctx, r, rng) {
   };
 }
 
+/** The student's own academic standing under the BU rules (Phase 7), from ctx.academic only. */
+const two = (v) => Number(v).toFixed(2);
+// sentence by sentence, so fit() drops whole trailing sentences rather than the whole answer
+function fitSentences(text, limit = MAX_WORDS) {
+  const out = [];
+  let n = 0;
+  for (const s of text.split(/(?<=[.!?])\s+(?=[A-Z])/)) {
+    const w = wordCount(s);
+    if (n + w > limit) break;
+    out.push(s);
+    n += w;
+  }
+  return out.join(" ");
+}
+function termTarget(a) {
+  const t = a.this_term;
+  if (!t || t.on_track || !t.reachable) return "";
+  return ` This term, an average of about ${t.needed_mark} (${t.needed_grade}) in every course would bring your ${t.uses} to ${two(a.minimum)}.`;
+}
+
+function probationStatus(ctx, r, rng) {
+  const a = ctx.academic;
+  if (!a) return unknown(ctx, r, rng);
+  const min = two(a.minimum);
+  const when = a.term ? `at the end of ${a.term}` : "after your last completed semester";
+  const sep = " This is separate from your SmartEdu risk prediction.";
+  let answer;
+  if (a.status === "probation_1" || a.status === "probation_2") {
+    answer =
+      `Yes - under the BU Student Handbook (5.5) you are on ${a.label}: your CGPA ${when} was ${two(a.cgpa_used)}, below the ${min} minimum. ` +
+      `Raising your CGPA to ${min} or more this semester takes you off probation.${termTarget(a)}` +
+      (a.status === "probation_2"
+        ? ` Because this is your second probation, you need the Principal's approval (through the HoD) before registering for new courses, and staying below ${min} this semester means being dropped.`
+        : "") +
+      (a.letter_pending ? " You have a warning letter to acknowledge on your dashboard." : "");
+  } else if (a.status === "dropped") {
+    answer =
+      `Under the BU rules (Handbook 5.5.3) you have been dropped from the programme: your CGPA stayed below ${min} in the semester after two consecutive probations. ` +
+      `Please contact your department or the ${supportLine()}.`;
+  } else if (a.status === "not_evaluated") {
+    answer =
+      `Not yet - your academic standing is first decided at the end of your first semester, on your GPA (minimum ${min}).${termTarget(a)}`;
+  } else {
+    answer = `No - you are in good standing under the BU rules. Your CGPA ${when} was ${two(a.cgpa_used)}, at or above the ${min} minimum.${termTarget(a)}`;
+  }
+  return { answer: fitSentences(answer + sep), links: [LINKS.standing], suggestions: ["What happens if my CGPA stays below 2?", "How can I improve?", "Who can help me?"] };
+}
+
+function probationRules(ctx, r, rng) {
+  const a = ctx.academic;
+  if (!a) return unknown(ctx, r, rng);
+  const min = two(a.minimum);
+  const answer =
+    `Under the BU Student Handbook (5.5): if your CGPA (your GPA in the first semester) is below ${min} at the end of a semester, you go on probation and get a warning letter. ` +
+    `After a second probation in a row you need the Principal's approval to register, and if your CGPA is still below ${min} in the semester after that, you are dropped from the programme. ` +
+    `Raising your CGPA to ${min} or more takes you off probation and resets the count. Right now you are: ${a.label}.${termTarget(a)}`;
+  return { answer: fitSentences(answer), links: [LINKS.standing], suggestions: ["Am I on probation?", "How can I improve?", "Who can help me?"] };
+}
+
 /** "When is my counselling session?" - only the student's own next session (Phase 7). */
 function counsellingSession(ctx, r, rng) {
   const cs = ctx.counselling || { next: null, attended: 0, marked: 0 };
@@ -617,6 +693,8 @@ const TEMPLATES = {
   improve,
   who_can_help: whoCanHelp,
   counselling_session: counsellingSession,
+  probation_status: probationStatus,
+  probation_rules: probationRules,
   other_student: otherStudent,
   wellbeing,
   greeting,

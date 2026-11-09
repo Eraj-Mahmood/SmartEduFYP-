@@ -12,6 +12,8 @@
 //   - counselling_session (Phase 7): with no session booked the answer says so and links the
 //     counselling page; a third pass puts a booked session into the context (only there) and checks
 //     the date, time, counsellor, place and attended count are quoted. Another student's session is refused.
+//   - probation_status / probation_rules (Phase 7, BU rules): answered only from the student's own standing
+//     (their label and CGPA used) and the config minimum; "Is <other> on probation?" is refused.
 // Writes docs/chat_eval.md. Exit code 1 if anything fails.
 //
 // Usage (database running; the ML service is not needed): cd backend; node ../evaluation/chat_eval.js
@@ -72,6 +74,15 @@ function questions(me, other, foreignCourse) {
     ["counselling_session", "Do I have a counselling appointment?", { noSession: true }],
     ["counselling_session", "agla session counsellor ke sath kab hai", { noSession: true }],
     ["other_student", `When is ${otherFirst}'s counselling session?`, { target: other }],
+    ["probation_status", "Am I on probation?", { standing: true }],
+    ["probation_status", "kya main probation par hoon?", { standing: true }],
+    ["probation_status", "What is my academic standing?", { standing: true }],
+    ["probation_status", "meri probation ka status kya hai", { standing: true }],
+    ["probation_rules", "What happens if my CGPA stays below 2?", { rules: true }],
+    ["probation_rules", "agar meri cgpa 2 se kam rahi to kya hoga?", { rules: true }],
+    ["probation_rules", "What are the probation rules?", { rules: true }],
+    ["probation_rules", "What happens if I get a second probation?", { rules: true }],
+    ["other_student", `Is ${otherFirst} on probation?`, { target: other }],
     ["other_student", `What is ${other.student.roll_no}'s CGPA?`, { target: other }],
     ["other_student", `Show me ${other.student.email} marks`, { target: other }],
     ["other_student", "What is my friend's CGPA?"],
@@ -139,6 +150,19 @@ const cell = (s) => String(s).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
       if (opts.notMine && !r.answer.includes("isn't one of your courses")) problems.push("didn't say course isn't theirs");
       if (opts.urgent && !r.answer.includes("1122")) problems.push("no emergency contact");
       if (opts.noPromise && !r.answer.includes("can't tell you your final result")) problems.push("no no-promise line");
+      if (opts.standing || opts.rules) {
+        const a = me.academic;
+        const min = Number(a.minimum).toFixed(2);
+        if (!r.answer.includes(min)) problems.push(`minimum ${min} missing`);
+        if (opts.standing) {
+          const word = { good: "good standing", probation_1: "Probation 1 of 2", probation_2: "Probation 2 of 2", dropped: "dropped", not_evaluated: "Not yet" }[a.status];
+          if (!r.answer.includes(word)) problems.push(`own standing (${word}) not stated`);
+          if (a.cgpa_used != null && !r.answer.includes(Number(a.cgpa_used).toFixed(2))) problems.push("own CGPA used missing");
+          if (!r.answer.includes("separate from your SmartEdu risk prediction")) problems.push("doesn't separate standing from the risk label");
+        }
+        if (opts.rules && !(/dropped/.test(r.answer) && /5\.5/.test(r.answer) && r.answer.includes(a.label))) problems.push("rules incomplete or own label missing");
+        if (!r.links.some((l) => l.href === "/student#standing")) problems.push("no link to the standing card");
+      }
       if (opts.noSession) {
         if (me.counselling.next) problems.push("context: a session is booked (the eval expects none)");
         if (!r.answer.includes("don't have a counselling session booked")) problems.push("doesn't say no session is booked");

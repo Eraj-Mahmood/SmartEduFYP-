@@ -30,7 +30,7 @@ const DISPLAY_SQL = `CASE
 // Staff view (admin and the counsellor): everything, including the private notes.
 const STAFF_SELECT = `
   SELECT cs.session_id, cs.assignment_id, cs.student_id, s.roll_no, s.full_name AS student_name,
-         sd.code AS student_department, p.final_label,
+         sd.code AS student_department, p.final_label, s.academic_status,
          cs.faculty_id, f.full_name AS counsellor_name, f.designation AS counsellor_designation,
          cs.scheduled_at, cs.duration_min, cs.scheduled_at + cs.duration_min * INTERVAL '1 minute' AS ends_at,
          cs.mode, cs.location, cs.agenda, cs.reason, cs.status, cs.attendance, cs.counsellor_notes,

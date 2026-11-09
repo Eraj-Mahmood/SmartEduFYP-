@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
-import { Card, Button, DataTable, Pagination, Icons } from "../../components/ui";
+import { RecordApprovalModal } from "./StandingModals";
+import { Card, Button, DataTable, Pagination, Icons, StandingChip } from "../../components/ui";
 
 const ENROLL_PAGE = 25;
 
@@ -40,6 +41,8 @@ export default function Assignments() {
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [hold, setHold] = useState(null);
+  const [approveFor, setApproveFor] = useState(null); // {code, student} after a 409 ENROLMENT_HOLD / STUDENT_DROPPED
 
   // after a change: refresh everything; on first load the search effect below fetches enrollments
   function loadAll(withEnrollments = true) {
@@ -134,7 +137,10 @@ export default function Assignments() {
       setStudentQuery("");
       loadAll();
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to enroll student");
+      const d = err.response?.data || {};
+      setError(d.error || "Failed to enroll student");
+      // Phase 7: Probation 2 without an approval -> offer to record it; dropped -> just the reason
+      setHold(d.code === "ENROLMENT_HOLD" || d.code === "STUDENT_DROPPED" ? { code: d.code, student: selectedStudent } : null);
     }
   }
 
@@ -162,10 +168,32 @@ export default function Assignments() {
         </p>
       )}
       {error && (
-        <p role="alert" className="mb-4 flex items-center gap-2 rounded-card border border-danger-500/30 bg-danger-50 px-4 py-2.5 text-sm text-danger-700">
-          <Icons.AlertOctagon size={16} /> {error}
-        </p>
+        <div role="alert" className="mb-4 rounded-card border border-danger-500/30 bg-danger-50 px-4 py-2.5 text-sm text-danger-700">
+          <p className="flex items-center gap-2">
+            <Icons.AlertOctagon size={16} className="shrink-0" /> {error}
+          </p>
+          {hold && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <StandingChip status={hold.code === "STUDENT_DROPPED" ? "dropped" : "probation_2"} />
+              {hold.code === "ENROLMENT_HOLD" && hold.student && (
+                <Button size="sm" variant="secondary" onClick={() => setApproveFor(hold.student)} icon={<Icons.Check size={13} />}>
+                  Record approval
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
       )}
+      <RecordApprovalModal
+        student={approveFor}
+        onClose={() => setApproveFor(null)}
+        onSaved={() => {
+          setApproveFor(null);
+          setHold(null);
+          setError("");
+          setMessage("Approval recorded - you can enroll the student now.");
+        }}
+      />
 
       {/* ---------- EXISTING RECORDS (shown first, so you can see what's already there) ---------- */}
       <div className="grid md:grid-cols-2 gap-4 mb-6">

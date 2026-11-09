@@ -2,7 +2,7 @@ const { sendError } = require("../middleware/errors");
 const { logAction } = require("../middleware/audit");
 const close = require("../services/semesterClose");
 const letters = require("../services/warningLetters");
-const { getStudentStanding } = require("../services/studentStanding");
+const { getStudentStanding, listStanding } = require("../services/studentStanding");
 
 // Academic standing (Phase 7): semester close (admin), warning letters (admin + own student),
 // Probation 2 enrolment approvals (admin). Rules: services/academicStanding.js, semesterClose.js,
@@ -111,4 +111,14 @@ async function adminStudentStanding(req, res) {
   }
 }
 
-module.exports = { preview, confirm, closes, adminLetters, adminLetter, approval, studentLetters, acknowledge, studentStanding, adminStudentStanding };
+/** GET /api/admin/academic-standing?status&search&page&limit - the probation list */
+async function adminList(req, res) {
+  try {
+    const q = req.query;
+    res.json(await listStanding({ status: q.status, search: (q.search || "").trim(), page: q.page || 1, limit: q.limit || 25 }));
+  } catch (err) {
+    fail(res, err);
+  }
+}
+
+module.exports = { adminList, preview, confirm, closes, adminLetters, adminLetter, approval, studentLetters, acknowledge, studentStanding, adminStudentStanding };

@@ -9,6 +9,7 @@ const { recommendFor } = require("../services/tutorials");
 const { getNextSteps } = require("../services/nextSteps");
 const { getActiveCounselor } = require("../services/counselors");
 const { assertMayEnrol } = require("../services/warningLetters");
+const { STATUSES: STANDINGS } = require("../services/academicStanding");
 
 // Latest prediction per student, via the students.latest_prediction_id pointer
 const LATEST_PREDICTIONS = `SELECT p.* FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id`;
@@ -56,6 +57,8 @@ function latestFilters(q, { riskOnly = false } = {}) {
   if (q.label && LABELS.includes(q.label)) add("p.final_label = ?", q.label);
   if (parseInt(q.department)) add("s.department_id = ?", parseInt(q.department));
   if (parseInt(q.semester)) add("s.current_semester = ?", parseInt(q.semester));
+  // Phase 7: academic standing (BU rules), separate from the risk label
+  if (STANDINGS.includes(q.standing)) add("s.academic_status = ?", q.standing);
   const search = String(q.search || "").trim();
   if (search) add("(s.roll_no ILIKE ? OR s.full_name ILIKE ? OR u.email ILIKE ?)", `%${search}%`);
   if (q.dataSource === "live") where.push(HAS_LIVE_DATA);
@@ -123,7 +126,7 @@ async function latestPredictionPage(req, { riskOnly = false, withCourses = false
     ),
     filtered AS (
       SELECT p.*, s.roll_no, s.full_name, s.current_semester, s.department_id, u.user_id, u.email,
-             d.code AS department_code, d.name AS department
+             d.code AS department_code, d.name AS department, s.academic_status, s.probation_count
       FROM latest p
       JOIN students s ON s.student_id = p.student_id
       JOIN users u ON u.user_id = s.user_id
@@ -172,7 +175,7 @@ async function listDepartments(req, res) {
  *  Every count uses each student's LATEST final_label. */
 async function dashboard(req, res) {
   try {
-    const [students, faculty, courses, risk, byDept, lastRun, runs, sources] = await Promise.all([
+    const [students, faculty, courses, risk, byDept, lastRun, runs, sources, standing] = await Promise.all([
       pool.query("SELECT COUNT(*)::int AS n FROM students"),
       pool.query("SELECT COUNT(*)::int AS n FROM faculty"),
       pool.query("SELECT COUNT(*)::int AS n FROM courses"),
@@ -204,7 +207,10 @@ async function dashboard(req, res) {
          ORDER BY r.started_at`
       ),
       dataSources(),
+      pool.query("SELECT academic_status, COUNT(*)::int AS n FROM students GROUP BY 1"),
     ]);
+    const standingCounts = Object.fromEntries(STANDINGS.map((st) => [st, 0]));
+    standing.rows.forEach((r) => (standingCounts[r.academic_status] = r.n));
     const counts = Object.fromEntries(LABELS.map((l) => [l, 0]));
     risk.rows.forEach((r) => (counts[r.final_label] = r.count));
     res.json({
@@ -215,7 +221,12 @@ async function dashboard(req, res) {
         flagged: counts["At-Risk"] + counts["Dropout-Likely"],
         predicted: counts.Safe + counts["At-Risk"] + counts["Dropout-Likely"],
         lastRun: lastRun.rows[0] || null,
+        // Phase 7: academic standing (BU rules) - not the risk label
+        probation_1: standingCounts.probation_1,
+        probation_2: standingCounts.probation_2,
+        dropped: standingCounts.dropped,
       },
+      standingCounts,
       riskCounts: LABELS.map((label) => ({ label, count: counts[label] })),
       riskByDepartment: byDept.rows,
       runsTrend: runs.rows,
@@ -367,11 +378,17 @@ async function listStudents(req, res) {
     const search = (req.query.search || "").trim();
 
     const params = [];
-    let whereClause = "";
+    const conds = [];
     if (search) {
       params.push(`%${search}%`);
-      whereClause = `WHERE s.roll_no ILIKE $${params.length} OR s.full_name ILIKE $${params.length} OR u.email ILIKE $${params.length}`;
+      conds.push(`(s.roll_no ILIKE $${params.length} OR s.full_name ILIKE $${params.length} OR u.email ILIKE $${params.length})`);
     }
+    // Phase 7: academic standing filter
+    if (STANDINGS.includes(req.query.standing)) {
+      params.push(req.query.standing);
+      conds.push(`s.academic_status = $${params.length}`);
+    }
+    const whereClause = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
 
     const countResult = await pool.query(
       `SELECT COUNT(*) FROM students s JOIN users u ON u.user_id = s.user_id ${whereClause}`,
@@ -382,7 +399,7 @@ async function listStudents(req, res) {
     params.push(limit, offset);
     const { rows } = await pool.query(
       `SELECT s.student_id, s.roll_no, s.full_name, d.name AS department, s.current_semester,
-              s.cgpa, s.scholarship, s.hostel, u.user_id, u.email, u.is_active
+              s.cgpa, s.scholarship, s.hostel, u.user_id, u.email, u.is_active, s.academic_status, s.probation_count
        FROM students s
        JOIN departments d ON d.department_id = s.department_id
        JOIN users u ON u.user_id = s.user_id

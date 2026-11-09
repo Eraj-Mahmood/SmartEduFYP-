@@ -87,6 +87,7 @@ const ROUTES = {
     ["get", "/api/admin/faculty/workload", "read"],
     ["get", "/api/admin/counselling-sessions", "read"],
     ["get", "/api/admin/semester-closes", "read"],
+    ["get", "/api/admin/academic-standing", "read"],
     ["get", "/api/admin/warning-letters", "read"],
     ["get", () => `/api/admin/students/${ids.student_id}/standing`, "read"],
     ["get", "/api/admin/warning-letters/1", "write"], // 404 when no letter exists; access is what's tested

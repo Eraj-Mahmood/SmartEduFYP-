@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
-import { Card, Drawer, Button, RiskChip, EmptyState, SkeletonCard, useToast, Icons, buttonClass, RISK_SEVERITY } from "../../components/ui";
+import { StandingChip, Card, Drawer, Button, RiskChip, EmptyState, SkeletonCard, useToast, Icons, buttonClass, RISK_SEVERITY } from "../../components/ui";
 import useApi from "../../lib/useApi";
 import { timeAgo, pct, longDate } from "../../lib/format";
 
@@ -277,7 +277,10 @@ export default function MyCounselees() {
                       {r.roll_no} · {r.department}
                     </p>
                   </div>
-                  {r.final_label && <RiskChip label={r.final_label} size="sm" short />}
+                  <span className="flex flex-col items-end gap-1 shrink-0">
+                    {r.final_label && <RiskChip label={r.final_label} size="sm" short />}
+                    {r.academic_status && <StandingChip status={r.academic_status} short />}
+                  </span>
                 </div>
                 {r.reasons[0] && <p className="mt-2 text-sm text-muted line-clamp-2">{r.reasons[0]}</p>}
                 <p className={`mt-3 text-xs inline-flex items-center gap-1 ${r.last_contacted_at ? "text-muted" : "text-risk-700"}`}>

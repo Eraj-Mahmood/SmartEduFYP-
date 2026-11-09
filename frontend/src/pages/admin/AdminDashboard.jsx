@@ -77,6 +77,23 @@ export default function AdminDashboard() {
         )}
       </div>
 
+      {k && (
+        <div className="mb-5">
+          <p className="text-xs font-mono uppercase tracking-wider text-muted mb-2">Academic standing (BU rules) - separate from the risk prediction</p>
+          <div className="grid grid-cols-3 gap-3 sm:gap-4">
+            <Link to="/admin/academic-standing" className="block rounded-card focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+              <StatCard label="Probation 1" value={(k.probation_1 ?? 0).toLocaleString()} tone="risk" sublabel="1st probation" />
+            </Link>
+            <Link to="/admin/academic-standing" className="block rounded-card focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+              <StatCard label="Probation 2" value={(k.probation_2 ?? 0).toLocaleString()} tone="danger" sublabel="enrolment hold" />
+            </Link>
+            <Link to="/admin/academic-standing" className="block rounded-card focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+              <StatCard label="Dropped" value={(k.dropped ?? 0).toLocaleString()} sublabel="Handbook 5.5.3" />
+            </Link>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-2 mb-4">
         <Card title="Risk across all students" subtitle="Latest label per student">
           {d ? d.kpis.predicted ? <RiskDonut counts={d.riskCounts} /> : <EmptyState message="No predictions yet" detail="Start a run to score every student." compact /> : <Skeleton className="h-[190px]" />}

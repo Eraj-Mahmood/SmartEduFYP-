@@ -11,6 +11,7 @@ import useApi from "../../lib/useApi";
 import { timeAgo, gpa, pct, longDate, firstName } from "../../lib/format";
 import { StandingChart, standingLegend, AttendanceChart, attendanceLegend, MarksChart, marksLegend, TimelineChart } from "./StudentCharts";
 import WhatToDoNext from "./WhatToDoNext";
+import StandingCard from "./StandingCard";
 
 const HERO_TONE = {
   safe: "border-l-safe bg-gradient-to-r from-safe-50/80 to-surface",
@@ -29,7 +30,7 @@ function StatusHero({ data, refreshing, onRefresh, onAsk }) {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <p className="text-xs font-mono uppercase tracking-wider text-muted mb-2" id="status-heading">
-            Your status this term
+            Risk prediction (Random Forest) · your status this term
           </p>
           {p ? <RiskChip label={p.final_label} supportive size="lg" /> : <p className="font-display text-xl">No status yet</p>}
         </div>
@@ -183,6 +184,8 @@ export default function StudentDashboard() {
 
       <div className="space-y-5">
         <StatusHero data={data} refreshing={refreshing} onRefresh={refresh} onAsk={() => openAssistant(STARTERS[0])} />
+
+        <StandingCard />
 
         {data.latestPrediction && (
           <WhatToDoNext

@@ -5,6 +5,7 @@ const { staffReasons } = require("../services/reasons");
 const { latestFilters } = require("./adminController");
 const bcrypt = require("bcrypt");
 const { temporaryPassword } = require("../services/passwords");
+const { LABELS: STANDING_LABELS } = require("../services/academicStanding");
 
 // Admin governance: account activation, the audit-log viewer and the flagged-students CSV.
 
@@ -121,7 +122,7 @@ async function auditLog(req, res) {
 
 // ---------------- flagged students CSV ----------------
 
-const CSV_COLUMNS = ["roll_no", "name", "department", "label", "top_reason", "weakest_course", "counselor", "last_intervention"];
+const CSV_COLUMNS = ["roll_no", "name", "department", "label", "academic_standing", "top_reason", "weakest_course", "counselor", "last_intervention"];
 
 /** One CSV field: quoted, with a leading ' when it could be read as a spreadsheet formula. */
 function csvField(v) {
@@ -171,7 +172,7 @@ async function exportAtRisk(req, res) {
            WHERE e.status = 'enrolled' AND cr.assignment_avg IS NOT NULL
            ORDER BY e.student_id, mean, att.att NULLS LAST
          )
-         SELECT s.roll_no, s.full_name, d.name AS department, p.final_label, p.reasons, p.drivers, p.features,
+         SELECT s.roll_no, s.full_name, d.name AS department, p.final_label, s.academic_status, p.reasons, p.drivers, p.features,
                 w.course_code AS weakest_course, w.mean AS weakest_mean, f.full_name AS counselor,
                 (SELECT to_char(MAX(n.sent_at), 'YYYY-MM-DD HH24:MI') FROM notifications n
                  WHERE n.recipient_user_id = s.user_id AND COALESCE(n.kind, 'intervention') = 'intervention') AS last_intervention
@@ -191,6 +192,7 @@ async function exportAtRisk(req, res) {
           r.full_name,
           r.department,
           r.final_label,
+          STANDING_LABELS[r.academic_status] || r.academic_status,
           staffReasons(r)[0] || "",
           r.weakest_course ? `${r.weakest_course} (avg ${Math.round(Number(r.weakest_mean))})` : "",
           r.counselor || "",

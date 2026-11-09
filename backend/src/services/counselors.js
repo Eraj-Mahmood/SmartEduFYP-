@@ -161,6 +161,8 @@ async function counseleeSummary(a) {
     full_name: a.full_name,
     department: a.department,
     email: a.email,
+    academic_status: a.academic_status,
+    probation_count: a.probation_count,
     final_label: p ? p.final_label : null,
     reasons: p ? staffReasons(p) : [],
     last_predicted_at: p ? p.created_at : null,
@@ -192,13 +194,15 @@ async function facultyAssignments(facultyId, { id } = {}) {
     extra = " AND ca.id = $2";
   }
   const { rows } = await pool.query(
-    `SELECT ca.*, s.roll_no, s.full_name, d.name AS department, u.email
+    `SELECT ca.*, s.roll_no, s.full_name, d.name AS department, u.email, s.academic_status, s.probation_count
      FROM counselor_assignments ca
      JOIN students s ON s.student_id = ca.student_id
      JOIN departments d ON d.department_id = s.department_id
      JOIN users u ON u.user_id = s.user_id
      WHERE ca.faculty_id = $1 AND ca.status = 'active'${extra}
-     ORDER BY ca.last_contacted_at ASC NULLS FIRST, ca.created_at`,
+     -- Phase 7: students on probation first (Probation 2, then 1), then the least recently contacted
+     ORDER BY CASE s.academic_status WHEN 'probation_2' THEN 0 WHEN 'probation_1' THEN 1 ELSE 2 END,
+              ca.last_contacted_at ASC NULLS FIRST, ca.created_at`,
     params
   );
   return rows;

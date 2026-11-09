@@ -182,6 +182,17 @@ router.post(
 );
 router.get("/semester-closes", standingCtl.closes);
 router.get(
+  "/academic-standing",
+  [
+    query("status").optional().isIn(["on_probation", "probation_1", "probation_2", "dropped", "good", "not_evaluated"]).withMessage("unknown standing status"),
+    query("search").optional().isString().trim().isLength({ max: 100 }).withMessage("search can be at most 100 characters"),
+    query("page").optional().isInt({ min: 1 }).withMessage("page must be a positive integer").toInt(),
+    query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("limit must be 1-100").toInt(),
+  ],
+  validate,
+  standingCtl.adminList
+);
+router.get(
   "/warning-letters",
   [
     query("student").optional().isInt({ min: 1 }).withMessage("student must be a positive integer").toInt(),

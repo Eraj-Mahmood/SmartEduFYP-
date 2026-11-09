@@ -73,9 +73,9 @@ describe("flagged students CSV", () => {
     expect(res.headers["content-type"]).toMatch(/text\/csv/);
     expect(res.headers["content-disposition"]).toMatch(/attachment; filename="flagged-students-\d{4}-\d{2}-\d{2}\.csv"/);
     const lines = res.text.replace(/^﻿/, "").trim().split("\r\n");
-    expect(lines[0]).toBe("roll_no,name,department,label,top_reason,weakest_course,counselor,last_intervention");
+    expect(lines[0]).toBe("roll_no,name,department,label,academic_standing,top_reason,weakest_course,counselor,last_intervention");
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toMatch(/^"BU-144766","[^"]+","Artificial Intelligence","Dropout-Likely","[^"]+","AI302 \(avg \d+\)",/);
+    expect(lines[1]).toMatch(/^"BU-144766","[^"]+","Artificial Intelligence","Dropout-Likely","Probation 2 of 2","[^"]+","AI302 \(avg \d+\)",/);
   });
 
   test("is admin-only", async () => {

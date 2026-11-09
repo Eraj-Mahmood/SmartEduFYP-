@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
-import { Card, Button, DataTable, Pagination, Icons, useToast } from "../../components/ui";
+import { Card, Button, DataTable, Pagination, Icons, useToast, StandingChip, STANDING_OPTIONS } from "../../components/ui";
 import ResetPasswordModal from "./ResetPasswordModal";
 
 export default function ManageUsers() {
   const [tab, setTab] = useState("student");
   const [students, setStudents] = useState([]);
+  const [standingFilter, setStandingFilter] = useState("");
   const [studentPage, setStudentPage] = useState(1);
   const [studentTotalPages, setStudentTotalPages] = useState(1);
   const [studentTotal, setStudentTotal] = useState(0);
@@ -74,9 +75,9 @@ export default function ManageUsers() {
     ),
   };
 
-  function loadStudents(page = studentPage, search = studentSearch) {
+  function loadStudents(page = studentPage, search = studentSearch, standing = standingFilter) {
     client
-      .get("/admin/students", { params: { page, limit: 25, search } })
+      .get("/admin/students", { params: { page, limit: 25, search, standing: standing || undefined } })
       .then((res) => {
         setStudents(res.data.rows);
         setStudentTotalPages(res.data.totalPages);
@@ -95,9 +96,10 @@ export default function ManageUsers() {
 
   // debounce search so we're not firing a request on every keystroke
   useEffect(() => {
-    const t = setTimeout(() => loadStudents(1, studentSearch), 350);
+    const t = setTimeout(() => loadStudents(1, studentSearch, standingFilter), 350);
     return () => clearTimeout(t);
-  }, [studentSearch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentSearch, standingFilter]);
 
   async function createStudent(e) {
     e.preventDefault();
@@ -142,6 +144,7 @@ export default function ManageUsers() {
     { key: "full_name", header: "Name", sortable: false, className: "whitespace-nowrap" },
     { key: "department", header: "Dept", sortable: false },
     { key: "cgpa", header: "CGPA", sortable: false, align: "right" },
+    { key: "academic_status", header: "Standing", sortable: false, render: (r) => <StandingChip status={r.academic_status} short /> },
     { key: "email", header: "Email", sortable: false, className: "text-muted" },
     activeColumn,
   ];
@@ -217,7 +220,8 @@ export default function ManageUsers() {
 
       <Card title={tab === "student" ? "All students" : "All faculty"} className="mt-5">
         {tab === "student" && (
-          <label className="relative block mb-4 sm:w-80">
+          <div className="flex flex-col gap-3 sm:flex-row mb-4">
+          <label className="relative block sm:w-80">
             <span className="sr-only">Search students</span>
             <Icons.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <input
@@ -227,16 +231,28 @@ export default function ManageUsers() {
               className="field pl-9"
             />
           </label>
+          <label className="block sm:w-56">
+            <span className="sr-only">Academic standing</span>
+            <select className="field" value={standingFilter} onChange={(e) => setStandingFilter(e.target.value)}>
+              <option value="">Every standing</option>
+              {STANDING_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          </div>
         )}
         <DataTable
           rows={tab === "student" ? students : faculty}
           rowKey={(r) => (tab === "student" ? r.student_id : r.faculty_id)}
           columns={tab === "student" ? studentColumns : facultyColumns}
-          minWidth={860}
+          minWidth={960}
           emptyMessage={tab === "student" ? "No students found" : "No faculty yet"}
         />
         {tab === "student" && (
-          <Pagination page={studentPage} totalPages={studentTotalPages} total={studentTotal} onPage={(p) => loadStudents(p, studentSearch)} label="students" />
+          <Pagination page={studentPage} totalPages={studentTotalPages} total={studentTotal} onPage={(p) => loadStudents(p, studentSearch, standingFilter)} label="students" />
         )}
       </Card>
       <ResetPasswordModal user={resetUser} onClose={closeReset} />

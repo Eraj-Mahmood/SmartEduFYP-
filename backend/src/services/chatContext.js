@@ -1,6 +1,7 @@
 const pool = require("../config/db");
 const { getStudentOverview } = require("./studentOverview");
 const { getNextSteps } = require("./nextSteps");
+const { getStudentStanding } = require("./studentStanding");
 
 // Everything the chat assistant may know about ONE student, as one small object.
 // It is built from the same services as the dashboard, so the numbers always match.
@@ -11,7 +12,7 @@ const MAX_INTERVENTIONS = 3;
 
 /** buildChatContext(studentId) -> the chat context (see the shape below). */
 async function buildChatContext(studentId, db = pool) {
-  const [o, nextSteps, interventions, user] = await Promise.all([
+  const [o, nextSteps, interventions, user, st] = await Promise.all([
     getStudentOverview(studentId, db),
     getNextSteps(studentId),
     db.query(
@@ -22,6 +23,7 @@ async function buildChatContext(studentId, db = pool) {
       [studentId, MAX_INTERVENTIONS]
     ),
     db.query("SELECT u.email FROM students s JOIN users u ON u.user_id = s.user_id WHERE s.student_id = $1", [studentId]),
+    getStudentStanding({ studentId }, db),
   ]);
   const p = o.latestPrediction;
   const w = o.weakestCourse && o.courses.find((c) => c.course_code === o.weakestCourse.course_code);
@@ -95,6 +97,20 @@ async function buildChatContext(studentId, db = pool) {
         : null,
       attended: o.counselling.attended,
       marked: o.counselling.marked,
+    },
+    // academic standing under the BU rules (Phase 7) - the student's own, separate from the risk label
+    academic: {
+      status: st.status,
+      label: st.label,
+      count: st.count,
+      minimum: st.minimum,
+      probations_before_drop: st.probations_before_drop,
+      cgpa_used: st.cgpa_used,
+      term: st.term,
+      semester_no: st.semester_no,
+      hold: st.hold.active,
+      letter_pending: st.letters.some((l) => !l.acknowledged_at),
+      this_term: st.this_term,
     },
     interventions: interventions.rows.map((n) => ({ subject: n.subject, message: n.message, sent_at: n.sent_at })),
     thresholds: o.thresholds,

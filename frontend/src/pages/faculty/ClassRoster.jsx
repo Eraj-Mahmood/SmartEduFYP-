@@ -3,7 +3,7 @@ import { useParams, Link, useSearchParams } from "react-router-dom";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
 import {
-  Card, ChartCard, DataTable, Drawer, EmptyState, RiskChip, Button, Skeleton, useToast, Icons, RISK_SEVERITY, PredictionSource, Tabs,
+  StandingChip, Card, ChartCard, DataTable, Drawer, EmptyState, RiskChip, Button, Skeleton, useToast, Icons, RISK_SEVERITY, PredictionSource, Tabs,
 } from "../../components/ui";
 import WhatIfPanel from "../../components/WhatIfPanel";
 import ClassUpload from "./ClassUpload";
@@ -263,6 +263,12 @@ export default function ClassRoster() {
       sortValue: (r) => (r.final_label ? RISK_SEVERITY[r.final_label] : -1),
       render: (r) => <RiskChip label={r.final_label} size="sm" short />,
     },
+    {
+      key: "academic_status",
+      header: "Standing",
+      sortValue: (r) => ({ dropped: 4, probation_2: 3, probation_1: 2, not_evaluated: 1, good: 0 })[r.academic_status] ?? 0,
+      render: (r) => <StandingChip status={r.academic_status} short />,
+    },
     { key: "projected_cgpa", header: "Proj. CGPA", align: "right", sortValue: (r) => Number(r.projected_cgpa), render: (r) => gpa(r.projected_cgpa) },
     { key: "attendance_pct", header: "Attend.", align: "right", sortValue: (r) => (r.attendance_pct == null ? null : Number(r.attendance_pct)), render: (r) => pct(r.attendance_pct) },
     ...MARKS.map((m) => ({
@@ -314,6 +320,7 @@ export default function ClassRoster() {
           <span className="block text-xs text-muted mt-0.5 tabular-nums">
             CGPA {gpa(r.projected_cgpa)} · Grade <span className="font-semibold text-ink">{r.grade || "—"}</span>
           </span>
+          {r.academic_status && r.academic_status !== "good" && <StandingChip status={r.academic_status} short className="mt-1" />}
         </span>
       ),
     },
@@ -448,7 +455,7 @@ export default function ClassRoster() {
               initialSort={{ key: "final_label", dir: "desc" }}
               onRowClick={(r) => setOpenId(r.enrollment_id)}
               rowClassName={(r) => (r.enrollment_id === justSaved ? "bg-brand-50" : "")}
-              minWidth={wide ? 940 : 0}
+              minWidth={wide ? 1040 : 0}
               emptyMessage={rows.length ? "No students match this filter" : "No students enrolled in this class"}
             />
           </Card>

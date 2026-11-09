@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import client from "../../api/client";
 import { PortalShell } from "../../components/Shell";
-import { Card, DataTable, Pagination, RiskChip, Button, EmptyState, Icons, RISK_SEVERITY, useToast, PredictionSource } from "../../components/ui";
+import { StandingChip, STANDING_OPTIONS, Card, DataTable, Pagination, RiskChip, Button, EmptyState, Icons, RISK_SEVERITY, useToast, PredictionSource } from "../../components/ui";
 import useApi from "../../lib/useApi";
 import { timeAgo } from "../../lib/format";
 import { AssignCounselorModal, ComposeModal } from "./InterventionModals";
@@ -41,7 +41,7 @@ function Toggle({ checked, onChange, children }) {
 
 export default function Interventions() {
   const departments = useApi("/admin/departments");
-  const [filters, setFilters] = useState({ department: "", label: "", dataSource: "", search: "", noCounselor: false, notContacted: false });
+  const [filters, setFilters] = useState({ department: "", label: "", dataSource: "", standing: "", search: "", noCounselor: false, notContacted: false });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState("final_label");
@@ -144,6 +144,12 @@ export default function Interventions() {
           </span>
         ),
         sortValue: (r) => RISK_SEVERITY[r.final_label],
+      },
+      {
+        key: "academic_status",
+        header: <span className="inline-block whitespace-normal leading-tight">Standing (BU)</span>,
+        sortable: false,
+        render: (r) => <StandingChip status={r.academic_status} short />,
       },
       {
         key: "reasons",
@@ -249,7 +255,7 @@ export default function Interventions() {
       </div>
 
       <Card>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 mb-3">
           <label className="relative">
             <span className="sr-only">Search</span>
             <Icons.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
@@ -282,6 +288,17 @@ export default function Interventions() {
               <option value="synthetic">Synthetic data only</option>
             </select>
           </label>
+          <label>
+            <span className="sr-only">Academic standing</span>
+            <select className="field" value={filters.standing} onChange={setFilter("standing")}>
+              <option value="">Every standing</option>
+              {STANDING_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="flex flex-wrap gap-2 mb-4">
           <Toggle checked={filters.noCounselor} onChange={(v) => setFilters((f) => ({ ...f, noCounselor: v }))}>
@@ -300,7 +317,7 @@ export default function Interventions() {
               loading={list.loading && !list.data}
               rows={data.rows}
               rowKey={(r) => r.student_id}
-              minWidth={1110}
+              minWidth={1210}
               sort={{ key: sortKey, dir: SERVER_SORT[sortKey].dir }}
               onSortChange={({ key }) => SERVER_SORT[key] && setSortKey(key)}
               rowClassName={(r) => (selected[r.student_id] ? "bg-brand-50/60" : "")}

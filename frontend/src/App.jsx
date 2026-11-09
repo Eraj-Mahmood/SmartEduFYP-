@@ -30,6 +30,8 @@ const AuditLog = lazy(() => import("./pages/admin/AuditLog"));
 const ModelPage = lazy(() => import("./pages/admin/ModelPage"));
 const LiveCohort = lazy(() => import("./pages/admin/LiveCohort"));
 const Counselling = lazy(() => import("./pages/admin/Counselling"));
+const AcademicStanding = lazy(() => import("./pages/admin/AcademicStanding"));
+const WarningLetterPrint = lazy(() => import("./pages/admin/WarningLetterPrint"));
 
 function PageLoading() {
   return (
@@ -74,6 +76,8 @@ export default function App() {
           <Route path="/admin/assignments" element={<ProtectedRoute allowedRole="admin"><Assignments /></ProtectedRoute>} />
           <Route path="/admin/interventions" element={<ProtectedRoute allowedRole="admin"><Interventions /></ProtectedRoute>} />
           <Route path="/admin/counselling" element={<ProtectedRoute allowedRole="admin"><Counselling /></ProtectedRoute>} />
+          <Route path="/admin/academic-standing" element={<ProtectedRoute allowedRole="admin"><AcademicStanding /></ProtectedRoute>} />
+          <Route path="/admin/warning-letters/:id/print" element={<ProtectedRoute allowedRole="admin"><WarningLetterPrint /></ProtectedRoute>} />
           <Route path="/admin/tutorials" element={<ProtectedRoute allowedRole="admin"><Tutorials /></ProtectedRoute>} />
           <Route path="/admin/audit-log" element={<ProtectedRoute allowedRole="admin"><AuditLog /></ProtectedRoute>} />
           <Route path="/admin/model" element={<ProtectedRoute allowedRole="admin"><ModelPage /></ProtectedRoute>} />

@@ -103,7 +103,7 @@ async function classRoster(req, res) {
     await assertOwnsClass(facultyId, fcId);
 
     const { rows } = await pool.query(
-      `SELECT e.enrollment_id, s.student_id, s.roll_no, s.full_name, e.status,
+      `SELECT e.enrollment_id, s.student_id, s.roll_no, s.full_name, e.status, s.academic_status, s.probation_count,
               cr.assignment_avg, cr.quiz_avg, cr.midterm_marks, cr.final_marks, cr.grade,
               cr.data_source AS result_source, cr.upload_id AS result_upload_id,
               lp.final_label, lp.reasons, lp.drivers, lp.features, lp.policy_reason, lp.projected_cgpa,
