@@ -553,10 +553,7 @@ frontend `vite` / `esbuild` (dev server only; fix = vite 8), `react-router` (mod
 
 ## Working rules
 
-- **FEATURE FREEZE since tag `v5-freeze` (2026-11-07): bug fixes only.** No new features, screens or
-  endpoints without the owner's explicit say-so. Phase 6 (tag `v6-demo`, 2026-11-08: setup on a new machine,
-  `demo:reset`, tests and evidence, README + start scripts, UI polish, demo script) had exactly two approved
-  exceptions: the separate login portals and the admin password reset. The freeze still applies.
+- **Phase 7: counselling sessions and academic probation, approved by the project owner and supervisor. No other new features.**
 - Single developer, work directly on `main`. Do not create branches.
 - One commit per step, conventional message (e.g. `fix(ml): pin scikit-learn`).
   Commit only after that step's check passes.
