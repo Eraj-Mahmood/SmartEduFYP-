@@ -7,6 +7,8 @@ const { MARK_FIELDS } = require("../services/grading");
 const { todayLocal } = require("../services/csv");
 const ctrl = require("../controllers/facultyController");
 const counselors = require("../controllers/counselorController");
+const counselling = require("../controllers/counsellingController");
+const cs = require("./counsellingRules");
 const model = require("../controllers/modelController");
 const uploads = require("../controllers/uploadController");
 const { singleCsv } = require("../middleware/upload");
@@ -93,5 +95,9 @@ router.put(
   validate,
   counselors.updateCounselee
 );
+
+// Counselling sessions (Phase 7): own sessions only; the service checks the session is mine
+router.get("/counselling-sessions", cs.facultyListRules, validate, counselling.facultyList);
+router.put("/counselling-sessions/:id/attendance", cs.attendanceRules, validate, counselling.attendance);
 
 module.exports = router;

@@ -9,6 +9,8 @@ const counselors = require("../controllers/counselorController");
 const governance = require("../controllers/governanceController");
 const model = require("../controllers/modelController");
 const cohort = require("../controllers/cohortController");
+const counselling = require("../controllers/counsellingController");
+const cs = require("./counsellingRules");
 const { singleCsv } = require("../middleware/upload");
 
 router.use(authenticate, authorize("admin"));
@@ -158,6 +160,13 @@ router.post(
 router.put("/counselors/:id/close", [idParam()], validate, counselors.close);
 router.get("/counselors", counselors.list);
 router.get("/faculty/workload", counselors.workload);
+
+// Counselling sessions (Phase 7): only the admin books, reschedules and cancels; no delete
+router.post("/counselling-sessions", cs.scheduleRules, validate, counselling.schedule);
+router.get("/counselling-sessions", cs.adminListRules, validate, counselling.adminList);
+router.put("/counselling-sessions/:id/reschedule", cs.rescheduleRules, validate, counselling.reschedule);
+router.put("/counselling-sessions/:id/cancel", cs.cancelRules, validate, counselling.cancel);
+router.put("/counselling-sessions/:id/attendance", cs.attendanceRules, validate, counselling.attendance); // admin override
 
 // Batch re-prediction (background runs)
 router.post(

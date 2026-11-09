@@ -6,6 +6,7 @@ const { authenticate, authorize } = require("../middleware/auth");
 const { validate } = require("../middleware/validate");
 const ctrl = require("../controllers/studentController");
 const chat = require("../controllers/chatController");
+const counselling = require("../controllers/counsellingController");
 
 router.use(authenticate, authorize("student"));
 
@@ -39,5 +40,7 @@ router.post("/prediction/refresh", ctrl.refreshPrediction); // triggers the help
 router.post("/chat", chatLimiter, chatRules, validate, chat.send);
 router.get("/chat/history", chat.history);
 router.delete("/chat/history", chat.clear);
+// Counselling sessions (Phase 7): own only, never the counsellor's notes
+router.get("/counselling-sessions", counselling.studentList);
 
 module.exports = router;

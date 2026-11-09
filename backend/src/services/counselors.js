@@ -57,10 +57,12 @@ async function notify(db, { sender, recipient, subject, message, predictionId = 
  * (409 if it is already this faculty member). Notifies the student and the faculty member.
  * Runs in one transaction; the student row is locked so two admins can't race.
  */
-async function assignCounselor({ studentId, facultyId, adminUserId }) {
-  const client = await pool.connect();
+async function assignCounselor({ studentId, facultyId, adminUserId }, { client: outer = null } = {}) {
+  // With `client` the caller owns the transaction (counselling sessions book and assign in one go):
+  // no BEGIN/COMMIT here, and an error is left for the caller to roll back.
+  const client = outer || (await pool.connect());
   try {
-    await client.query("BEGIN");
+    if (!outer) await client.query("BEGIN");
     const st = await client.query(
       `SELECT s.student_id, s.full_name, s.user_id, s.latest_prediction_id, p.final_label
        FROM students s LEFT JOIN predictions p ON p.prediction_id = s.latest_prediction_id
@@ -110,14 +112,14 @@ async function assignCounselor({ studentId, facultyId, adminUserId }) {
       predictionId: student.latest_prediction_id,
       link: `/faculty/counselees?open=${rows[0].id}`,
     });
-    await client.query("COMMIT");
-    return { assignment: await getAssignment(rows[0].id), closed };
+    if (!outer) await client.query("COMMIT");
+    return { assignment: await getAssignment(rows[0].id, client), closed };
   } catch (e) {
-    await client.query("ROLLBACK");
+    if (!outer) await client.query("ROLLBACK");
     if (e.code === "23505") throw httpError(409, "This student already has an active counselor");
     throw e;
   } finally {
-    client.release();
+    if (!outer) client.release();
   }
 }
 
