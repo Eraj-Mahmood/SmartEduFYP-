@@ -1,0 +1,25 @@
+{
+  "_source": "BU Student Handbook (Spring 2024): 1.1.25 / 5.5.1 probation, 5.5.2 warning letter, 5.5.3 / 1.1.8 drop, 5.5.4 off probation, 5.5.5 enrolment hold, 1.20.4 results final. The only place these numbers live in the code.",
+  "min_cgpa": {
+    "AD": 2.0,
+    "BBA": 2.0,
+    "BEE": 2.0,
+    "BS": 2.0,
+    "MBA": 2.5,
+    "MS": 2.5,
+    "MPhil": 2.5,
+    "PhD": 3.0
+  },
+  "_department_programme": "Students have no programme column; their department decides it. Unknown departments use default_programme.",
+  "department_programme": {
+    "CS": "BS",
+    "SE": "BS",
+    "AI": "BS",
+    "EE": "BEE",
+    "Business": "BBA"
+  },
+  "default_programme": "BS",
+  "probations_before_drop": 2,
+  "first_semester_uses_gpa": true,
+  "hold_on_probation_2": true
+}

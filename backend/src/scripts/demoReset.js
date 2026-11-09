@@ -228,6 +228,12 @@ async function summary(pool) {
      FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id`
   );
   console.log(`  model = policy: ${agree.agree} / ${agree.n}; policy raised: ${agree.escalated}`);
+  const { rows: standing } = await pool.query(
+    `SELECT academic_status, COUNT(*)::int AS n FROM students GROUP BY 1
+     ORDER BY array_position(ARRAY['good','probation_1','probation_2','dropped','not_evaluated'], academic_status)`
+  );
+  console.log("\nAcademic standing (BU rules) per student:");
+  for (const s of standing) console.log(`  ${s.academic_status.padEnd(16)} ${String(s.n).padStart(7)}`);
   const { rows: [cons] } = await pool.query(
     `WITH g AS (
        SELECT e.student_id, AVG(CASE cr.grade WHEN 'A' THEN 4 WHEN 'B' THEN 3 WHEN 'C' THEN 2 WHEN 'D' THEN 1 ELSE 0 END) AS pts
@@ -286,6 +292,9 @@ async function main() {
   const { rows: [admin] } = await pool.query("SELECT user_id FROM users WHERE email = $1", [ADMIN.email]);
   step("Live cohort (evaluation/sample_live_cohort.csv, SYNTHETIC)");
   await importCohort(pool, admin.user_id);
+  step("Academic standing (seeded starting status, BU Handbook 5.5; config/academicStanding.json)");
+  const standing = await require("../services/academicStanding").seedStandings(pool);
+  console.log("  " + Object.entries(standing).map(([k, v]) => `${k} ${v}`).join(" · "));
   step("Predict every student through the ML service (strict, no fallback)");
   await predictAll(pool, admin.user_id);
   step("Summary");
