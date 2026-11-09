@@ -1,4 +1,4 @@
-# SmartEdu - 10-minute demo script
+# SmartEdu - 12-minute demo script
 
 One presenter, one laptop, one browser window (use a private/incognito window so no old session is open).
 Every account, number and name below is from a fresh `npm run demo:reset` (see [DEMO_ACCOUNTS.md](DEMO_ACCOUNTS.md)).
@@ -6,11 +6,15 @@ The chat part uses only questions the built-in assistant (Layer 1) answers - **n
 
 Rehearsed end to end with Playwright on 2026-11-08 (`evaluation/demo_run.js`, video in `docs/demo_recording/`):
 every step below worked as written; the automated run with the pauses for talking took the time noted at the end.
+Block 5 (counselling and probation, Phase 7) was added on 2026-11-09 and is checked by
+`evaluation/phase7_demo_check.mjs` (17/17); the recorded video predates it.
 
 ## Before the audience arrives (15 minutes before)
 
 1. Double-click `start.cmd` in the project folder; wait for three green **OK** lines (it opens the browser).
-2. In a new PowerShell window: `cd backend; npm run demo:reset -- --yes` (2-5 minutes; it ends with "Demo reset finished").
+2. In a new PowerShell window: `cd backend; npm run demo:reset -- --yes` (about 6 minutes; it ends with "Demo reset finished").
+   **Reset on the day of the demo:** the counselling sessions are dated from the reset day (block 5 needs Zain Khan's
+   session "yesterday" to be awaiting attendance).
 3. Browser: zoom 100-110%, close other tabs, open http://localhost:5173/ (the portal chooser).
 4. Keep this page open beside you, or printed. Passwords: admin `Admin@123`, faculty `Faculty@123`, students `Student@123`.
 
@@ -47,24 +51,34 @@ every step below worked as written; the automated run with the pauses for talkin
 | 4.3 | 7:45 | **Send** -> keep the template and "Add each student's recommended tutorial" -> **Send** | "Send a personal message with study material for her weakest course." | Preview ends with "Recommended for AI302 ..."; Last intervention "just now" |
 | 4.4 | 8:10 | **Log out** -> **Student** -> `student144766@smartedu.edu` | "What does Farah see?" | Bell shows **2**; What to do next: counselor card (Dr. Ayesha Khan, email) and **Open tutorial** |
 | 4.5 | 8:45 | **Log out** | | |
-| **5** | **8:55** | **Wrong-portal attempt** | | |
-| 5.1 | 8:55 | **Faculty** sign-in with `student144766@smartedu.edu` / `Student@123` | "Each account only works in its own portal." | **"This is a student account - please use the Student sign in"** with a button; no session |
-| 5.2 | 9:15 | Same form, wrong password `Wrong-pass1` | "A wrong password never reveals whether an account exists." | "Invalid email or password" |
-| 5.3 | 9:30 | Back to the chooser | Wrap up: "Real model, explained predictions, live updates, interventions and privacy - all tested: 505 API tests, 51 manual test cases, 50,000 students re-scored in under 2 minutes." | Portal chooser |
+| **5** | **8:55** | **Counselling and probation (BU rules)** | | |
+| 5.1 | 8:55 | **Admin** sign-in -> **Counselling** -> **Schedule session** -> search `BU-122785` -> **Ayesha Akhtar** -> Date tomorrow, Time `10:00`, Location `Room 204` -> **Schedule session** | "Admins book counselling sessions. The counsellor fills in automatically, and both people are notified." | Counsellor **Dr. Ayesha Khan · 3 counselees (current counsellor)**; toast "Session booked for ..., 10:00 AM"; the row shows **Upcoming** |
+| 5.2 | 9:20 | **Log out** -> **Faculty** -> `ayesha.khan@smartedu.edu` -> **Counselling** -> first row (Zain Khan, yesterday 2:00 PM) -> **Present** -> **Save** | "The counsellor records attendance afterwards - nothing is ever marked absent automatically." | "Awaiting attendance" row highlighted; after Save it moves to **History** as **Present** |
+| 5.3 | 9:40 | **Log out** -> **Admin** -> **Standing** -> Term `Fall 2026` -> **Preview** | "Probation follows the BU Student Handbook, clause 5.5 - a rule outcome, shown next to the risk prediction, never mixed with it." | 70 students with from -> to; **Bushra Awan BU-114400: Good -> Probation 1, CGPA 1.97 / min 2.00, letter 1** |
+| 5.4 | 10:00 | Tick **"All results ... are final"** -> **Close Fall 2026** -> **Close the semester** | "Results must be final first - handbook 1.20.4. One click records every decision, issues the warning letters and notifies the students." | Toast "Fall 2026 closed"; the probation list now has letters |
+| 5.5 | 10:20 | *Students on probation* -> search `BU-114400` -> **Schedule session** -> tomorrow `15:00`, `Room 204` -> **Schedule session** | "From the probation list, counselling is one click away - the form is already filled in." | Agenda "Probation follow-up (Probation 1 of 2, Fall 2026) ..."; session booked |
+| 5.6 | 10:40 | **Log out** -> **Student** -> `student114400@smartedu.edu` -> dashboard -> *Warning letters* -> **I acknowledge this letter** | "Bushra sees both: her risk prediction from the model, and her academic standing under the BU rules - with what she needs this term." | **Risk prediction (Random Forest)** hero and the **Academic standing (BU rules)** card: Probation 1 of 2, the average needed this term, the letter -> "Acknowledged by the student on ..." |
+| 5.7 | 11:05 | **Log out** | | |
+| **6** | **11:10** | **Wrong-portal attempt** | | |
+| 6.1 | 11:10 | **Faculty** sign-in with `student144766@smartedu.edu` / `Student@123` | "Each account only works in its own portal." | **"This is a student account - please use the Student sign in"** with a button; no session |
+| 6.2 | 11:30 | Same form, wrong password `Wrong-pass1` | "A wrong password never reveals whether an account exists." | "Invalid email or password" |
+| 6.3 | 11:45 | Back to the chooser | Wrap up: "Real model, explained predictions, live updates, interventions, counselling and academic probation, and privacy - all tested: 642 API tests, 66 manual test cases, 50,000 students re-scored in under 2 minutes." | Portal chooser |
 
 ## Reset between rehearsals
 
-Everything above changes demo data (a mark, an upload, a counselor, notifications, chat history). To get it all back:
+Everything above changes demo data (a mark, an upload, a counselor, notifications, chat history, counselling sessions,
+the semester close). To get it all back:
 
 ```powershell
 cd backend
-npm run demo:reset -- --yes      # ML service running; 2-5 minutes; identical data every time
+npm run demo:reset -- --yes      # ML service running; about 6 minutes; identical data every time
 ```
 
 Quick manual undo if there is no time for a reset (see DEMO_ACCOUNTS.md for details): type BU-112907's old marks back
 (Quiz 54.99, Midterm 70.50); upload `docs/demo_files/demo_marks_undo_CS401_A.csv` as bilal.raza; Admin ->
 Interventions -> BU-144766 -> Dr. Ayesha Khan -> **Close assignment**; in the chat panel **Clear chat**. (Rows stay
-tagged "live" and the notifications stay until the next reset.)
+tagged "live" and the notifications stay until the next reset.) **Block 5 has no manual undo:** a semester close can't
+be undone from the app - only `npm run demo:reset` restores it.
 
 ## If something fails during the demo
 
@@ -75,4 +89,7 @@ tagged "live" and the notifications stay until the next reset.)
 | **No Wi-Fi / no internet** | Tutorial links and Gemini don't open | Everything else is local (database, model, app). Skip clicking **Open tutorial**; say where it would go. |
 | **A step gives a different number** | e.g. no label change in 3.3 | The data wasn't reset after a rehearsal: run `npm run demo:reset -- --yes` (or use the manual undo above). |
 | **Port in use / app won't start** | `start.cmd` shows NOT RESPONDING | Close old SmartEdu windows, run `start.cmd` again (README troubleshooting). |
-| **Laptop or projector failure** | - | Play the recorded run: `docs/demo_recording/` (see its README.md). |
+| **"Fall 2026 has already been closed"** | Block 5.3 preview shows the warning; Close is disabled | The data wasn't reset after a rehearsal: run `npm run demo:reset -- --yes`. Short of time: type a new term name (e.g. `Spring 2027`) - the students already on probation then move on (Bushra to Probation 2), so say so. |
+| **No "Awaiting attendance" row in 5.2** | Zain Khan's yesterday session is missing or already Present | The reset was made on an earlier day (dates count from the reset) or after a rehearsal: reset again today. Fallback: show **History** and an Upcoming row ("opens at ...") instead. |
+| **Schedule session says the time clashes** | 409 "... already has a counselling session ..." | A rehearsal booked that slot: pick another time (that is the overlap check working - say so). |
+| **Laptop or projector failure** | - | Play the recorded run: `docs/demo_recording/` (see its README.md; it predates block 5), then show the block 5 screenshots in `docs/screenshots/phase7_demo/`. |

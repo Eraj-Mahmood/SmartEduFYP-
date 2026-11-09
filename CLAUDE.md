@@ -436,6 +436,7 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     attendance and student_semester_performance; `students.data_source` (synthetic | live) and
     `students.actual_outcome` (safe | at_risk | dropout | unknown, from a live cohort file).
     `012_sessions_revoked_at.sql` — `users.sessions_revoked_at` (set by logout; older tokens → 401 `TOKEN_REVOKED`).
+    `013`-`015` (Phase 7): counselling sessions, academic standing, notification kind `standing` - see the Phase 7 section.
   - **Data sources** (`data_source` columns): `synthetic` = imported from the 50k dataset or seeded;
     `live` = entered in the app (single result save, attendance marking), uploaded by faculty (then
     `upload_id` also points at the `uploads` row that wrote it) or created by an admin live-cohort import.
@@ -458,6 +459,77 @@ FastAPI ML service (ml_service/, :8001) — loads smartedu_random_forest_version
     deterministic (seed 2026, student_id order). The demo names are in docs/DEMO_ACCOUNTS.md.
   - `requirements.txt` — psycopg2-binary, pandas, bcrypt for these scripts (system Python).
   - `demo_login_lookup.sql` — pgAdmin queries to list demo logins.
+
+## Phase 7: counselling sessions and academic probation (tag `v7-features`)
+
+Approved by the project owner and supervisor. The Random Forest, its 20 features and the ML service did not change;
+probation never changes the risk label (screens show "Risk prediction (Random Forest)" and "Academic standing (BU rules)"
+side by side).
+
+- **Database** (new numbered migrations only): `013_counselling_sessions.sql` - `counselling_sessions` (assignment_id
+  nullable, student_id, faculty_id = the counsellor, scheduled_at TIMESTAMPTZ, duration_min 15-120 default 30, mode
+  in_person | online, location, agenda, reason manual | risk | probation, status scheduled | cancelled, attendance present |
+  absent | NULL, counsellor_notes (staff only), marked_by/at, cancelled_reason, created_by/at, updated_at; checks:
+  attendance and marked_at together, cancelled has no attendance and has a reason; indexes (faculty_id, scheduled_at),
+  (student_id, scheduled_at)). `014_academic_standing.sql` - `semester_closes` (term_label, closed_by/at, counts per
+  status), `academic_standing` (student_id, close_id, semester_no, cgpa_used, status good | probation_1 | probation_2 |
+  dropped | not_evaluated, probation_count 0-2, source seed | close), `warning_letters` (one per standing row, level 1|2,
+  issued_at/by, acknowledged_at), `enrolment_approvals` (standing_id, approved_by, approver_role, note),
+  `students.academic_status` / `probation_count` (kept in step by `recordStanding`). `015_notification_kind_standing.sql`
+  - `notifications.kind` also allows `standing`.
+- **Config** `backend/src/config/academicStanding.json` - the ONLY place the handbook numbers live: min CGPA per
+  programme (AD/BBA/BEE/BS 2.0, MBA/MS/MPhil 2.5, PhD 3.0), department -> programme (CS/SE/AI -> BS, EE -> BEE, Business ->
+  BBA, default BS; students have no programme column), `probations_before_drop` 2, `first_semester_uses_gpa`,
+  `hold_on_probation_2`. `policy.json` (risk rules) is separate and unchanged.
+- **Rules** (BU Student Handbook, Spring 2024): 1.1.25/5.5.1 below the minimum at the end of a semester -> probation (GPA in
+  semester 1, else CGPA); 5.5.2 a warning letter after each probation, acknowledged by the student; 5.5.3/1.1.8 below the
+  minimum in the semester after two consecutive probations -> dropped (final); 5.5.4 at/above the minimum -> good, count 0;
+  5.5.5 Probation 2 can't enrol without the Principal's approval via the HoD (the admin records the approver role; no HoD /
+  Principal accounts); 1.20.4 results must be final before a close.
+- **Services**: `counsellingSessions.js` (schedule / reschedule / cancel - admin only; mark attendance - the session's
+  counsellor or the admin, only after the start, correctable, never automatic; display status computed: upcoming,
+  awaiting_attendance, present, absent, cancelled; overlap 409 per teacher and per student with advisory locks; future and
+  <= 60 days; counsellor defaults to the active one, a different one -> 409 `COUNSELLOR_CHANGE` unless `reassign=true`,
+  which calls `assignCounselor(..., {client})` in the same transaction; notifications via `counselors.notify()` inside the
+  transaction - both people on schedule/reschedule/cancel (sender = the admin, links /student/counselling and
+  /faculty/counselling), the student when attendance changes; audit SCHEDULE_SESSION, RESCHEDULE_SESSION, CANCEL_SESSION,
+  MARK_ATTENDANCE; `studentSessionSummary` for the dashboard and chat). `timeFormat.js` (Asia/Karachi, "Mon 16 Nov 2026,
+  11:00 AM"). `academicStanding.js` (pure `nextStanding(prevStatus, prevCount, cgpa, semesterNo, {programme})`,
+  `gradeUsed`, `seedStatus`, `recordStanding`, `seedStandings`). `semesterClose.js` (`preview` writes nothing; `confirm`
+  needs `resultsFinal: true` (400 `RESULTS_NOT_FINAL`), 409 `TERM_ALREADY_CLOSED` / `RESULTS_INCOMPLETE`; ONE transaction:
+  semester_closes row, a standing row per enrolled student, a new performance row = the new official CGPA (semester + 1:
+  previous_sgpa = SGPA, cgpa = projected CGPA, or the GPA in semester 1; students.cgpa / current_semester move on), a
+  letter per new probation, a `standing` notification per affected student; audit CLOSE_SEMESTER; then a batch run
+  `startRun({scope: 'student', studentIds, trigger: 'semester_close'})`). `warningLetters.js` (letter content with the HoD
+  signature line, own-only acknowledge once, `assertMayEnrol` -> 409 `STUDENT_DROPPED` / `ENROLMENT_HOLD` in
+  `enrollStudent`, `recordApproval`). `studentStanding.js` (`getStudentStanding` incl. `this_term` - the average needed via
+  nextSteps' `markNeededFor`; `listStanding` for the admin list). `sendError` passes an error's `payload` (e.g. `code`).
+- **Routes** (express-validator on all): admin `POST/GET /counselling-sessions`, `PUT /counselling-sessions/:id/reschedule
+  | cancel | attendance`, `POST /semester-close/preview | confirm`, `GET /semester-closes`, `GET /academic-standing`
+  (probation list), `GET /warning-letters(/:id)`, `GET /students/:id/standing`, `POST /students/:id/enrolment-approval`;
+  `GET /admin/students`, `/at-risk-students` (+ export, new CSV column `academic_standing`) take `standing=`; dashboard
+  `kpis.probation_1/probation_2/dropped` + `standingCounts`. Faculty `GET /counselling-sessions?view=upcoming|history`,
+  `PUT /counselling-sessions/:id/attendance`; roster, counselees (probation first) and sessions carry `academic_status`.
+  Student `GET /counselling-sessions` (never counsellor_notes), `GET /standing`, `GET /warning-letters`,
+  `PUT /warning-letters/:id/acknowledge`; dashboard `counselling {next, attended, marked}`. No delete routes.
+- **Frontend**: admin `pages/admin/Counselling.jsx` + `CounsellingModals.jsx` (ScheduleSessionModal - also reschedule and
+  pre-fills; CancelSessionModal; AttendanceModal with an `endpoint` prop), `AcademicStanding.jsx`, `StandingModals.jsx`
+  (RecordApprovalModal), `WarningLetterPrint.jsx` (`/admin/warning-letters/:id/print`), "Schedule" on Interventions and in
+  AdminStudentDrawer (standing section too), standing KPIs, filters and columns, Assignments hold message; faculty
+  `CounsellingSessions.jsx` (+ dashboard card); student `StudentCounselling.jsx`, `StandingCard.jsx`, next session in
+  WhatToDoNext. UI kit: `SessionStatusChip`, `StandingChip`; `lib/useWide.js`; `pk*` helpers in `lib/format.js`. Admin nav
+  (9 links) shows from `xl` (1280 px), menu below. The bell panel is full width on phones (it ran off-screen at 390 px).
+- **Chat**: intents `counselling_session` (counselling word + when/booking word, or session/meeting + the student's own
+  counsellor's name), `probation_status`, `probation_rules`, all from the student's own context (`ctx.counselling`,
+  `ctx.academic`); "counselling" and "probation" count as academic words for the other-student refusal.
+- **Demo data** (`scripts/demoPhase7.js`, run by demo:reset after the standing seed): Dr. Ayesha Khan counsels BU-122785,
+  BU-112907, BU-114400 with 10 sessions dated from `--as-of` (one awaiting attendance yesterday, two upcoming);
+  BU-114400 Bushra Awan's AI301/AI302 finals = 32, so a close puts her on Probation 1 (CGPA 1.97). Starting standing:
+  good 26,466 / Probation 1 873 / Probation 2 16,508 / not evaluated 6,183. Close preview: 70 students, 38 / 4 / 5 / 23
+  dropped, 9 letters. Demo actions: docs/DEMO_ACCOUNTS.md "Counselling and probation demo", checked by
+  `evaluation/phase7_demo_check.mjs` (17/17); demo script block 5.
+- **Limitation**: the starting standing is seeded from the current CGPA and the dataset's consecutive-low flag (which
+  uses Previous_SGPA, not two end-of-term CGPAs), hence many Probation 2 students.
 
 ## Running each service (Windows, PowerShell)
 
@@ -500,13 +572,14 @@ transaction per file, recorded in `schema_migrations`, already-applied files ski
 Tests and evaluations:
 
 ```powershell
-cd backend; npm test                              # Jest + Supertest against the local smartedu DB (ML not needed): 505 tests, 23 suites (incl. bugfixes.test.js: regression tests for the 2026-11 test pass)
-cd backend; npm run test:coverage                 # same + coverage of backend/src (CLI scripts excluded): 89.1% lines (2026-11-08, after the bug-fix pass)
+cd backend; npm test                              # Jest + Supertest against the local smartedu DB (ML not needed): 642 tests, 28 suites (Phase 7 added
+                                                  # counsellingSessions, counsellingNotifications, academicStanding, semesterClose, standingScreens; run after demo:reset)
+cd backend; npm run test:coverage                 # same + coverage of backend/src (CLI scripts excluded): 88.5% lines (2026-11-09, Phase 7)
                                                   # suites added in Phase 6: portals, passwordReset, rbac (every route x role),
                                                   # policy (escalate-only matrix, reasons), faculty (ownership), student (scoping),
                                                   # admin (provisioning, classes, flagged list, batch runs); helpers takeSnapshot/
                                                   # restoreSnapshot undo writes exactly (updated_at/marked_at kept as text)
-cd backend; node ../evaluation/chat_eval.js       # chat router eval -> docs/chat_eval.md (exit 1 on any fail);
+cd backend; node ../evaluation/chat_eval.js       # chat router eval -> docs/chat_eval.md (exit 1 on any fail); 471 questions since Phase 7;
                                                   # includes my_marks, improve-with-tutorial, who_can_help with a counselor
                                                   # and 9 questions for one live-cohort student per label (imported marks)
 cd backend; node ../evaluation/next_steps_whatif.js  # suggested marks vs the real model (ML running)
@@ -514,10 +587,11 @@ cd ml_service; .venv\Scripts\python -m pytest tests  # 29: test_predict.py + tes
                                                      # dataset rows, limits, null imputation, determinism, 500-row agreement, model-info)
 cd backend; node ../evaluation/perf_check.js         # 10 timed runs per operation incl. 10 full 50k batch runs (~25 min; each run's
                                                      # predictions undone + VACUUM) -> docs/PERFORMANCE.md
-cd backend; node ../evaluation/test_cases.js         # 51 manual cases (FR1-FR15 + portals) via API and Playwright -> docs/TEST_CASES.md;
+cd backend; node ../evaluation/test_cases.js         # 66 manual cases (FR1-FR17 + portals) via API and Playwright -> docs/TEST_CASES.md;
                                                      # changes data: demo:reset before and after
 ml_service\.venv\Scripts\python evaluation/report_numbers.py  # .pkl metrics, label/source/agreement stats, global importance
                                                      # (the numbers in docs/REPORT_EVIDENCE.md)
+cd backend; node ../evaluation/phase7_demo_check.mjs # performs the 5 Phase 7 demo actions in a browser (17 checks; fresh reset before, reset after)
 cd backend; node ../evaluation/demo_actions_check.js # performs + reverts every docs/DEMO_ACCOUNTS.md demo action (ML running;
                                                      # --write-demo-files regenerates docs/demo_files; reset again afterwards)
 python -m pip install -r evaluation/requirements.txt  # once: psycopg2, pandas, matplotlib 3.11.2 (system Python)

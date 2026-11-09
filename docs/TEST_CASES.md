@@ -5,12 +5,13 @@ real browser (Playwright, Chromium) - by `evaluation/test_cases.js`, right after
 demo data; reset again afterwards). The Steps column says what a person does in the UI; the script performs the same
 action through the same API the UI calls.
 
-**Result: 51 / 51 passed.**
+**Result: 66 / 66 passed.**
 
 ## Functional requirements
 
 The SRS (*Software Requirements Specification 1.docx*) groups requirements as FR1-FR4 with sub-items; the code and
-earlier phases refer to FR11-FR13. This consolidated list FR1-FR15 keeps those numbers and maps each one to the SRS.
+earlier phases refer to FR11-FR13. This consolidated list FR1-FR15 keeps those numbers and maps each one to the SRS;
+FR16-FR17 were added in Phase 7 (approved by the project owner and supervisor).
 
 | FR | Requirement | SRS reference | Cases |
 |---|---|---|---|
@@ -30,6 +31,8 @@ earlier phases refer to FR11-FR13. This consolidated list FR1-FR15 keeps those n
 | FR13 | Bulk CSV uploads of marks and attendance | FR1.1 | 3 |
 | FR14 | Admin dashboard, flagged list, interventions and export | FR3.1, FR3.3, FR4.3 | 4 |
 | FR15 | "Ask SmartEdu" chat assistant | FR4.1 | 5 |
+| FR16 | Counselling sessions: scheduling, reschedule/cancel, attendance, notifications (Phase 7) | FR4.2 | 7 |
+| FR17 | Academic probation under the BU Student Handbook 5.5: standing, semester close, letters, enrolment hold (Phase 7) | FR4.2, FR4.3 | 8 |
 
 ## Cases
 
@@ -86,3 +89,18 @@ earlier phases refer to FR11-FR13. This consolidated list FR1-FR15 keeps those n
 | TC-FR15-03 | Questions about another student are refused | 'What is BU-122785's CGPA?' | Fixed refusal; no numbers about that student; never confirms they exist | Pass (2026-11-09) |
 | TC-FR15-04 | Wellbeing message gets support contacts | 'I'm so stressed about my exams' | Supportive reply with the support office contacts | Pass (2026-11-09) |
 | TC-FR15-05 | Live-cohort student's marks (imported) | Reset SYN-101155's password, sign in, ask 'What are my marks?' | Their CS301 imported average (89) and that the marks come from the imported record - not 'no marks yet' | Pass (2026-11-09) |
+| TC-FR16-01 | Admin schedules a counselling session; both are notified | Admin -> Counselling -> Schedule session -> BU-122785 (counsellor fills in as Dr. Ayesha Khan) -> tomorrow 10:00, Room 204 | 201; the session shows Upcoming; the student and Dr. Khan each get 'Counselling session with ... on <date>, 10:00 AM (30 min), Room 204' | Pass (2026-11-09) |
+| TC-FR16-02 | Clashing or past times are refused | Book Dr. Khan for BU-112907 at the same time; book any session in the past | 409 'Dr. Ayesha Khan already has a counselling session on ...'; 400 'must be in the future'; nothing saved | Pass (2026-11-09) |
+| TC-FR16-03 | Choosing a different counsellor needs confirmation | Schedule BU-122785 with Mr. Zain Abbas | 409: 'This makes Mr. Zain Abbas the counsellor instead of Dr. Ayesha Khan.' (the form asks Continue?); the counsellor is unchanged | Pass (2026-11-09) |
+| TC-FR16-04 | The counsellor marks yesterday's session Present | ayesha.khan -> Counselling -> Zain Khan, yesterday 2:00 PM, 'Awaiting attendance' -> Present -> note -> Save | Moves to History as Present; Zain Khan sees Present and 'Attended 3 of 3' and a notification; the private note is never sent to him | Pass (2026-11-09) |
+| TC-FR16-05 | Only the session's counsellor marks, and only after it starts | zain.abbas marks the session from TC-FR16-01; ayesha.khan marks it before it starts | 403 for the other teacher; 409 'hasn't started yet' for the counsellor | Pass (2026-11-09) |
+| TC-FR16-06 | Reschedule and cancel (with a reason) notify both | Admin -> Counselling -> Reschedule the TC-FR16-01 session to 11:30; then Cancel with reason 'Counsellor unavailable' | Both get 'has moved from ... to ...' and '... has been cancelled. Reason: Counsellor unavailable'; cancel without a reason is refused | Pass (2026-11-09) |
+| TC-FR16-07 | Student counselling page and chat | BU-112907 -> Counselling; Ask SmartEdu 'meri counselling kab hai?' | Next session (in 3 days, 2:00 PM, online) and 'Attended 3 of 3'; the chat answers with that session | Pass (2026-11-09) |
+| TC-FR17-01 | Starting standing after demo:reset | Admin -> Overview -> Academic standing tiles; Users -> Standing filter | Every student has a standing: semester 1 not evaluated; CGPA >= 2.00 good; below 2.00 Probation 1 or 2 (consecutive-low flag); counts 26,466 / 873 / 16,508 / 6,183 | Pass (2026-11-09) |
+| TC-FR17-02 | Close-semester preview writes nothing | Admin -> Standing -> Term 'Fall 2026' -> Preview | 70 students with their from -> to standing (after a fresh reset: 38 good, 4 Probation 1, 5 Probation 2, 23 dropped, 9 letters); Bushra Awan (BU-114400) Good -> Probation 1 on CGPA 1.97; no rows written | Pass (2026-11-09) |
+| TC-FR17-03 | Close refused until results are final (Handbook 1.20.4) | Close semester without ticking 'All results ... are final' | 400 RESULTS_NOT_FINAL quoting 1.20.4 (the button stays disabled in the UI) | Pass (2026-11-09) |
+| TC-FR17-04 | Close the semester -> Probation 1, letter, notification | Admin -> Standing -> Fall 2026 -> tick 'results are final' -> Close Fall 2026 -> Close the semester | Toast 'Fall 2026 closed'; Bushra Awan is Probation 1 of 2 with a level-1 warning letter and the notice 'Academic standing: Probation 1 of 2'; her new official CGPA is 1.97; students re-predicted by a batch run | Pass (2026-11-09) |
+| TC-FR17-05 | The student acknowledges their own letter only | Bushra Awan -> dashboard -> Academic standing (BU rules) -> I acknowledge this letter; BU-112907 tries to acknowledge it | Acknowledged with the time ('Acknowledged by the student on ...'); someone else's letter -> 404 | Pass (2026-11-09) |
+| TC-FR17-06 | Enrolment hold on Probation 2; dropped can't enrol | Assignments -> enroll BU-100076 (Probation 2) in AI301 A -> Record approval ('Principal via HoD') -> enroll again; enroll BU-144766 (dropped at the close) | 409 ENROLMENT_HOLD, then 201 after the approval; 409 STUDENT_DROPPED | Pass (2026-11-09) |
+| TC-FR17-07 | Standing and the risk prediction are shown side by side, never mixed | Student dashboard (Bushra Awan); Admin -> Model | 'Risk prediction (Random Forest)' and 'Academic standing (BU rules)' are separate; the model still has exactly its 20 features (no standing input) | Pass (2026-11-09) |
+| TC-FR17-08 | Chat answers probation questions from the student's own record | Bushra Awan asks 'Am I on probation?' and 'agar meri cgpa 2 se kam rahi to kya hoga?'; then 'Is Ali on probation?' | Probation 1 of 2 with her CGPA 1.97 and the 2.00 minimum; the handbook rules (drop after two probations); refusal for another student | Pass (2026-11-09) |

@@ -4,6 +4,8 @@ Every number on this page comes from a command run on 2026-11-08/09 on the demo 
 `cd backend; npm run demo:reset` (50,000 synthetic students + 30 SYNTHETIC live-cohort students): first in Phase 6,
 step 5, then re-run in full after the bug-fix pass (branch `bugfix/test-pass-2026-11`, ML service from
 `ml_service/.venv`, scikit-learn 1.9.0). Sections 1-4 were unchanged by the re-run; sections 5 and 6 were updated.
+Phase 7 (counselling sessions and academic probation, 2026-11-09) updated section 5, added section 5a and the Phase 7
+figures and limitation; sections 1-4 and 6 are unchanged (the model, its features and the ML service did not change).
 The command is given with each block so anyone can re-run it.
 
 ## 1. The model (from the `.pkl` metadata)
@@ -68,19 +70,37 @@ policy -> dashboards), not real-world accuracy. Labels in the dataset are policy
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend API + unit (Jest + Supertest) | `cd backend; npm run test:coverage` | **505 / 505 passed** in 23 suites |
-| - of which role-based access | `tests/rbac.test.js` | 238: 233 in the route matrix (every route of every group: no token 401, wrong role 403, own role 2xx) + 5 notification-ownership checks |
+| Backend API + unit (Jest + Supertest) | `cd backend; npm run test:coverage` | **642 / 642 passed** in 28 suites (505 / 23 before Phase 7) |
+| - of which role-based access | `tests/rbac.test.js` | 308: the route matrix over every route of every group (no token 401, wrong role 403, own role 2xx), now including the 19 Phase 7 routes, + 5 notification-ownership checks |
+| - of which Phase 7 | `counsellingSessions`, `counsellingNotifications`, `academicStanding`, `semesterClose`, `standingScreens` | 67 (every scheduling rule, notifications, each handbook rule, the all-or-nothing close via a failing database trigger, letters, the enrolment hold) |
 | - of which bug-fix regressions | `tests/bugfixes.test.js` | 45 (one block per bug of the 2026-11 test pass, plus "a database error never reaches the client") |
-| Backend coverage (`backend/src`, CLI scripts excluded) | same | **lines 89.1%**, statements 85.8%, functions 83.0%, branches 71.1% |
+| Backend coverage (`backend/src`, CLI scripts excluded) | same | **lines 88.5%**, statements 85.6%, functions 84.1%, branches 71.8% (before Phase 7: lines 89.1%) |
 | ML service contract (pytest) | `cd ml_service; .venv\Scripts\python -m pytest tests` | **29 / 29 passed** |
-| Chat assistant evaluation | `cd backend; node ../evaluation/chat_eval.js` | **363 / 363** questions (52 phrasings x 6 demo students incl. Roman Urdu, a counselor pass, 27 live-student questions) |
-| Manual test cases (FR1-FR15 + portals) | `node ../evaluation/test_cases.js` -> `docs/TEST_CASES.md` | **51 / 51 passed**, executed through the API and a real browser |
-| Demo actions (perform + revert) | `node ../evaluation/demo_actions_check.js` | 29 / 29 |
+| Chat assistant evaluation | `cd backend; node ../evaluation/chat_eval.js` | **471 / 471** questions (69 phrasings x 6 demo students incl. Roman Urdu - counselling, probation status and rules added in Phase 7 -, a counselor pass, a booked-session pass, 27 live-student questions) |
+| Manual test cases (FR1-FR17 + portals) | `node ../evaluation/test_cases.js` -> `docs/TEST_CASES.md` | **66 / 66 passed** on 2026-11-09 (15 new for FR16 counselling sessions and FR17 academic probation), executed through the API and a real browser |
+| Demo actions (perform + revert) | `node ../evaluation/demo_actions_check.js` | 29 / 29 (re-run after Phase 7) |
+| Phase 7 demo actions (real browser) | `node ../evaluation/phase7_demo_check.mjs` | **17 / 17** (schedule -> mark Present -> close semester -> Probation 1 -> schedule counselling -> acknowledge letter) |
 | Reproducible demo data | `npm run demo:reset` twice | identical per-table fingerprints (every reset in Phase 6, and every reset of the bug-fix pass; class dates count back from the day of the reset, so compare resets made on the same day or pass `--as-of`) |
 
 Coverage note: the command-line scripts (`demo:reset`, seeders, migrate) are excluded from the percentage; they are
-verified by running them (the reset prints its own summary and fingerprint). The chatbot templates show 70% line
-coverage under Jest; the 363-question chat evaluation exercises them separately.
+verified by running them (the reset prints its own summary and fingerprint). The chatbot templates show 58% line
+coverage under Jest (the Phase 7 intents are exercised by the chat evaluation, not Jest); the 471-question chat
+evaluation exercises them separately. `academicStanding.js` shows 56%: its seeding function runs only inside
+`demo:reset`; the pure handbook rules in it are fully unit-tested. The new counselling and close services are at
+94-100% of lines.
+
+## 5a. Academic standing and counselling (Phase 7)
+
+Command: `cd backend; npm run demo:reset -- --yes` (prints the counts and the fingerprint), run twice on 2026-11-09.
+
+| Item | Value |
+|---|---|
+| Rules | BU Student Handbook (Spring 2024) clause 5.5, in `backend/src/config/academicStanding.json` only: minimum CGPA BS/BBA/BEE/AD 2.0, MBA/MS/MPhil 2.5, PhD 3.0; 2 probations before drop; first semester judged on GPA; Probation 2 needs the Principal's approval to enrol |
+| Starting standing after `demo:reset` (50,030 students) | **Good 26,466 · Probation 1 873 · Probation 2 16,508 · Dropped 0 · Not evaluated 6,183** (current semester 1) |
+| Deterministic | two resets on the same day: identical fingerprint for every table (`academic_standing` md5 `131503e66874e2fc94520be34f081746`; all tables `b0d9bc173c159507b0ee4f5fdb9e0afd`) |
+| Close-semester preview on the demo data ("Fall 2026") | 70 students enrolled this term: 38 good, 4 Probation 1, 5 Probation 2, 23 dropped; 9 warning letters |
+| Demo counselling data | 3 counsellor assignments (Dr. Ayesha Khan), 10 sessions (Present / Absent history, one awaiting attendance, two upcoming) |
+| Probation and the ML label | Standing is not a model input (the model still has its 20 features); the screens show "Risk prediction (Random Forest)" and "Academic standing (BU rules)" separately |
 
 ## 6. Performance at 50,000 students
 
@@ -117,9 +137,8 @@ Checked again in Phase 6 (`grep -rn "INSERT INTO predictions\|target_label" back
 ## 8. Screenshots, by figure
 
 Produced by `cd frontend; npm run screenshots` into `docs/screenshots/` at 1280 px and 390 px (`<name>-1280.png`,
-`<name>-390.png`). They were regenerated in Phase 6, step 8 (portal screens), i.e. BEFORE the demo students were renamed
-in the bug-fix pass, so a student screenshot shows the student's old name (see docs/DEMO_ACCOUNTS.md); re-run
-`npm run screenshots` to refresh them.
+`<name>-390.png`). All 126 were regenerated on 2026-11-09 (Phase 7, step 8) after a fresh `npm run demo:reset`, so the
+names match docs/DEMO_ACCOUNTS.md; the script reported no sideways scrolling and no page errors.
 
 | Figure | Screen | File (`docs/screenshots/`) |
 |---|---|---|
@@ -138,6 +157,9 @@ in the bug-fix pass, so a student screenshot shows the student's old name (see d
 | 13 | Live cohort import | `admin-live-cohort` |
 | 14 | Users, tutorials, audit log, assignments | `admin-users`, `admin-tutorials`, `admin-audit-log`, `admin-assignments` |
 | 15 | Forced and voluntary password change | `change-password-forced`, `change-password` |
+| 16 | Counselling: admin page, faculty sessions, student page (Phase 7) | `admin-counselling`, `faculty-ayesha-counselling`, `student-BU-122785-counselling` |
+| 17 | Academic standing: admin page (close semester, probation list), student card | `admin-academic-standing`, `student-BU-144766-dashboard` (Probation 2 card with the enrolment hold) |
+| 18 | Phase 7 demo actions, step by step | `phase7_demo/` (`1_admin_booked` ... `5_student_letter`) |
 
 ## 9. Known limitations
 
@@ -147,6 +169,15 @@ in the bug-fix pass, so a student screenshot shows the student's old name (see d
 - **No real-world validation.** The live-cohort run is synthetic and probably uses training rows (section 4).
 - **One semester per student.** The dataset has one row per student, so "history" is a single term plus predictions
   made inside the app.
+- **Starting probation status is seeded, not observed.** Because each student has only one completed term, the
+  starting academic standing comes from the current CGPA and the dataset's consecutive-low-CGPA flag, and that flag is
+  defined on the *previous SGPA* (CGPA < 2.0 and Previous_SGPA < 2.0), not on two consecutive end-of-term CGPAs as the
+  handbook means. This is why so many students (16,508) start on Probation 2. Real standing builds up from semester
+  closes made in the app; the end-of-term CGPA there is the projected CGPA from this term's marks
+  ((Previous_SGPA + SGPA) / 2, SGPA from the fitted mark formula), not an official transcript calculation.
+- **Probation rules are configured, not per programme in the data.** Students have no programme field; the programme
+  (and so the minimum CGPA) comes from the department mapping in `academicStanding.json` (all current departments are
+  undergraduate, minimum 2.00). No HoD or Principal accounts exist: the admin records the approver role.
 - **Course-level data are seeded.** Only 40 students have course marks and attendance (derived from their CGPA by the
   seed); the other 50,000 rely on their imported term aggregates.
 - **Chat Layer 2 (Gemini) optional.** The demo runs on Layer 1 templates; the free Gemini tier may use prompts for

@@ -5,6 +5,10 @@ SmartEdu flags students who are likely to struggle **before** the term ends. A t
 and history; an institutional policy can only make a label stricter, never milder. Students see their status,
 the reasons in plain language and what to do next; faculty see risk in their own classes and enter marks and
 attendance (labels update live); admins run predictions, assign counselors and send interventions.
+Since Phase 7, admins also book **counselling sessions** (the counsellor marks attendance; both sides are notified)
+and run **academic probation** under the BU Student Handbook (Spring 2024), clause 5.5: a semester close decides each
+student's standing (Good, Probation 1 or 2, Dropped), issues warning letters and holds enrolment on Probation 2.
+Standing is a rule outcome shown next to the model's risk label - it never changes it.
 The demo data is a **synthetic** 50,000-student dataset.
 
 ## Architecture
@@ -103,9 +107,10 @@ cd backend
 npm run demo:reset
 ```
 
-Type `yes` when asked. In 2-5 minutes it creates the `smartedu` database (or replaces it), applies the schema
+Type `yes` when asked. In about 6 minutes it creates the `smartedu` database (or replaces it), applies the schema
 and migrations, imports the 50k CSV, seeds faculty, courses, classes, marks and attendance, names the students,
-creates the admin, seeds tutorials, imports the synthetic live cohort and predicts every student. It ends with a
+creates the admin, seeds tutorials, imports the synthetic live cohort, sets every student's starting academic
+standing, adds the counselling demo data (dated from today) and predicts every student. It ends with a
 summary and a fingerprint; the result is identical every time, on any machine, for the same day (class dates count
 back from today unless you pass `--as-of YYYY-MM-DD`). Run it again whenever you want the demo data back as
 new (`npm run demo:reset -- --yes` skips the question). It runs the database scripts with `python` on Windows and
@@ -136,17 +141,31 @@ Open http://localhost:5173/ and choose a portal. Every account only signs in thr
 | Student | http://localhost:5173/login/student | `student144766@smartedu.edu` | `Student@123` |
 
 The six curated demo students (two per label), the faculty who teach them and every demo action, step by step,
-are in [docs/DEMO_ACCOUNTS.md](docs/DEMO_ACCOUNTS.md).
+are in [docs/DEMO_ACCOUNTS.md](docs/DEMO_ACCOUNTS.md) - including the counselling and probation demo (Dr. Ayesha Khan's
+counselees, and Bushra Awan, BU-114400, who goes onto Probation 1 when the semester is closed).
+
+### Counselling and academic probation (Phase 7)
+
+| Who | Where | What |
+|---|---|---|
+| Admin | **Counselling** (`/admin/counselling`) | Schedule a session (student search, counsellor with counselee counts, Pakistan-time date and time, mode, location, agenda); reschedule, cancel with a reason, override attendance. Also **Schedule** on the flagged list and in the student drawer. |
+| Admin | **Standing** (`/admin/academic-standing`) | Close a semester (preview, "results are final", confirm), the probation list (schedule counselling, record a Probation 2 approval), warning letters with a print view (Print -> Save as PDF), closes history. Standing tiles on Overview; a Standing filter on Interventions (and its CSV) and Users. |
+| Faculty | **Counselling** (`/faculty/counselling`) | Upcoming (sessions awaiting attendance first) and History; Present / Absent with private notes once a session has started. A Standing column in the class roster and on My counselees. |
+| Student | **Counselling** (`/student/counselling`) and the dashboard | Next session, "Attended X of Y", history; the **Academic standing (BU rules)** card with the average needed this term, warning letters ("I acknowledge") and the enrolment-hold notice. The chat answers "When is my counselling session?", "Am I on probation?" and "What happens if my CGPA stays below 2?". |
+
+The rules (minimum CGPA per programme, probations before drop, first semester on GPA, the Probation 2 hold) live only in
+`backend/src/config/academicStanding.json`.
 
 ## Run the tests
 
 | Suite | Command | Needs |
 |---|---|---|
-| Backend API + unit (Jest, 505 tests) | `cd backend; npm test` (`npm run test:coverage` for coverage) | database |
+| Backend API + unit (Jest, 642 tests) | `cd backend; npm test` (`npm run test:coverage` for coverage) | database |
 | ML service (pytest, 29 tests) | `cd ml_service; .venv\Scripts\python -m pytest tests` | - |
-| Chat assistant evaluation (363 questions) | `cd backend; node ../evaluation/chat_eval.js` | database |
+| Chat assistant evaluation (471 questions) | `cd backend; node ../evaluation/chat_eval.js` | database |
 | Demo actions (perform + undo each one) | `cd backend; node ../evaluation/demo_actions_check.js` | all services; reset afterwards |
-| Manual test cases (51, API + browser) | `cd backend; node ../evaluation/test_cases.js` | all services; reset before and after |
+| Counselling and probation demo actions (browser) | `cd backend; node ../evaluation/phase7_demo_check.mjs` | all services; fresh reset before, reset afterwards |
+| Manual test cases (66, API + browser) | `cd backend; node ../evaluation/test_cases.js` | all services; reset before and after |
 | Performance at 50k students | `cd backend; node ../evaluation/perf_check.js` | all services, ~25 min |
 | Screenshots | `cd frontend; npx playwright install chromium` once, then `npm run screenshots` | all services |
 | Frontend build | `cd frontend; npm run build` | - |

@@ -18,7 +18,8 @@ const WIDTHS = [
   { width: 1280, height: 800 },
   { width: 390, height: 844 },
 ];
-const DEMO_STUDENTS = ["100040", "106864", "122785", "112907", "144766", "101986"];
+// the six curated demo students, plus BU-114400 (Phase 7: the semester-close demo student)
+const DEMO_STUDENTS = ["100040", "106864", "122785", "112907", "144766", "101986", "114400"];
 
 // ---- class 4 snapshot/restore ----------------------------------------------------------------
 // The upload screens re-save class 4's marks (CS401 A). Its course_results rows, its students'
@@ -89,6 +90,8 @@ const ACCOUNTS = [
   { name: "admin", email: "admin@smartedu.edu", password: "Admin@123", pages: async () => [
     ["overview", "/admin"],
     ["interventions", "/admin/interventions"],
+    ["counselling", "/admin/counselling"],
+    ["academic-standing", "/admin/academic-standing"],
     ["model", "/admin/model"],
     ["live-cohort", "/admin/live-cohort"],
     ["users", "/admin/users"],
@@ -104,6 +107,8 @@ const ACCOUNTS = [
       ["classes", "/faculty"],
       ["roster", `/faculty/class/${id}/roster`],
       ["attendance", `/faculty/class/${id}/attendance`],
+      ["counselling", "/faculty/counselling"],
+      ["counselees", "/faculty/counselees"],
     ];
   } },
   ...DEMO_STUDENTS.map((id) => ({
@@ -114,6 +119,7 @@ const ACCOUNTS = [
       ["dashboard", "/student"],
       ["results", "/student/results"],
       ["attendance", "/student/attendance"],
+      ["counselling", "/student/counselling"],
     ],
   })),
 ];

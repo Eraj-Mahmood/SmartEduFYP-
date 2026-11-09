@@ -48,7 +48,19 @@ const ACCOUNTS = {
   bu100040: { email: "student100040@smartedu.edu", password: "Student@123", portal: "student" }, // BU-100040 Safe
   bu112907: { email: "student112907@smartedu.edu", password: "Student@123", portal: "student" }, // BU-112907 At-Risk
   bu144766: { email: "student144766@smartedu.edu", password: "Student@123", portal: "student" }, // BU-144766 Dropout-Likely
+  // Phase 7
+  zain: { email: "zain.abbas@smartedu.edu", password: "Faculty@123", portal: "faculty" },
+  bu122785: { email: "student122785@smartedu.edu", password: "Student@123", portal: "student" }, // Probation 1, counsellor Dr. Khan
+  bu114400: { email: "student114400@smartedu.edu", password: "Student@123", portal: "student" }, // the semester-close demo student
 };
+const P7 = {}; // state shared by the Phase 7 cases
+/** A Pakistan-time date `days` from today, YYYY-MM-DD. */
+function pkDay(days) {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format(new Date());
+  const d = new Date(`${today}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 const tokens = {};
 async function tok(name) {
   if (!tokens[name]) {
@@ -496,7 +508,7 @@ const CASES = [
     const bytes = new Uint8Array(await raw.arrayBuffer());
     expect(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf, "no BOM"); // fetch().text() would strip it
     const r = { text: "﻿" + new TextDecoder().decode(bytes.slice(3)) };
-    expect(r.text.slice(1).startsWith("roll_no,name,department,label,top_reason,weakest_course,counselor,last_intervention"), "wrong header");
+    expect(r.text.slice(1).startsWith("roll_no,name,department,label,academic_standing,top_reason,weakest_course,counselor,last_intervention"), "wrong header");
     expect(!/\n"?[=+@-]/.test(r.text.replace(/\n"BU-/g, "")), "unsafe formula cell");
   }],
 
@@ -526,6 +538,169 @@ const CASES = [
     const r = (await call("POST", "/student/chat", { token: ch.json.token, body: { message: "What are my marks?" } })).json;
     expect(/CS301/.test(r.answer) && /89/.test(r.answer) && /imported record/.test(r.answer) && !/No marks/i.test(r.answer), r.answer);
   }],
+  // ---------- FR16 counselling sessions (Phase 7) ----------
+  ["TC-FR16-01", "FR16", "Admin schedules a counselling session; both are notified", "Admin -> Counselling -> Schedule session -> BU-122785 (counsellor fills in as Dr. Ayesha Khan) -> tomorrow 10:00, Room 204", "201; the session shows Upcoming; the student and Dr. Khan each get 'Counselling session with ... on <date>, 10:00 AM (30 min), Room 204'", async () => {
+    const st = await sid("BU-122785");
+    const r = await call("POST", "/admin/counselling-sessions", { token: await tok("admin"), body: { studentId: st.student_id, scheduledAt: `${pkDay(1)}T10:00:00+05:00`, mode: "in_person", location: "Room 204", agenda: "Plan for the final exams" } });
+    expect(r.status === 201 && r.json.session.counsellor_name === "Dr. Ayesha Khan" && r.json.session.display_status === "upcoming", `${r.status} ${JSON.stringify(r.json).slice(0, 120)}`);
+    P7.session = r.json.session;
+    const sb = (await call("GET", "/notifications/mine", { token: await tok("bu122785") })).json.notifications;
+    const fb = (await call("GET", "/notifications/mine", { token: await tok("ayesha") })).json.notifications;
+    expect(sb.some((n) => /Counselling session with Dr\. Ayesha Khan on .* 10:00 AM \(30 min\), Room 204/.test(n.message)), "student not notified");
+    expect(fb.some((n) => /Counselling session with Ayesha Akhtar \(BU-122785\) on .* 10:00 AM/.test(n.message)), "counsellor not notified");
+  }],
+  ["TC-FR16-02", "FR16", "Clashing or past times are refused", "Book Dr. Khan for BU-112907 at the same time; book any session in the past", "409 'Dr. Ayesha Khan already has a counselling session on ...'; 400 'must be in the future'; nothing saved", async () => {
+    const st = await sid("BU-112907");
+    const before = (await one("SELECT COUNT(*)::int AS n FROM counselling_sessions")).n;
+    const clash = await call("POST", "/admin/counselling-sessions", { token: await tok("admin"), body: { studentId: st.student_id, scheduledAt: `${pkDay(1)}T10:15:00+05:00`, mode: "in_person", location: "Room 9" } });
+    expect(clash.status === 409 && /Dr\. Ayesha Khan already has a counselling session on/.test(clash.json.error), `${clash.status} ${clash.json && clash.json.error}`);
+    const past = await call("POST", "/admin/counselling-sessions", { token: await tok("admin"), body: { studentId: st.student_id, scheduledAt: `${pkDay(-1)}T10:00:00+05:00`, mode: "in_person", location: "Room 9" } });
+    expect(past.status === 400 && /future/.test(past.json.error), `${past.status}`);
+    expect((await one("SELECT COUNT(*)::int AS n FROM counselling_sessions")).n === before, "a session was saved");
+  }],
+  ["TC-FR16-03", "FR16", "Choosing a different counsellor needs confirmation", "Schedule BU-122785 with Mr. Zain Abbas", "409: 'This makes Mr. Zain Abbas the counsellor instead of Dr. Ayesha Khan.' (the form asks Continue?); the counsellor is unchanged", async () => {
+    const st = await sid("BU-122785");
+    const zain = await one("SELECT f.faculty_id FROM faculty f JOIN users u ON u.user_id = f.user_id WHERE u.email = 'zain.abbas@smartedu.edu'");
+    const r = await call("POST", "/admin/counselling-sessions", { token: await tok("admin"), body: { studentId: st.student_id, facultyId: zain.faculty_id, scheduledAt: `${pkDay(4)}T09:00:00+05:00`, mode: "online", location: "https://meet.example.com/x" } });
+    expect(r.status === 409 && r.json.code === "COUNSELLOR_CHANGE" && r.json.error === "This makes Mr. Zain Abbas the counsellor instead of Dr. Ayesha Khan.", `${r.status} ${r.json && r.json.error}`);
+    const a = await one("SELECT f.full_name FROM counselor_assignments ca JOIN faculty f USING (faculty_id) WHERE ca.student_id = $1 AND ca.status = 'active'", [st.student_id]);
+    expect(a.full_name === "Dr. Ayesha Khan", a.full_name);
+  }],
+  ["TC-FR16-04", "FR16", "The counsellor marks yesterday's session Present", "ayesha.khan -> Counselling -> Zain Khan, yesterday 2:00 PM, 'Awaiting attendance' -> Present -> note -> Save", "Moves to History as Present; Zain Khan sees Present and 'Attended 3 of 3' and a notification; the private note is never sent to him", async () => {
+    const p = await page();
+    await uiSignIn(p, "faculty", ACCOUNTS.ayesha.email, ACCOUNTS.ayesha.password);
+    await at(p, "/faculty");
+    await p.goto(`${WEB}/faculty/counselling`);
+    const row = p.locator("tbody tr", { hasText: "Zain Khan" }).filter({ hasText: "Awaiting attendance" });
+    await row.first().waitFor({ timeout: 15000 });
+    await row.first().getByRole("button", { name: "Present" }).click();
+    await p.locator("#cs-notes").fill("TC note: on track for the midterm.");
+    await p.getByRole("dialog").getByRole("button", { name: "Save" }).click();
+    await p.getByText("Marked Present").waitFor({ timeout: 10000 });
+    expect(!p.errors.length, p.errors.join("; "));
+    await p.context().close();
+    const s = (await call("GET", "/student/counselling-sessions", { token: await tok("bu112907") })).json;
+    expect(s.summary.attended === 3 && s.summary.marked === 3, JSON.stringify(s.summary));
+    expect(!JSON.stringify(s).includes("TC note"), "notes leaked to the student");
+    const n = (await call("GET", "/notifications/mine", { token: await tok("bu112907") })).json.notifications;
+    expect(n.some((x) => /was marked Present/.test(x.message)), "no attendance notification");
+  }],
+  ["TC-FR16-05", "FR16", "Only the session's counsellor marks, and only after it starts", "zain.abbas marks the session from TC-FR16-01; ayesha.khan marks it before it starts", "403 for the other teacher; 409 'hasn't started yet' for the counsellor", async () => {
+    const id = P7.session.session_id;
+    const other = await call("PUT", `/faculty/counselling-sessions/${id}/attendance`, { token: await tok("zain"), body: { attendance: "present" } });
+    expect(other.status === 403, `other teacher ${other.status}`);
+    const early = await call("PUT", `/faculty/counselling-sessions/${id}/attendance`, { token: await tok("ayesha"), body: { attendance: "present" } });
+    expect(early.status === 409 && /hasn't started yet/.test(early.json.error), `${early.status}`);
+  }],
+  ["TC-FR16-06", "FR16", "Reschedule and cancel (with a reason) notify both", "Admin -> Counselling -> Reschedule the TC-FR16-01 session to 11:30; then Cancel with reason 'Counsellor unavailable'", "Both get 'has moved from ... to ...' and '... has been cancelled. Reason: Counsellor unavailable'; cancel without a reason is refused", async () => {
+    const id = P7.session.session_id;
+    const re = await call("PUT", `/admin/counselling-sessions/${id}/reschedule`, { token: await tok("admin"), body: { scheduledAt: `${pkDay(1)}T11:30:00+05:00` } });
+    expect(re.status === 200 && /11:30 AM$/.test(re.json.session.when), `${re.status}`);
+    expect((await call("PUT", `/admin/counselling-sessions/${id}/cancel`, { token: await tok("admin"), body: {} })).status === 400, "cancel without reason accepted");
+    const c = await call("PUT", `/admin/counselling-sessions/${id}/cancel`, { token: await tok("admin"), body: { reason: "Counsellor unavailable" } });
+    expect(c.status === 200 && c.json.display_status === "cancelled", `${c.status}`);
+    for (const who of ["bu122785", "ayesha"]) {
+      const n = (await call("GET", "/notifications/mine", { token: await tok(who) })).json.notifications.map((x) => x.message).join("\n");
+      expect(/has moved from .* to .*11:30 AM/.test(n) && /has been cancelled\. Reason: Counsellor unavailable/.test(n), `${who} missing notices`);
+    }
+  }],
+  ["TC-FR16-07", "FR16", "Student counselling page and chat", "BU-112907 -> Counselling; Ask SmartEdu 'meri counselling kab hai?'", "Next session (in 3 days, 2:00 PM, online) and 'Attended 3 of 3'; the chat answers with that session", async () => {
+    const s = (await call("GET", "/student/counselling-sessions", { token: await tok("bu112907") })).json;
+    expect(s.next && s.next.mode === "online", JSON.stringify(s.next));
+    const r = (await call("POST", "/student/chat", { token: await tok("bu112907"), body: { message: "meri counselling kab hai?" } })).json;
+    expect(r.intent === "counselling_session" && /Your next counselling session is on .* 2:00 PM with Dr\. Ayesha Khan/.test(r.answer), r.answer);
+  }],
+
+  // ---------- FR17 academic probation (BU Student Handbook 5.5, Phase 7) ----------
+  ["TC-FR17-01", "FR17", "Starting standing after demo:reset", "Admin -> Overview -> Academic standing tiles; Users -> Standing filter", "Every student has a standing: semester 1 not evaluated; CGPA >= 2.00 good; below 2.00 Probation 1 or 2 (consecutive-low flag); counts 26,466 / 873 / 16,508 / 6,183", async () => {
+    const k = (await call("GET", "/admin/dashboard", { token: await tok("admin") })).json;
+    const c = k.standingCounts;
+    // TC-FR2-01 creates one student account earlier in this run: new accounts start "not evaluated"
+    expect(c.good === 26466 && c.probation_1 === 873 && c.probation_2 === 16508 && c.not_evaluated >= 6183 && c.dropped === 0, JSON.stringify(c));
+    expect(k.kpis.probation_2 === 16508, "KPI");
+  }],
+  ["TC-FR17-02", "FR17", "Close-semester preview writes nothing", "Admin -> Standing -> Term 'Fall 2026' -> Preview", "70 students with their from -> to standing (after a fresh reset: 38 good, 4 Probation 1, 5 Probation 2, 23 dropped, 9 letters); Bushra Awan (BU-114400) Good -> Probation 1 on CGPA 1.97; no rows written", async () => {
+    const before = await one("SELECT (SELECT COUNT(*) FROM academic_standing) a, (SELECT COUNT(*) FROM semester_closes) c, (SELECT COUNT(*) FROM warning_letters) w");
+    const r = (await call("POST", "/admin/semester-close/preview", { token: await tok("admin"), body: { termLabel: "Fall 2026" } })).json;
+    const b = r.students.find((s) => s.roll_no === "BU-114400");
+    // exact counts depend on the marks earlier cases changed (e.g. the CS401 upload); after a fresh reset: 38 / 4 / 5 / 23, 9 letters
+    expect(r.total === 70 && Object.values(r.counts).reduce((a, b) => a + b, 0) === 70 && r.letters >= 1, JSON.stringify(r.counts));
+    expect(b.from.status === "good" && b.to.status === "probation_1" && b.cgpa_used === 1.97, JSON.stringify(b));
+    const after = await one("SELECT (SELECT COUNT(*) FROM academic_standing) a, (SELECT COUNT(*) FROM semester_closes) c, (SELECT COUNT(*) FROM warning_letters) w");
+    expect(JSON.stringify(before) === JSON.stringify(after), "preview wrote rows");
+  }],
+  ["TC-FR17-03", "FR17", "Close refused until results are final (Handbook 1.20.4)", "Close semester without ticking 'All results ... are final'", "400 RESULTS_NOT_FINAL quoting 1.20.4 (the button stays disabled in the UI)", async () => {
+    const r = await call("POST", "/admin/semester-close/confirm", { token: await tok("admin"), body: { termLabel: "Fall 2026" } });
+    expect(r.status === 400 && r.json.code === "RESULTS_NOT_FINAL" && /1\.20\.4/.test(r.json.error), `${r.status}`);
+  }],
+  ["TC-FR17-04", "FR17", "Close the semester -> Probation 1, letter, notification", "Admin -> Standing -> Fall 2026 -> tick 'results are final' -> Close Fall 2026 -> Close the semester", "Toast 'Fall 2026 closed'; Bushra Awan is Probation 1 of 2 with a level-1 warning letter and the notice 'Academic standing: Probation 1 of 2'; her new official CGPA is 1.97; students re-predicted by a batch run", async () => {
+    const p = await page();
+    await uiSignIn(p, "admin", ACCOUNTS.admin.email, ACCOUNTS.admin.password);
+    await at(p, "/admin");
+    await p.goto(`${WEB}/admin/academic-standing`);
+    await p.locator("#close-term").fill("Fall 2026");
+    await p.getByRole("button", { name: "Preview" }).click();
+    await p.getByText(/Only students whose standing changes/).waitFor({ timeout: 20000 });
+    await p.getByText(/including FYP, are final/).click();
+    await p.getByRole("button", { name: "Close Fall 2026" }).click();
+    await p.getByRole("dialog").getByRole("button", { name: "Close the semester" }).click();
+    await p.getByText("Fall 2026 closed").waitFor({ timeout: 30000 });
+    expect(!p.errors.length, p.errors.join("; "));
+    await p.context().close();
+    const s = await one("SELECT academic_status, probation_count, cgpa FROM students WHERE roll_no = 'BU-114400'");
+    expect(s.academic_status === "probation_1" && s.probation_count === 1 && Number(s.cgpa) === 1.97, JSON.stringify(s));
+    const l = (await call("GET", "/student/warning-letters", { token: await tok("bu114400") })).json;
+    expect(l.length === 1 && l[0].level === 1 && l[0].term === "Fall 2026", JSON.stringify(l).slice(0, 120));
+    const n = (await call("GET", "/notifications/mine", { token: await tok("bu114400") })).json.notifications;
+    expect(n.some((x) => x.subject === "Academic standing: Probation 1 of 2"), "no notification");
+    const run = await one("SELECT scope, total FROM prediction_runs ORDER BY id DESC LIMIT 1");
+    expect(run.scope === "student" && run.total === 70, JSON.stringify(run));
+  }],
+  ["TC-FR17-05", "FR17", "The student acknowledges their own letter only", "Bushra Awan -> dashboard -> Academic standing (BU rules) -> I acknowledge this letter; BU-112907 tries to acknowledge it", "Acknowledged with the time ('Acknowledged by the student on ...'); someone else's letter -> 404", async () => {
+    const id = (await call("GET", "/student/warning-letters", { token: await tok("bu114400") })).json[0].id;
+    expect((await call("PUT", `/student/warning-letters/${id}/acknowledge`, { token: await tok("bu112907") })).status === 404, "another student could acknowledge");
+    const p = await page();
+    await uiSignIn(p, "student", ACCOUNTS.bu114400.email, ACCOUNTS.bu114400.password);
+    await at(p, "/student");
+    await p.getByRole("button", { name: "I acknowledge this letter" }).click();
+    await p.getByText(/Acknowledged by the student on/).waitFor({ timeout: 10000 });
+    await p.context().close();
+    const w = await one("SELECT acknowledged_at FROM warning_letters WHERE id = $1", [id]);
+    expect(w.acknowledged_at, "not stored");
+  }],
+  ["TC-FR17-06", "FR17", "Enrolment hold on Probation 2; dropped can't enrol", "Assignments -> enroll BU-100076 (Probation 2) in AI301 A -> Record approval ('Principal via HoD') -> enroll again; enroll BU-144766 (dropped at the close)", "409 ENROLMENT_HOLD, then 201 after the approval; 409 STUDENT_DROPPED", async () => {
+    const cls = await one(`SELECT fc.faculty_course_id FROM faculty_courses fc JOIN courses c USING (course_id) WHERE c.course_code = 'AI301' AND fc.section = 'A'`);
+    const held = await sid("BU-100076");
+    const tokA = await tok("admin");
+    const r1 = await call("POST", "/admin/enrollments", { token: tokA, body: { student_id: held.student_id, faculty_course_id: cls.faculty_course_id } });
+    expect(r1.status === 409 && r1.json.code === "ENROLMENT_HOLD", `${r1.status}`);
+    const ap = await call("POST", `/admin/students/${held.student_id}/enrolment-approval`, { token: tokA, body: { approverRole: "Principal via HoD" } });
+    expect(ap.status === 201, `approval ${ap.status}`);
+    const r2 = await call("POST", "/admin/enrollments", { token: tokA, body: { student_id: held.student_id, faculty_course_id: cls.faculty_course_id } });
+    expect(r2.status === 201, `after approval ${r2.status}`);
+    const dropped = await sid("BU-144766");
+    const r3 = await call("POST", "/admin/enrollments", { token: tokA, body: { student_id: dropped.student_id, faculty_course_id: 4 } });
+    expect(r3.status === 409 && r3.json.code === "STUDENT_DROPPED", `${r3.status} ${r3.json && r3.json.code}`);
+  }],
+  ["TC-FR17-07", "FR17", "Standing and the risk prediction are shown side by side, never mixed", "Student dashboard (Bushra Awan); Admin -> Model", "'Risk prediction (Random Forest)' and 'Academic standing (BU rules)' are separate; the model still has exactly its 20 features (no standing input)", async () => {
+    const p = await page();
+    await uiSignIn(p, "student", ACCOUNTS.bu114400.email, ACCOUNTS.bu114400.password);
+    await at(p, "/student");
+    await p.getByText("Academic standing (BU rules)").waitFor({ timeout: 15000 });
+    expect(await p.getByText(/Risk prediction \(Random Forest\)/).isVisible(), "risk label not labelled");
+    await p.context().close();
+    const health = await (await fetch("http://127.0.0.1:8001/health")).json();
+    expect(health.features_expected.length === 20 && !health.features_expected.some((f) => /standing|probation/i.test(f)), "model inputs changed");
+  }],
+  ["TC-FR17-08", "FR17", "Chat answers probation questions from the student's own record", "Bushra Awan asks 'Am I on probation?' and 'agar meri cgpa 2 se kam rahi to kya hoga?'; then 'Is Ali on probation?'", "Probation 1 of 2 with her CGPA 1.97 and the 2.00 minimum; the handbook rules (drop after two probations); refusal for another student", async () => {
+    const t = await tok("bu114400");
+    const a = (await call("POST", "/student/chat", { token: t, body: { message: "Am I on probation?" } })).json;
+    expect(a.intent === "probation_status" && /Probation 1 of 2/.test(a.answer) && /1\.97/.test(a.answer) && /2\.00/.test(a.answer), a.answer);
+    const b = (await call("POST", "/student/chat", { token: t, body: { message: "agar meri cgpa 2 se kam rahi to kya hoga?" } })).json;
+    expect(b.intent === "probation_rules" && /dropped/.test(b.answer), b.answer);
+    const c = (await call("POST", "/student/chat", { token: t, body: { message: "Is Ali on probation?" } })).json;
+    expect(c.intent === "other_student", c.intent);
+  }],
 ];
 
 const FR_TITLES = {
@@ -545,6 +720,8 @@ const FR_TITLES = {
   FR13: ["Bulk CSV uploads of marks and attendance", "FR1.1"],
   FR14: ["Admin dashboard, flagged list, interventions and export", "FR3.1, FR3.3, FR4.3"],
   FR15: ['"Ask SmartEdu" chat assistant', "FR4.1"],
+  FR16: ["Counselling sessions: scheduling, reschedule/cancel, attendance, notifications (Phase 7)", "FR4.2"],
+  FR17: ["Academic probation under the BU Student Handbook 5.5: standing, semester close, letters, enrolment hold (Phase 7)", "FR4.2, FR4.3"],
 };
 
 async function main() {
@@ -581,7 +758,8 @@ async function main() {
     "## Functional requirements",
     "",
     "The SRS (*Software Requirements Specification 1.docx*) groups requirements as FR1-FR4 with sub-items; the code and",
-    "earlier phases refer to FR11-FR13. This consolidated list FR1-FR15 keeps those numbers and maps each one to the SRS.",
+    "earlier phases refer to FR11-FR13. This consolidated list FR1-FR15 keeps those numbers and maps each one to the SRS;",
+    "FR16-FR17 were added in Phase 7 (approved by the project owner and supervisor).",
     "",
     "| FR | Requirement | SRS reference | Cases |",
     "|---|---|---|---|",
