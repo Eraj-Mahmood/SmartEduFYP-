@@ -8,6 +8,7 @@ const interventions = require("../services/interventions");
 const { recommendFor } = require("../services/tutorials");
 const { getNextSteps } = require("../services/nextSteps");
 const { getActiveCounselor } = require("../services/counselors");
+const { assertMayEnrol } = require("../services/warningLetters");
 
 // Latest prediction per student, via the students.latest_prediction_id pointer
 const LATEST_PREDICTIONS = `SELECT p.* FROM students s JOIN predictions p ON p.prediction_id = s.latest_prediction_id`;
@@ -636,6 +637,13 @@ async function enrollStudent(req, res) {
     if (!student_id || !faculty_course_id) {
       return res.status(400).json({ error: "Student and class are both required" });
     }
+    // Phase 7: a dropped student can't be enrolled; Probation 2 needs a recorded approval (Handbook 5.5.3 / 5.5.5)
+    try {
+      await assertMayEnrol(student_id);
+    } catch (hold) {
+      if (hold.status === 409) return res.status(409).json({ error: hold.message, ...hold.payload });
+      throw hold;
+    }
     // xmax = 0 only for a freshly inserted row, so it tells a new enrollment from a re-enrollment
     const { rows } = await pool.query(
       `INSERT INTO enrollments (student_id, faculty_course_id, enrolled_by) VALUES ($1,$2,$3)
@@ -870,6 +878,7 @@ async function listPredictionRuns(req, res) {
       `SELECT r.*, u.email AS started_by_email,
               CASE r.scope WHEN 'department' THEN d.name
                            WHEN 'class' THEN c.course_code || ' ' || fc.section
+                           WHEN 'student' THEN r.total || ' selected students'
                            ELSE 'All students' END AS scope_name,
               EXTRACT(EPOCH FROM (COALESCE(r.finished_at, NOW()) - r.started_at))::int AS duration_seconds
        FROM prediction_runs r

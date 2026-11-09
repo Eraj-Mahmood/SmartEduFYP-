@@ -33,14 +33,14 @@ async function studentIdsForScope(scope, scopeId) {
   throw Object.assign(new Error(`Unknown scope: ${scope}`), { status: 400 });
 }
 
-async function processRun(runId, studentIds) {
+async function processRun(runId, studentIds, trigger = "admin_run") {
   let done = 0;
   let failed = 0;
   let lastError = null;
   for (let i = 0; i < studentIds.length; i += CHUNK) {
     const chunk = studentIds.slice(i, i + CHUNK);
     try {
-      const r = await predictForMany(chunk, { runId, trigger: "admin_run" });
+      const r = await predictForMany(chunk, { runId, trigger });
       done += r.done;
       failed += r.failed;
     } catch (err) {
@@ -56,13 +56,17 @@ async function processRun(runId, studentIds) {
   await pool.query("UPDATE prediction_runs SET status = $2, finished_at = NOW() WHERE id = $1", [runId, status]);
 }
 
-/** Creates the run row and starts processing in the background. Returns the run row immediately. */
-async function startRun({ scope, scopeId, startedBy }) {
+/**
+ * Creates the run row and starts processing in the background. Returns the run row immediately.
+ * Phase 7: scope 'student' with `studentIds` re-predicts a list of students (e.g. after a semester
+ * close, trigger 'semester_close').
+ */
+async function startRun({ scope, scopeId, startedBy, studentIds: ids, trigger = "admin_run" }) {
   const running = await pool.query("SELECT id FROM prediction_runs WHERE status IN ('queued', 'running') LIMIT 1");
   if (running.rows.length > 0) {
     throw Object.assign(new Error(`Prediction run ${running.rows[0].id} is still in progress`), { status: 409 });
   }
-  const studentIds = await studentIdsForScope(scope, scopeId);
+  const studentIds = scope === "student" && Array.isArray(ids) ? ids : await studentIdsForScope(scope, scopeId);
   const { rows } = await pool.query(
     `INSERT INTO prediction_runs (scope, scope_id, total, status, started_by)
      VALUES ($1, $2, $3, 'running', $4) RETURNING *`,
@@ -70,7 +74,7 @@ async function startRun({ scope, scopeId, startedBy }) {
   );
   const run = rows[0];
   setImmediate(() =>
-    processRun(run.id, studentIds).catch(async (err) => {
+    processRun(run.id, studentIds, trigger).catch(async (err) => {
       console.error(`Prediction run ${run.id} crashed:`, err);
       await pool
         .query("UPDATE prediction_runs SET status = 'failed', error = $2, finished_at = NOW() WHERE id = $1", [run.id, err.message])

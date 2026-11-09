@@ -1,12 +1,13 @@
 const express = require("express");
 const router = express.Router();
 const rateLimit = require("express-rate-limit");
-const { body } = require("express-validator");
+const { body, param } = require("express-validator");
 const { authenticate, authorize } = require("../middleware/auth");
 const { validate } = require("../middleware/validate");
 const ctrl = require("../controllers/studentController");
 const chat = require("../controllers/chatController");
 const counselling = require("../controllers/counsellingController");
+const standingCtl = require("../controllers/standingController");
 
 router.use(authenticate, authorize("student"));
 
@@ -42,5 +43,14 @@ router.get("/chat/history", chat.history);
 router.delete("/chat/history", chat.clear);
 // Counselling sessions (Phase 7): own only, never the counsellor's notes
 router.get("/counselling-sessions", counselling.studentList);
+// Academic standing (Phase 7): own standing and warning letters only
+router.get("/standing", standingCtl.studentStanding);
+router.get("/warning-letters", standingCtl.studentLetters);
+router.put(
+  "/warning-letters/:id/acknowledge",
+  [param("id").isInt({ min: 1 }).withMessage("letter id must be a positive integer").toInt()],
+  validate,
+  standingCtl.acknowledge
+);
 
 module.exports = router;

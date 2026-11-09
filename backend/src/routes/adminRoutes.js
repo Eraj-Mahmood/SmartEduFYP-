@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { authenticate, authorize } = require("../middleware/auth");
-const { body, param } = require("express-validator");
+const { body, param, query } = require("express-validator");
 const { validate } = require("../middleware/validate");
 const ctrl = require("../controllers/adminController");
 const tutorials = require("../controllers/tutorialController");
@@ -10,6 +10,7 @@ const governance = require("../controllers/governanceController");
 const model = require("../controllers/modelController");
 const cohort = require("../controllers/cohortController");
 const counselling = require("../controllers/counsellingController");
+const standingCtl = require("../controllers/standingController");
 const cs = require("./counsellingRules");
 const { singleCsv } = require("../middleware/upload");
 
@@ -167,6 +168,44 @@ router.get("/counselling-sessions", cs.adminListRules, validate, counselling.adm
 router.put("/counselling-sessions/:id/reschedule", cs.rescheduleRules, validate, counselling.reschedule);
 router.put("/counselling-sessions/:id/cancel", cs.cancelRules, validate, counselling.cancel);
 router.put("/counselling-sessions/:id/attendance", cs.attendanceRules, validate, counselling.attendance); // admin override
+
+// Academic standing (Phase 7): semester close, warning letters, Probation 2 enrolment approvals
+const termLabel = body("termLabel")
+  .isString().withMessage("termLabel is required, e.g. Fall 2026").bail()
+  .trim().isLength({ min: 3, max: 40 }).withMessage("termLabel must be 3-40 characters, e.g. Fall 2026");
+router.post("/semester-close/preview", [termLabel], validate, standingCtl.preview);
+router.post(
+  "/semester-close/confirm",
+  [termLabel, body("resultsFinal").optional().isBoolean({ strict: true }).withMessage("resultsFinal must be true or false")],
+  validate,
+  standingCtl.confirm
+);
+router.get("/semester-closes", standingCtl.closes);
+router.get(
+  "/warning-letters",
+  [
+    query("student").optional().isInt({ min: 1 }).withMessage("student must be a positive integer").toInt(),
+    query("acknowledged").optional().isIn(["yes", "no"]).withMessage("acknowledged must be yes or no"),
+    query("page").optional().isInt({ min: 1 }).withMessage("page must be a positive integer").toInt(),
+    query("limit").optional().isInt({ min: 1, max: 100 }).withMessage("limit must be 1-100").toInt(),
+  ],
+  validate,
+  standingCtl.adminLetters
+);
+router.get("/warning-letters/:id", [idParam()], validate, standingCtl.adminLetter);
+router.get("/students/:id/standing", [idParam()], validate, standingCtl.adminStudentStanding);
+router.post(
+  "/students/:id/enrolment-approval",
+  [
+    idParam(),
+    body("approverRole").isString().withMessage("approverRole is required, e.g. Principal via HoD").bail()
+      .trim().isLength({ min: 2, max: 100 }).withMessage("approverRole must be 2-100 characters, e.g. Principal via HoD"),
+    body("note").optional({ values: "null" }).isString().withMessage("note must be text").bail()
+      .trim().isLength({ max: 1000 }).withMessage("note can be at most 1000 characters"),
+  ],
+  validate,
+  standingCtl.approval
+);
 
 // Batch re-prediction (background runs)
 router.post(
