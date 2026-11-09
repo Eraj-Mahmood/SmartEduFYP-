@@ -152,6 +152,12 @@ function CloseSemester({ onClosed }) {
               {preview.termLabel} has already been closed.
             </p>
           )}
+          {!preview.total && !preview.alreadyClosed && (
+            <p role="alert" className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink">
+              No student has enrolments this term, so there is nothing to close. The last close already ended the term; enrol students in this
+              term's classes first.
+            </p>
+          )}
           {preview.incomplete.length > 0 && (
             <p role="alert" className="rounded-lg border border-risk/40 bg-risk-50 px-3 py-2 text-sm text-risk-700">
               {preview.incomplete.length} student(s) still have courses without final marks: {preview.incomplete.slice(0, 5).map((x) => `${x.roll_no} (${x.courses.join(", ")})`).join("; ")}
@@ -195,7 +201,8 @@ function CloseSemester({ onClosed }) {
           <div className="space-y-2 text-sm text-ink">
             <p>
               This records the standing of <strong>{preview.total}</strong> students, saves their new official CGPA, issues <strong>{preview.letters}</strong> warning
-              letter{preview.letters === 1 ? "" : "s"} and notifies the students whose standing changes. It can't be undone from the app.
+              letter{preview.letters === 1 ? "" : "s"} and notifies the students whose standing changes. It also ends the term: this term's
+              enrolments are marked completed, so their classes take no more marks or attendance. It can't be undone from the app.
             </p>
             <p className="text-muted">The students' risk predictions are refreshed afterwards; probation itself does not change the risk label.</p>
           </div>

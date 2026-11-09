@@ -12,12 +12,19 @@ const pool = require("../config/db");
 // SGPA/CGPA formulas come from evaluation/sgpa_cgpa_relationship.py on the 50k-row CSV:
 //   SGPA ~= 0.0640 * mean_mark - 2.453            (R2 0.969; letter points 4/3/2/1/0 overstate SGPA by ~0.46)
 //   CGPA ~= (Previous_SGPA + SGPA) / 2            (R2 0.992; same weights in every semester)
+//
+// After a semester close (Phase 7.1) the latest row is the closed term's own record (close_id set): its
+// enrolments are 'completed', so with no new-term marks the model sees exactly that completed term (the
+// official values, like every student without enrolments). Once marks for a NEW term exist, that closed
+// term becomes the previous one: Previous_SGPA = its SGPA, Semester = the student's current semester.
+// Semester is never sent above MODEL_MAX_SEMESTER (the model was trained on semesters 1-8).
 // Credits_Enrolled / Credits_Passed / Failed_Courses stay as imported: the seeded enrollments
 // (4 x 3 = 12 credits) are below the dataset's minimum of 15, so overriding them would put the
 // model out of distribution.
 
 const SGPA_SLOPE = 0.064;
 const SGPA_INTERCEPT = -2.453;
+const MODEL_MAX_SEMESTER = 8;
 
 const round2 = (x) => Math.round(x * 100) / 100;
 // NUMERIC columns arrive as strings; a missing value stays null (the ML pipeline imputes it) instead of 0
@@ -39,12 +46,12 @@ async function buildFeaturesMany(studentIds, db = pool) {
   const ids = studentIds.map(Number);
   const [perf, att, courses] = await Promise.all([
     db.query(
-      `SELECT DISTINCT ON (p.student_id) p.*, s.gender, s.age, s.scholarship, s.hostel, d.code AS department_code
+      `SELECT DISTINCT ON (p.student_id) p.*, s.current_semester, s.gender, s.age, s.scholarship, s.hostel, d.code AS department_code
        FROM student_semester_performance p
        JOIN students s ON s.student_id = p.student_id
        JOIN departments d ON d.department_id = s.department_id
        WHERE p.student_id = ANY($1)
-       ORDER BY p.student_id, p.semester DESC`,
+       ORDER BY p.student_id, p.semester DESC, p.performance_id DESC`,
       [ids]
     ),
     db.query(
@@ -78,7 +85,7 @@ async function buildFeaturesMany(studentIds, db = pool) {
   const out = new Map();
   for (const r of perf.rows) {
     const features = {
-      Semester: r.semester,
+      Semester: r.semester == null ? null : Math.min(r.semester, MODEL_MAX_SEMESTER),
       Department: r.department_code,
       Gender: r.gender,
       Age: r.age,
@@ -116,6 +123,12 @@ async function buildFeaturesMany(studentIds, db = pool) {
       features.Final_Marks = mean("final_marks");
       Object.assign(sources, { Assignment_Avg: "live", Quiz_Avg: "live", Midterm_Marks: "live", Final_Marks: "live" });
 
+      if (r.close_id != null) {
+        // a new term after a close: the closed term is now the previous one
+        features.Previous_SGPA = n(r.sgpa);
+        features.Semester = Math.min(r.current_semester, MODEL_MAX_SEMESTER);
+        sources.Previous_SGPA = "closed_term";
+      }
       const credits = cs.reduce((sum, c) => sum + c.credit_hours, 0);
       features.SGPA = round2(cs.reduce((sum, c) => sum + c.credit_hours * coursePoints(c), 0) / credits);
       features.CGPA = features.Previous_SGPA == null ? null : round2((features.Previous_SGPA + features.SGPA) / 2);
@@ -142,4 +155,4 @@ async function buildFeatures(studentId, db = pool) {
   return built.get(Number(studentId)) || null;
 }
 
-module.exports = { buildFeatures, buildFeaturesMany, coursePoints, SGPA_SLOPE, SGPA_INTERCEPT };
+module.exports = { buildFeatures, buildFeaturesMany, coursePoints, SGPA_SLOPE, SGPA_INTERCEPT, MODEL_MAX_SEMESTER };

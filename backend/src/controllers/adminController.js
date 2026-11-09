@@ -680,17 +680,21 @@ async function enrollStudent(req, res) {
   }
 }
 
-/** PUT /api/admin/enrollments/:id/drop - course dropping. Unknown -> 404; already dropped -> 409 (no new audit entry). */
+/** PUT /api/admin/enrollments/:id/drop - course dropping. Unknown -> 404; already dropped -> 409 (no new audit entry);
+ *  completed at a semester close (Phase 7.1) -> 409. */
 async function dropEnrollment(req, res) {
   try {
     const id = Number(req.params.id);
     const { rows } = await pool.query(
-      `UPDATE enrollments SET status = 'dropped' WHERE enrollment_id = $1 AND status <> 'dropped' RETURNING *`,
+      `UPDATE enrollments SET status = 'dropped' WHERE enrollment_id = $1 AND status = 'enrolled' RETURNING *`,
       [id]
     );
     if (rows.length === 0) {
-      const exists = await pool.query("SELECT 1 FROM enrollments WHERE enrollment_id = $1", [id]);
+      const exists = await pool.query("SELECT status FROM enrollments WHERE enrollment_id = $1", [id]);
       if (!exists.rows.length) return res.status(404).json({ error: "Enrollment not found" });
+      if (exists.rows[0].status === "completed") {
+        return res.status(409).json({ error: "This course was completed when the term was closed, so it can't be dropped." });
+      }
       return res.status(409).json({ error: "This enrollment is already dropped." });
     }
     await logAction(req.user.userId, "DROP_COURSE", "enrollments", id, {});

@@ -16,6 +16,9 @@ async function repredictSafely(what, fn) {
   }
 }
 
+// Phase 7.1: enrolments of a closed term are 'completed' and take no more marks or attendance
+const COMPLETED_CLASS = "This class was completed when the term was closed - marks and attendance can't be changed";
+
 // Latest prediction for s.student_id, via the students.latest_prediction_id pointer
 const LATEST_PREDICTION_JOIN = `LEFT JOIN LATERAL (
          SELECT p.final_label, p.model_label, p.source, p.reasons, p.drivers, p.features, p.policy_reason, p.created_at,
@@ -118,7 +121,7 @@ async function classRoster(req, res) {
          FROM attendance a WHERE a.enrollment_id = e.enrollment_id
        ) att ON TRUE
        ${LATEST_PREDICTION_JOIN}
-       WHERE e.faculty_course_id = $1 AND e.status <> 'dropped'
+       WHERE e.faculty_course_id = $1 AND e.status = 'enrolled'
        ORDER BY s.roll_no`,
       [fcId]
     );
@@ -198,6 +201,8 @@ async function upsertResult(req, res) {
     if (own.rows.length === 0) return res.status(403).json({ error: "Not your class/student" });
     // like attendance: no marks (and no re-prediction) for a course the student has dropped
     if (own.rows[0].status === "dropped") return res.status(400).json({ error: "This student has dropped this course" });
+    // Phase 7.1: a semester close ends the term; its classes take no more marks
+    if (own.rows[0].status === "completed") return res.status(400).json({ error: COMPLETED_CLASS });
 
     // Marks left out of the request keep their saved value (0 for a new result).
     // The grade is always derived on the server; a client-sent grade is ignored.
@@ -274,6 +279,7 @@ async function markAttendance(req, res) {
     if (dropped.length) {
       return res.status(400).json({ error: `Enrollment(s) ${dropped.join(", ")} have dropped this course` });
     }
+    if (inClass.rows.some((r) => r.status === "completed")) return res.status(400).json({ error: COMPLETED_CLASS });
 
     const client = await pool.connect();
     const results = [];
@@ -330,7 +336,7 @@ async function classAttendance(req, res) {
        FROM attendance a
        JOIN enrollments e ON e.enrollment_id = a.enrollment_id
        JOIN students s ON s.student_id = e.student_id
-       WHERE e.faculty_course_id = $1 AND e.status <> 'dropped' ${dateFilter}
+       WHERE e.faculty_course_id = $1 AND e.status = 'enrolled' ${dateFilter}
        ORDER BY a.class_date DESC, s.roll_no`,
       params
     );

@@ -25,12 +25,13 @@ const round2 = (x) => (x == null ? null : Math.round(Number(x) * 100) / 100);
 /** This term's marks from a live-cohort import (the latest performance row, when it is live), or null. */
 async function importedTermMarks(studentId, db) {
   const { rows } = await db.query(
-    `SELECT data_source, assignment_avg, quiz_avg, midterm_marks, final_marks
-     FROM student_semester_performance WHERE student_id = $1 ORDER BY semester DESC LIMIT 1`,
+    `SELECT data_source, close_id, assignment_avg, quiz_avg, midterm_marks, final_marks
+     FROM student_semester_performance WHERE student_id = $1 ORDER BY semester DESC, performance_id DESC LIMIT 1`,
     [studentId]
   );
   const r = rows[0];
-  if (!r || r.data_source !== "live") return null;
+  // a semester-close row (close_id, Phase 7.1) is a finished term's record, not this term's imported marks
+  if (!r || r.data_source !== "live" || r.close_id != null) return null;
   // all four or nothing: a missing component would count as 0 in the derived grade
   if ([r.assignment_avg, r.quiz_avg, r.midterm_marks, r.final_marks].some((v) => v == null)) return null;
   return r;

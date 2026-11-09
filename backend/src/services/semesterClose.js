@@ -11,9 +11,11 @@ const { startRun } = require("./predictionRuns");
 //   CGPA = semester 1: the GPA; later: (Previous_SGPA + SGPA) / 2 - the projected CGPA
 //   judged on gradeUsed() (GPA in the first semester, CGPA after) -> nextStanding()
 // preview() writes nothing. confirm() needs resultsFinal (Handbook 1.20.4) and does everything in ONE
-// transaction: the semester_closes row, a standing row per student, the new official CGPA (a new
-// completed-semester performance row, current_semester + 1), a warning letter for each new probation,
-// a notification for each affected student. Afterwards the students are re-predicted through a batch
+// transaction: the semester_closes row, a standing row per student, the new official CGPA (the closed
+// term's own performance row: same semester, close_id set, Previous_SGPA = the term before, SGPA = this
+// term), current_semester + 1 (not past the programme's last semester - Phase 7.1 Bug 2), every
+// enrolment of the term marked 'completed' (Bug 1: its marks are no longer "this term"), a warning
+// letter for each new probation, a notification for each affected student. Afterwards the students are re-predicted through a batch
 // run (scope 'student', trigger 'semester_close'). Probation never changes the ML label by itself.
 
 const httpError = (status, message, payload) => Object.assign(new Error(message), { status, payload });
@@ -43,6 +45,7 @@ async function buildPlan(db = pool) {
     const incomplete = summary.courses.filter((c) => MARKS.some((k) => c[k] == null)).map((c) => c.course_code);
     const semesterNo = s.current_semester;
     const programme = standing.programmeFor(s.department);
+    const finalSemester = semesterNo >= standing.lengthFor(programme);
     const gpa = f ? round2(f.features.SGPA) : null;
     const cgpa = !f ? null : semesterNo === 1 ? gpa : round2(f.features.CGPA);
     const used = standing.gradeUsed(semesterNo, gpa, cgpa);
@@ -59,6 +62,8 @@ async function buildPlan(db = pool) {
       programme,
       minimum: standing.minimumFor(programme),
       semester_no: semesterNo,
+      final_semester: finalSemester,
+      next_semester: finalSemester ? semesterNo : semesterNo + 1,
       gpa,
       cgpa,
       cgpa_used: used,
@@ -171,26 +176,28 @@ async function confirm({ termLabel, resultsFinal }, adminUserId) {
         status: p.to.status,
         count: p.to.count,
         source: "close",
+        finalSemesterCompleted: p.final_semester,
       });
 
-      // the new official CGPA: a completed-semester row the next term's features start from
+      // the new official CGPA: the closed term's own record (same semester, close_id). Until marks for a new
+      // term exist, featureBuilder gives the model exactly this completed term; then its SGPA becomes Previous_SGPA.
       const f = p.features;
       if (f && p.cgpa != null) {
-        const prev = p.semester_no === 1 ? null : f.SGPA;
+        const prev = f.Previous_SGPA;
         await client.query(
           `INSERT INTO student_semester_performance
              (student_id, semester, attendance_percentage, assignment_avg, quiz_avg, midterm_marks, final_marks,
               study_hours_per_week, lms_login_count, assignment_submission_rate, previous_sgpa, sgpa, cgpa,
-              consecutive_low_cgpa, failed_courses, credits_enrolled, credits_passed, warning_count, target_label, data_source)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NULL, 'live')`,
+              consecutive_low_cgpa, failed_courses, credits_enrolled, credits_passed, warning_count, target_label, data_source, close_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NULL, 'live', $19)`,
           [
-            p.student_id, p.semester_no + 1, f.Attendance_Percentage, f.Assignment_Avg, f.Quiz_Avg, f.Midterm_Marks, f.Final_Marks,
-            f.Study_Hours_Per_Week, f.LMS_Login_Count, f.Assignment_Submission_Rate, f.SGPA, f.SGPA, p.cgpa,
+            p.student_id, p.semester_no, f.Attendance_Percentage, f.Assignment_Avg, f.Quiz_Avg, f.Midterm_Marks, f.Final_Marks,
+            f.Study_Hours_Per_Week, f.LMS_Login_Count, f.Assignment_Submission_Rate, prev, f.SGPA, p.cgpa,
             p.cgpa < 2 && prev != null && prev < 2 ? 1 : 0, f.Failed_Courses, f.Credits_Enrolled, f.Credits_Passed,
-            (Number(p.extra && p.extra.Warning_Count) || 0) + (p.letter ? 1 : 0),
+            (Number(p.extra && p.extra.Warning_Count) || 0) + (p.letter ? 1 : 0), close.id,
           ]
         );
-        await client.query("UPDATE students SET cgpa = $2, current_semester = $3 WHERE student_id = $1", [p.student_id, p.cgpa, p.semester_no + 1]);
+        await client.query("UPDATE students SET cgpa = $2, current_semester = $3 WHERE student_id = $1", [p.student_id, p.cgpa, p.next_semester]);
       }
 
       if (p.letter) {
@@ -209,8 +216,12 @@ async function confirm({ termLabel, resultsFinal }, adminUserId) {
         notified += 1;
       }
     }
+    // the term is over: its enrolments are finished, so their marks are no longer "this term" (dropped stay dropped)
+    const ended = await client.query("UPDATE enrollments SET status = 'completed' WHERE student_id = ANY($1) AND status = 'enrolled'", [
+      plan.map((p) => p.student_id),
+    ]);
     await client.query("COMMIT");
-    out = { close, counts, letters, notified, students: plan.map((p) => p.student_id), changed: plan.filter((p) => p.changed).length };
+    out = { enrolmentsCompleted: ended.rowCount, close, counts, letters, notified, students: plan.map((p) => p.student_id), changed: plan.filter((p) => p.changed).length };
   } catch (e) {
     await client.query("ROLLBACK");
     throw e;
@@ -225,6 +236,7 @@ async function confirm({ termLabel, resultsFinal }, adminUserId) {
     changed: out.changed,
     letters: out.letters,
     notified: out.notified,
+    enrolments_completed: out.enrolmentsCompleted,
   });
 
   // re-predict the affected students through the existing batch run (outside the transaction)

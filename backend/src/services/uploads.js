@@ -30,7 +30,7 @@ async function classRoster(facultyCourseId, db = pool) {
   return rows;
 }
 
-/** Common row check: roll number present, enrolled in this class and not dropped. */
+/** Common row check: roll number present, enrolled in this class, not dropped and not completed (term closed). */
 function checkRoll(rec, byRoll, errors) {
   const roll = normRoll(rec.data.roll_no);
   if (!roll) {
@@ -44,6 +44,10 @@ function checkRoll(rec, byRoll, errors) {
   }
   if (enr.status === "dropped") {
     errors.push({ column: "roll_no", message: `${roll} has dropped this course` });
+    return null;
+  }
+  if (enr.status === "completed") {
+    errors.push({ column: "roll_no", message: `${roll}'s enrolment was completed when the term was closed - marks and attendance can't be changed` });
     return null;
   }
   return enr;
@@ -233,7 +237,7 @@ async function processClassUpload({ facultyCourseId, userId, kind, mode, file })
 
 /** Template CSV for a class: header + one row per enrolled student (roll_no, name), values empty. */
 async function classTemplate(facultyCourseId, kind) {
-  const roster = (await classRoster(facultyCourseId)).filter((r) => r.status !== "dropped");
+  const roster = (await classRoster(facultyCourseId)).filter((r) => r.status === "enrolled");
   if (kind === "results") {
     return toCsv(["roll_no", "name", ...MARK_FIELDS], roster.map((r) => [r.roll_no, r.full_name, "", "", "", ""]));
   }

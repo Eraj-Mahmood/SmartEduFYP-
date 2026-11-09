@@ -23,7 +23,7 @@ async function getStudentOverview(studentId, db = pool) {
     ),
     db.query(
       `SELECT semester, cgpa, sgpa, previous_sgpa, attendance_percentage
-       FROM student_semester_performance WHERE student_id = $1 ORDER BY semester DESC LIMIT 1`,
+       FROM student_semester_performance WHERE student_id = $1 ORDER BY semester DESC, performance_id DESC LIMIT 1`,
       [studentId]
     ),
     // latest prediction via the students.latest_prediction_id pointer
@@ -84,7 +84,7 @@ async function getStudentOverview(studentId, db = pool) {
     },
     provisionalSgpa: pred && {
       value: round2(pred.provisional_sgpa),
-      label: "Provisional SGPA (this term)",
+      label: src.SGPA === "provisional" || termMarksImported ? "Provisional SGPA (this term)" : "SGPA (last completed term)",
       source: src.SGPA === "provisional" ? "provisional" : "imported",
     },
     previousSgpa: pred && { value: round2(pred.previous_sgpa), label: "Previous SGPA", source: "imported" },

@@ -233,13 +233,17 @@ export default function StudentDashboard() {
         <div className="grid lg:grid-cols-2 gap-4">
           <ChartCard
             title="Where you stand"
-            subtitle="Last term, this term so far, and where your CGPA is heading"
+            subtitle={
+              (data.provisionalSgpa?.source === "provisional" || data.termMarksImported)
+                ? "Last term, this term so far, and where your CGPA is heading"
+                : "Your last completed terms - no marks entered this term yet"
+            }
             empty={!projected}
             emptyMessage="Check your status to see where you stand"
             height={250}
             footer={<Legend items={standingLegend(t)} />}
           >
-            <StandingChart previous={data.previousSgpa?.value} provisional={data.provisionalSgpa?.value} projected={projected?.value} thresholds={t} />
+            <StandingChart previous={data.previousSgpa?.value} provisional={data.provisionalSgpa?.value} projected={projected?.value} thresholds={t} thisTerm={(data.provisionalSgpa?.source === "provisional" || data.termMarksImported)} />
           </ChartCard>
 
           <ChartCard

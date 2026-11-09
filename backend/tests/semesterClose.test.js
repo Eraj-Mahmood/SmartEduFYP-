@@ -12,7 +12,7 @@ const { recordStanding } = require("../src/services/academicStanding");
 const as = (t) => ({ Authorization: `Bearer ${t}` });
 const since = new Date();
 const TERM = `Jest Term ${Date.now()}`;
-let admin, plan, scope, studentsBefore, closeResult;
+let admin, plan, scope, studentsBefore, enrolmentsBefore, closeResult;
 
 const tables = ["semester_closes", "academic_standing", "warning_letters", "enrolment_approvals", "student_semester_performance", "notifications", "predictions"];
 async function snapshot() {
@@ -37,6 +37,7 @@ beforeAll(async () => {
   studentsBefore = (
     await pool.query("SELECT student_id, cgpa, current_semester, academic_status, probation_count, latest_prediction_id FROM students WHERE student_id = ANY($1)", [scope])
   ).rows;
+  enrolmentsBefore = (await pool.query("SELECT enrollment_id, status FROM enrollments WHERE student_id = ANY($1)", [scope])).rows;
 });
 
 afterAll(async () => {
@@ -57,6 +58,8 @@ afterAll(async () => {
         [s.student_id, s.cgpa, s.current_semester, s.academic_status, s.probation_count, s.latest_prediction_id]
       );
     }
+    // Phase 7.1: the close marks the term's enrolments 'completed'
+    for (const e of enrolmentsBefore) await c.query("UPDATE enrollments SET status = $2 WHERE enrollment_id = $1", [e.enrollment_id, e.status]);
     await c.query("DELETE FROM predictions WHERE student_id = ANY($1) AND created_at >= $2", [scope, since]);
     await c.query("DELETE FROM prediction_runs WHERE started_at >= $1 AND scope = 'student'", [since]);
     await c.query("DELETE FROM semester_closes WHERE term_label LIKE 'Jest Term %'"); // cascades standing, letters, approvals
@@ -156,7 +159,7 @@ describe("confirm", () => {
     for (const p of plan.students) {
       const r = byId.get(p.student_id);
       expect({ status: r.academic_status, count: r.probation_count }).toEqual(p.to);
-      expect(r.current_semester).toBe(p.semester_no + 1);
+      expect(r.current_semester).toBe(p.final_semester ? p.semester_no : p.semester_no + 1); // Phase 7.1: not past the last semester
       expect(Number(r.cgpa)).toBeCloseTo(p.cgpa, 2);
     }
     // a letter for each new probation, at the right level

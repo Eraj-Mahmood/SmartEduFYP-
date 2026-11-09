@@ -238,7 +238,7 @@ async function summary(pool) {
     `WITH g AS (
        SELECT e.student_id, AVG(CASE cr.grade WHEN 'A' THEN 4 WHEN 'B' THEN 3 WHEN 'C' THEN 2 WHEN 'D' THEN 1 ELSE 0 END) AS pts
        FROM enrollments e JOIN course_results cr ON cr.enrollment_id = e.enrollment_id GROUP BY e.student_id),
-     lp AS (SELECT DISTINCT ON (student_id) student_id, cgpa, target_label FROM student_semester_performance ORDER BY student_id, semester DESC)
+     lp AS (SELECT DISTINCT ON (student_id) student_id, cgpa, target_label FROM student_semester_performance ORDER BY student_id, semester DESC, performance_id DESC)
      SELECT COUNT(*)::int AS enrolled,
             COUNT(*) FILTER (WHERE ABS(ROUND(g.pts, 2) - lp.cgpa) <= 0.5)::int AS grade_ok,
             COUNT(*) FILTER (WHERE ABS(ROUND(g.pts, 2) - lp.cgpa) <= 0.5 AND p.predicted_label = lp.target_label)::int AS fully

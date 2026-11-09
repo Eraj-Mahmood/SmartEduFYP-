@@ -23,12 +23,13 @@ function TwoLineTick({ x, y, payload }) {
   );
 }
 
-/** "Where you stand": Previous SGPA -> provisional SGPA -> projected CGPA. */
-export function StandingChart({ previous, provisional, projected, thresholds: t }) {
+/** "Where you stand": Previous SGPA -> provisional SGPA -> projected CGPA.
+ *  thisTerm=false (no marks this term, e.g. right after a semester close): the last completed term instead. */
+export function StandingChart({ previous, provisional, projected, thresholds: t, thisTerm = true }) {
   const data = [
     { name: "Previous SGPA", value: previous },
-    { name: "This term SGPA", value: provisional },
-    { name: "Projected CGPA", value: projected },
+    { name: thisTerm ? "This term SGPA" : "Last term SGPA", value: provisional },
+    { name: thisTerm ? "Projected CGPA" : "Official CGPA", value: projected },
   ].filter((d) => d.value != null);
 
   const Dot = ({ cx, cy, payload }) => (

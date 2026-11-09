@@ -31,6 +31,13 @@ function minimumFor(programme = config.default_programme) {
   return m;
 }
 
+/** Number of semesters in a programme (BS 8, MS 4, ...; config programme_length, to be confirmed by the department). */
+function lengthFor(programme = config.default_programme) {
+  const n = config.programme_length[programme];
+  if (n === undefined) throw new Error(`No length configured for programme "${programme}"`);
+  return n;
+}
+
 /** The figure a semester is judged on: GPA for the first semester (if configured), CGPA after that. */
 function gradeUsed(semesterNo, gpa, cgpa) {
   return semesterNo === 1 && config.first_semester_uses_gpa ? gpa : cgpa;
@@ -67,14 +74,15 @@ function seedStatus({ semester, cgpa, consecutiveLow, programme = config.default
 }
 
 /**
- * recordStanding(db, {studentId, closeId, semesterNo, cgpaUsed, status, count, source}) -> standing id.
+ * recordStanding(db, {studentId, closeId, semesterNo, cgpaUsed, status, count, source, finalSemesterCompleted}) -> standing id.
  * Inserts the row and moves students.academic_status / probation_count with it (same transaction).
+ * finalSemesterCompleted (migration 016): the close ended the last semester of the student's programme.
  */
-async function recordStanding(db, { studentId, closeId = null, semesterNo = null, cgpaUsed = null, status, count, source }) {
+async function recordStanding(db, { studentId, closeId = null, semesterNo = null, cgpaUsed = null, status, count, source, finalSemesterCompleted = false }) {
   const { rows } = await db.query(
-    `INSERT INTO academic_standing (student_id, close_id, semester_no, cgpa_used, status, probation_count, source)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-    [studentId, closeId, semesterNo, cgpaUsed, status, count, source]
+    `INSERT INTO academic_standing (student_id, close_id, semester_no, cgpa_used, status, probation_count, source, final_semester_completed)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [studentId, closeId, semesterNo, cgpaUsed, status, count, source, finalSemesterCompleted]
   );
   await db.query("UPDATE students SET academic_status = $2, probation_count = $3 WHERE student_id = $1", [studentId, status, count]);
   return rows[0].id;
@@ -92,7 +100,7 @@ async function seedStandings(db = pool) {
      JOIN departments d ON d.department_id = s.department_id
      LEFT JOIN LATERAL (
        SELECT semester, cgpa, consecutive_low_cgpa FROM student_semester_performance
-       WHERE student_id = s.student_id ORDER BY semester DESC LIMIT 1
+       WHERE student_id = s.student_id ORDER BY semester DESC, performance_id DESC LIMIT 1
      ) sp ON TRUE
      WHERE NOT EXISTS (SELECT 1 FROM academic_standing a WHERE a.student_id = s.student_id)
      ORDER BY s.student_id`
@@ -144,6 +152,7 @@ module.exports = {
   LABELS,
   programmeFor,
   minimumFor,
+  lengthFor,
   gradeUsed,
   nextStanding,
   seedStatus,

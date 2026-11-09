@@ -101,7 +101,7 @@ def main():
          previous_sgpa, sgpa, cgpa, consecutive_low_cgpa, failed_courses, credits_enrolled,
          credits_passed, warning_count, target_label)
         VALUES %s
-        ON CONFLICT (student_id, semester) DO NOTHING
+        ON CONFLICT (student_id, semester) WHERE close_id IS NULL DO NOTHING
     """
     extras.execute_values(cur, insert_sql, rows, page_size=1000)
     conn.commit()

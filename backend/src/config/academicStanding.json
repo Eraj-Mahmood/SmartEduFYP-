@@ -10,6 +10,17 @@
     "MPhil": 2.5,
     "PhD": 3.0
   },
+  "_programme_length": "Semesters in each programme (Phase 7.1). A student already in the final semester is not moved past it at a semester close. TO CONFIRM with the department.",
+  "programme_length": {
+    "AD": 4,
+    "BBA": 8,
+    "BEE": 8,
+    "BS": 8,
+    "MBA": 4,
+    "MS": 4,
+    "MPhil": 4,
+    "PhD": 8
+  },
   "_department_programme": "Students have no programme column; their department decides it. Unknown departments use default_programme.",
   "department_programme": {
     "CS": "BS",

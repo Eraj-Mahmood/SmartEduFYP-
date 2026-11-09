@@ -47,11 +47,11 @@ function applyOverrides(features, overrides) {
   return f;
 }
 
-/** 403 unless the faculty member teaches the student (not dropped) or is their active counselor. */
+/** 403 unless the faculty member teaches the student this term (enrolled) or is their active counselor. */
 async function assertFacultyCanSee(facultyId, studentId) {
   const { rows } = await pool.query(
     `SELECT 1 FROM enrollments e JOIN faculty_courses fc ON fc.faculty_course_id = e.faculty_course_id
-     WHERE e.student_id = $1 AND fc.faculty_id = $2 AND e.status <> 'dropped'
+     WHERE e.student_id = $1 AND fc.faculty_id = $2 AND e.status = 'enrolled'
      UNION ALL
      SELECT 1 FROM counselor_assignments ca WHERE ca.student_id = $1 AND ca.faculty_id = $2 AND ca.status = 'active'
      LIMIT 1`,
